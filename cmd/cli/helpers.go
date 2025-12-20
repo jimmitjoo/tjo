@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/jimmitjoo/gemquick/config"
 	"github.com/joho/godotenv"
 )
 
@@ -22,9 +23,16 @@ func setup(arg1, arg2 string) {
 			exitGracefully(err)
 		}
 
+		// Load configuration
+		cfg, err := config.Load()
+		if err != nil {
+			exitGracefully(err)
+		}
+
 		gem.RootPath = path
 		gem.Version = "0.0.1"
-		gem.DB.DataType = os.Getenv("DATABASE_TYPE")
+		gem.Config = cfg
+		gem.DB.DataType = cfg.Database.Type
 	}
 }
 
