@@ -70,18 +70,20 @@ func getDSN() string {
 func showHelp() {
 	color.Yellow(`Available commands:
 
-	help 					- show this help
-	version 				- show Gemquick version
-	mcp 					- start MCP server for AI assistants
-	migrate 				- runs all migrations up
-	migrate down 			- runs the last migration down
-	migrate reset 			- drops all tables and migrates them back up
-	make auth				- creates things for autentications
-	make handler <name>		- creates a new stub handler in the handlers directory
-	make migration <name>	- creates two new migrations, up and down
-	make model <name>		- creates a new model in the data directory
-	make session			- creates a table in the database to store sessions
-	make mail <name>		- creates a new email in the email directory
+	help                    - show this help
+	version                 - show Gemquick version
+	run                     - run the application
+	run --watch (-w)        - run with hot-reload (uses air)
+	mcp                     - start MCP server for AI assistants
+	migrate                 - runs all migrations up
+	migrate down            - runs the last migration down
+	migrate reset           - drops all tables and migrates them back up
+	make auth               - creates things for autentications
+	make handler <name>     - creates a new stub handler in the handlers directory
+	make migration <name>   - creates two new migrations, up and down
+	make model <name>       - creates a new model in the data directory
+	make session            - creates a table in the database to store sessions
+	make mail <name>        - creates a new email in the email directory
 
 	`)
 }

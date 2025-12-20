@@ -60,6 +60,13 @@ func main() {
 
 		message = "Migrations completed"
 
+	case "run":
+		watch := arg2 == "--watch" || arg2 == "-w"
+		err = doRun(watch)
+		if err != nil {
+			exitGracefully(err)
+		}
+
 	default:
 		showHelp()
 	}
