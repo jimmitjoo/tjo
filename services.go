@@ -7,7 +7,9 @@ import (
 
 	"github.com/CloudyKit/jet/v6"
 	"github.com/alexedwards/scs/v2"
+	"github.com/dgraph-io/badger/v3"
 	"github.com/go-chi/chi/v5"
+	"github.com/gomodule/redigo/redis"
 	"github.com/jimmitjoo/gemquick/cache"
 	"github.com/jimmitjoo/gemquick/email"
 	"github.com/jimmitjoo/gemquick/filesystems"
@@ -48,9 +50,13 @@ func NewHTTPService() *HTTPService {
 
 // DataService handles database, caching, and file storage
 type DataService struct {
-	DB    Database
-	Cache cache.Cache
-	Files *FileSystemRegistry
+	DB          Database
+	Cache       cache.Cache
+	Files       *FileSystemRegistry
+	redisCache  *cache.RedisCache
+	badgerCache *cache.BadgerCache
+	redisPool   *redis.Pool
+	badgerConn  *badger.DB
 }
 
 // NewDataService creates a new data service
