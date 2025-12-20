@@ -98,7 +98,7 @@ func TestGetDSN(t *testing.T) {
 				t.Fatalf("Failed to load config: %v", err)
 			}
 			gem.Config = cfg
-			gem.DB.DataType = tt.dbType
+			gem.Data.DB.DataType = tt.dbType
 
 			result := getDSN()
 			assert.Equal(t, tt.expected, result)
@@ -190,6 +190,8 @@ func TestUpdateSourceFiles_Error(t *testing.T) {
 func init() {
 	// Initialize gem for tests
 	gem = gemquick.Gemquick{
-		DB: gemquick.Database{},
+		Data: &gemquick.DataService{
+			DB: gemquick.Database{},
+		},
 	}
 }

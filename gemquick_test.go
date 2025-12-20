@@ -252,8 +252,12 @@ func TestBuildDSN(t *testing.T) {
 
 func TestGemquick_SessionManager(t *testing.T) {
 	g := &Gemquick{
-		Session: scs.New(),
-		InfoLog: createTestLogger(),
+		HTTP: &HTTPService{
+			Session: scs.New(),
+		},
+		Logging: &LoggingService{
+			Info: createTestLogger(),
+		},
 		Config: &config.Config{
 			Cookie: config.CookieConfig{
 				Secure: false,

@@ -233,13 +233,51 @@ func (j *Job) GetPayloadBool(key string) (bool, error) {
 	if !exists {
 		return false, fmt.Errorf("key %s not found in payload", key)
 	}
-	
+
 	b, ok := value.(bool)
 	if !ok {
 		return false, fmt.Errorf("key %s is not a boolean", key)
 	}
-	
+
 	return b, nil
+}
+
+// GetPayload is a generic helper for type-safe payload retrieval.
+// Example: email, err := GetPayload[string](job, "email")
+func GetPayload[T any](j *Job, key string) (T, error) {
+	var zero T
+	value, exists := j.GetPayloadValue(key)
+	if !exists {
+		return zero, fmt.Errorf("key %s not found in payload", key)
+	}
+
+	typed, ok := value.(T)
+	if !ok {
+		return zero, fmt.Errorf("key %s is not the expected type", key)
+	}
+
+	return typed, nil
+}
+
+// GetMetadata is a generic helper for type-safe metadata retrieval.
+// Example: count, err := GetMetadata[int](job, "retry_count")
+func GetMetadata[T any](j *Job, key string) (T, error) {
+	var zero T
+	if j.Metadata == nil {
+		return zero, fmt.Errorf("metadata is nil")
+	}
+
+	value, exists := j.Metadata[key]
+	if !exists {
+		return zero, fmt.Errorf("key %s not found in metadata", key)
+	}
+
+	typed, ok := value.(T)
+	if !ok {
+		return zero, fmt.Errorf("key %s is not the expected type", key)
+	}
+
+	return typed, nil
 }
 
 func (j *Job) Clone() *Job {

@@ -14,13 +14,13 @@ func (g *Gemquick) routes() http.Handler {
 	mux.Use(middleware.RealIP)
 
 	// Add structured logging middleware if available
-	if g.Logger != nil {
-		mux.Use(logging.StructuredLoggingMiddleware(g.Logger))
-		mux.Use(logging.RecoveryMiddleware(g.Logger))
-		
+	if g.Logging != nil && g.Logging.Logger != nil {
+		mux.Use(logging.StructuredLoggingMiddleware(g.Logging.Logger))
+		mux.Use(logging.RecoveryMiddleware(g.Logging.Logger))
+
 		// Add metrics middleware if metrics are available
-		if g.AppMetrics != nil {
-			mux.Use(logging.MetricsMiddleware(g.AppMetrics, g.Logger))
+		if g.Logging.App != nil {
+			mux.Use(logging.MetricsMiddleware(g.Logging.App, g.Logging.Logger))
 		}
 	}
 
@@ -29,8 +29,12 @@ func (g *Gemquick) routes() http.Handler {
 	}
 
 	mux.Use(middleware.Recoverer)
-	mux.Use(g.SessionLoad)
-	mux.Use(g.NoSurf)
+
+	// Only add session and CSRF middleware if HTTP service is configured
+	if g.HTTP != nil && g.HTTP.Session != nil {
+		mux.Use(g.SessionLoad)
+		mux.Use(g.NoSurf)
+	}
 
 	return mux
 }
@@ -38,15 +42,15 @@ func (g *Gemquick) routes() http.Handler {
 // AddMonitoringRoutes adds health and metrics endpoints.
 // Call this in your routes() function AFTER adding your middleware.
 func (g *Gemquick) AddMonitoringRoutes(mux *chi.Mux) {
-	if g.MetricRegistry == nil || g.HealthMonitor == nil {
+	if g.Logging == nil || g.Logging.Metrics == nil || g.Logging.Health == nil {
 		return
 	}
 
 	// Health endpoints
-	mux.Get("/health", logging.HealthHandler(g.HealthMonitor))
+	mux.Get("/health", logging.HealthHandler(g.Logging.Health))
 	mux.Get("/health/ready", logging.ReadinessHandler())
 	mux.Get("/health/live", logging.LivenessHandler())
-	
+
 	// Metrics endpoint
-	mux.Get("/metrics", logging.MetricsHandler(g.MetricRegistry))
+	mux.Get("/metrics", logging.MetricsHandler(g.Logging.Metrics))
 }

@@ -9,11 +9,11 @@ import (
 func doSession() error {
 
 	// check if there is a database connection
-	if gem.DB.DataType == "" {
+	if gem.Data.DB.DataType == "" {
 		return errors.New("you have to define a database type to be able to use other session types than cookies")
 	}
 
-	dbType := gem.DB.DataType
+	dbType := gem.Data.DB.DataType
 	if dbType == "pgx" || dbType == "postgresql" {
 		dbType = "postgres"
 	} else if dbType == "mariadb" {

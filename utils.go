@@ -13,5 +13,5 @@ func (g *Gemquick) LoadTime(start time.Time) {
 	funcObj := runtime.FuncForPC(pc)
 	funcName := regexp.MustCompile(`\.(.*)$`).ReplaceAllString(funcObj.Name(), "$1")
 
-	g.InfoLog.Printf("%s took %s", funcName, elapsed)
+	g.Logging.Info.Printf("%s took %s", funcName, elapsed)
 }

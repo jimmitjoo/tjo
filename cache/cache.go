@@ -3,6 +3,7 @@ package cache
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 
 	"github.com/gomodule/redigo/redis"
 )
@@ -131,4 +132,31 @@ func (c *RedisCache) EmptyByMatch(str string) error {
 
 func (c *RedisCache) Flush() error {
 	return c.EmptyByMatch("*")
+}
+
+// GetTyped is a generic helper for type-safe cache retrieval.
+// Example: user, err := GetTyped[User](cache, "user:123")
+func GetTyped[T any](c Cache, key string) (T, error) {
+	var zero T
+	value, err := c.Get(key)
+	if err != nil {
+		return zero, err
+	}
+
+	typed, ok := value.(T)
+	if !ok {
+		return zero, fmt.Errorf("cached value for key %s is not the expected type", key)
+	}
+
+	return typed, nil
+}
+
+// MustGet is a generic helper that panics on error (use only when cache hit is guaranteed).
+// Example: config := MustGet[Config](cache, "app:config")
+func MustGet[T any](c Cache, key string) T {
+	value, err := GetTyped[T](c, key)
+	if err != nil {
+		panic(fmt.Sprintf("cache.MustGet: %v", err))
+	}
+	return value
 }

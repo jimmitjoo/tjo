@@ -32,12 +32,12 @@ func setup(arg1, arg2 string) {
 		gem.RootPath = path
 		gem.Version = "0.0.1"
 		gem.Config = cfg
-		gem.DB.DataType = cfg.Database.Type
+		gem.Data.DB.DataType = cfg.Database.Type
 	}
 }
 
 func getDSN() string {
-	dbType := gem.DB.DataType
+	dbType := gem.Data.DB.DataType
 	if dbType == "pgx" {
 		dbType = "postgres"
 	}

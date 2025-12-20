@@ -7,8 +7,10 @@ import (
 )
 
 func (g *Gemquick) SessionLoad(next http.Handler) http.Handler {
-	g.InfoLog.Println("SessionLoad called")
-	return g.Session.LoadAndSave(next)
+	if g.Logging != nil && g.Logging.Info != nil {
+		g.Logging.Info.Println("SessionLoad called")
+	}
+	return g.HTTP.Session.LoadAndSave(next)
 }
 
 func (g *Gemquick) NoSurf(next http.Handler) http.Handler {

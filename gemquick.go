@@ -1,16 +1,17 @@
 package gemquick
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/CloudyKit/jet/v6"
-	"github.com/alexedwards/scs/v2"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/go-chi/chi/v5"
 	"github.com/gomodule/redigo/redis"
@@ -51,26 +52,6 @@ type Gemquick struct {
 	HTTP       *HTTPService
 	Data       *DataService
 	Background *BackgroundService
-
-	// Legacy accessors (for backwards compatibility during migration)
-	// These will be deprecated in favor of service accessors
-	ErrorLog       *log.Logger              // Use Logging.Error instead
-	InfoLog        *log.Logger              // Use Logging.Info instead
-	Logger         *logging.Logger          // Use Logging.Logger instead
-	MetricRegistry *logging.MetricRegistry  // Use Logging.Metrics instead
-	HealthMonitor  *logging.HealthMonitor   // Use Logging.Health instead
-	AppMetrics     *logging.ApplicationMetrics // Use Logging.App instead
-	Routes         *chi.Mux                 // Use HTTP.Router instead
-	Render         *render.Render           // Use HTTP.Render instead
-	Session        *scs.SessionManager      // Use HTTP.Session instead
-	JetViews       *jet.Set                 // Use HTTP.JetViews instead
-	DB             Database                 // Use Data.DB instead
-	Cache          cache.Cache              // Use Data.Cache instead
-	FileSystems    map[string]interface{}   // Use Data.Files instead
-	Scheduler      *cron.Cron               // Use Background.Scheduler instead
-	JobManager     *jobs.JobManager         // Use Background.Jobs instead
-	SMSProvider    sms.SMSProvider          // Use Background.SMS instead
-	Mail           email.Mail               // Use Background.Mail instead
 }
 
 type Server struct {
@@ -135,23 +116,20 @@ func (g *Gemquick) New(rootPath string) error {
 			TablePrefix: g.Config.Database.TablePrefix,
 		}
 		g.Data.DB = dbConfig
-		g.DB = dbConfig // Legacy accessor
 	}
 
 	scheduler := cron.New()
 	g.Background.Scheduler = scheduler
-	g.Scheduler = scheduler // Legacy accessor
 
 	// initialize job manager
 	jobConfig := jobs.DefaultManagerConfig()
 	jobConfig.DefaultWorkers = g.Config.Jobs.Workers
 	jobConfig.EnablePersistence = g.Config.Jobs.EnablePersistence
 	g.Background.Jobs = jobs.NewJobManager(jobConfig)
-	g.JobManager = g.Background.Jobs // Legacy accessor
 
 	// setup job persistence if database is available and persistence is enabled
-	if jobConfig.EnablePersistence && g.DB.Pool != nil {
-		err := g.JobManager.SetPersistence(g.DB.Pool)
+	if jobConfig.EnablePersistence && g.Data.DB.Pool != nil {
+		err := g.Background.Jobs.SetPersistence(g.Data.DB.Pool)
 		if err != nil {
 			return err
 		}
@@ -161,7 +139,6 @@ func (g *Gemquick) New(rootPath string) error {
 	if g.Config.App.Cache == "redis" || g.Config.Session.Type == "redis" {
 		g.Data.redisCache = g.createClientRedisCache()
 		g.Data.Cache = g.Data.redisCache
-		g.Cache = g.Data.redisCache // Legacy accessor
 		g.Data.redisPool = g.Data.redisCache.Conn
 	}
 
@@ -169,7 +146,6 @@ func (g *Gemquick) New(rootPath string) error {
 	if g.Config.App.Cache == "badger" || g.Config.Session.Type == "badger" {
 		g.Data.badgerCache = g.createClientBadgerCache()
 		g.Data.Cache = g.Data.badgerCache
-		g.Cache = g.Data.badgerCache // Legacy accessor
 		g.Data.badgerConn = g.Data.badgerCache.Conn
 
 		// start badger garbage collector
@@ -181,8 +157,6 @@ func (g *Gemquick) New(rootPath string) error {
 		}
 	}
 
-	g.InfoLog = infoLog   // Legacy accessor
-	g.ErrorLog = errorLog // Legacy accessor
 	g.Debug = g.Config.App.Debug
 	g.Version = version
 	g.RootPath = rootPath
@@ -190,7 +164,6 @@ func (g *Gemquick) New(rootPath string) error {
 
 	// Setup HTTP router
 	g.HTTP.Router = g.routes().(*chi.Mux)
-	g.Routes = g.HTTP.Router // Legacy accessor
 
 	g.Server = Server{
 		ServerName: g.Config.Server.ServerName,
@@ -207,7 +180,7 @@ func (g *Gemquick) New(rootPath string) error {
 		SessionType:    g.Config.Session.Type,
 		CookieDomain:   g.Config.Cookie.Domain,
 		CookieSecure:   strconv.FormatBool(g.Config.Cookie.Secure),
-		DBPool:         g.DB.Pool,
+		DBPool:         g.Data.DB.Pool,
 	}
 
 	switch g.Config.Session.Type {
@@ -218,7 +191,6 @@ func (g *Gemquick) New(rootPath string) error {
 	}
 
 	g.HTTP.Session = sess.InitSession()
-	g.Session = g.HTTP.Session // Legacy accessor
 	g.EncryptionKey = g.Config.App.EncryptionKey
 
 	// Setup Jet template engine
@@ -234,22 +206,19 @@ func (g *Gemquick) New(rootPath string) error {
 		)
 	}
 	g.HTTP.JetViews = views
-	g.JetViews = views // Legacy accessor
 
 	g.createRenderer()
 
-	// Setup file systems (legacy map for backwards compatibility)
-	g.FileSystems = g.createFileSystems()
+	// Setup file systems
+	g.createFileSystems()
 
 	// Setup SMS provider
 	g.Background.SMS = sms.CreateSMSProvider(g.Config.App.SMSProvider)
-	g.SMSProvider = g.Background.SMS // Legacy accessor
 
 	// Setup mail service
 	g.Background.Mail = g.createMailer()
-	g.Mail = g.Background.Mail // Legacy accessor
 
-	go g.Mail.ListenForMail()
+	go g.Background.Mail.ListenForMail()
 
 	return nil
 }
@@ -268,92 +237,137 @@ func (g *Gemquick) Init(p initPaths) error {
 	return nil
 }
 
-// ListenAndServe starts the web server
+// ListenAndServe starts the web server with graceful shutdown support.
+// It handles SIGINT and SIGTERM signals to gracefully stop the server,
+// waiting for in-flight requests to complete before shutting down.
 func (g *Gemquick) ListenAndServe() {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", g.Config.Server.Port),
-		ErrorLog:     g.ErrorLog,
-		Handler:      g.Routes,
+		ErrorLog:     g.Logging.Error,
+		Handler:      g.HTTP.Router,
 		IdleTimeout:  30 * time.Second,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 600 * time.Second,
 	}
 
-	if g.DB.Pool != nil {
-		defer func(Pool *sql.DB) {
-			err := Pool.Close()
-			if err != nil {
-				g.ErrorLog.Println(err)
-			}
-		}(g.DB.Pool)
-	}
+	// Channel for shutdown signals
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	if g.Data.redisPool != nil {
-		defer func(redisPool *redis.Pool) {
-			err := redisPool.Close()
-			if err != nil {
-				g.ErrorLog.Println(err)
-			}
-		}(g.Data.redisPool)
-	}
+	// Channel for server errors
+	serverErr := make(chan error, 1)
 
-	if g.Data.badgerConn != nil {
-		defer func(badgerConn *badger.DB) {
-			err := badgerConn.Close()
-			if err != nil {
-				g.ErrorLog.Println(err)
-			}
-		}(g.Data.badgerConn)
-	}
-
-	// start job manager
-	if err := g.JobManager.Start(); err != nil {
-		if g.Logger != nil {
-			g.Logger.Error("Failed to start job manager", map[string]interface{}{
+	// Start job manager
+	if err := g.Background.Jobs.Start(); err != nil {
+		if g.Logging.Logger != nil {
+			g.Logging.Logger.Error("Failed to start job manager", map[string]interface{}{
 				"error": err.Error(),
 			})
 		} else {
-			g.ErrorLog.Printf("Failed to start job manager: %v", err)
+			g.Logging.Error.Printf("Failed to start job manager: %v", err)
 		}
 	}
 
-	// ensure job manager is stopped when server shuts down
-	defer func() {
-		if err := g.JobManager.Stop(); err != nil {
-			if g.Logger != nil {
-				g.Logger.Error("Failed to stop job manager", map[string]interface{}{
-					"error": err.Error(),
-				})
-			} else {
-				g.ErrorLog.Printf("Failed to stop job manager: %v", err)
-			}
+	// Start server in goroutine
+	go func() {
+		if g.Logging.Logger != nil {
+			g.Logging.Logger.Info("Starting server", map[string]interface{}{
+				"port":    g.Config.Server.Port,
+				"version": g.Version,
+				"debug":   g.Debug,
+			})
+		} else {
+			g.Logging.Info.Printf("Listening on port %d", g.Config.Server.Port)
+		}
+
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
 		}
 	}()
 
-	// Log server startup with structured logging
-	if g.Logger != nil {
-		g.Logger.Info("Starting server", map[string]interface{}{
-			"port":    g.Config.Server.Port,
-			"version": g.Version,
-			"debug":   g.Debug,
-		})
-	} else {
-		g.InfoLog.Printf("Listening on port %d", g.Config.Server.Port)
-	}
-
-	err := srv.ListenAndServe()
-	
-	// Log server shutdown
-	if g.Logger != nil {
-		if err != nil {
-			g.Logger.Fatal("Server failed to start or encountered fatal error", map[string]interface{}{
+	// Wait for shutdown signal or server error
+	select {
+	case err := <-serverErr:
+		if g.Logging.Logger != nil {
+			g.Logging.Logger.Fatal("Server error", map[string]interface{}{
 				"error": err.Error(),
 			})
 		} else {
-			g.Logger.Info("Server shutdown gracefully")
+			g.Logging.Error.Fatalf("Server error: %v", err)
 		}
+	case sig := <-quit:
+		if g.Logging.Logger != nil {
+			g.Logging.Logger.Info("Received shutdown signal", map[string]interface{}{
+				"signal": sig.String(),
+			})
+		} else {
+			g.Logging.Info.Printf("Received shutdown signal: %v", sig)
+		}
+	}
+
+	// Begin graceful shutdown
+	if g.Logging.Logger != nil {
+		g.Logging.Logger.Info("Shutting down server...")
 	} else {
-		g.ErrorLog.Fatal(err)
+		g.Logging.Info.Println("Shutting down server...")
+	}
+
+	// Create context with timeout for graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Stop job manager
+	if err := g.Background.Jobs.Stop(); err != nil {
+		if g.Logging.Logger != nil {
+			g.Logging.Logger.Error("Failed to stop job manager", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			g.Logging.Error.Printf("Failed to stop job manager: %v", err)
+		}
+	}
+
+	// Stop scheduler if running
+	if g.Background.Scheduler != nil {
+		g.Background.Scheduler.Stop()
+	}
+
+	// Shutdown HTTP server (waits for in-flight requests)
+	if err := srv.Shutdown(ctx); err != nil {
+		if g.Logging.Logger != nil {
+			g.Logging.Logger.Error("Server forced to shutdown", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			g.Logging.Error.Printf("Server forced to shutdown: %v", err)
+		}
+	}
+
+	// Close database connection
+	if g.Data.DB.Pool != nil {
+		if err := g.Data.DB.Pool.Close(); err != nil {
+			g.Logging.Error.Printf("Error closing database: %v", err)
+		}
+	}
+
+	// Close Redis connection
+	if g.Data.redisPool != nil {
+		if err := g.Data.redisPool.Close(); err != nil {
+			g.Logging.Error.Printf("Error closing Redis: %v", err)
+		}
+	}
+
+	// Close Badger connection
+	if g.Data.badgerConn != nil {
+		if err := g.Data.badgerConn.Close(); err != nil {
+			g.Logging.Error.Printf("Error closing Badger: %v", err)
+		}
+	}
+
+	if g.Logging.Logger != nil {
+		g.Logging.Logger.Info("Server shutdown complete")
+	} else {
+		g.Logging.Info.Println("Server shutdown complete")
 	}
 }
 
@@ -390,19 +404,15 @@ func (g *Gemquick) setupStructuredLogging() {
 		Service:    g.AppName,
 		EnableJSON: enableJSON,
 	})
-	g.Logger = g.Logging.Logger // Legacy accessor
 
 	// Create metric registry and application metrics
 	g.Logging.Metrics = logging.NewMetricRegistry()
-	g.MetricRegistry = g.Logging.Metrics // Legacy accessor
 
 	g.Logging.App = logging.NewApplicationMetrics()
-	g.AppMetrics = g.Logging.App // Legacy accessor
 	g.Logging.App.Register(g.Logging.Metrics)
 
 	// Create health monitor with version
 	g.Logging.Health = logging.NewHealthMonitor(g.Version)
-	g.HealthMonitor = g.Logging.Health // Legacy accessor
 
 	// Add default health checks
 	if g.Data.DB.Pool != nil {
@@ -440,7 +450,6 @@ func (g *Gemquick) createRenderer() {
 	}
 
 	g.HTTP.Render = &myRenderer
-	g.Render = g.HTTP.Render // Legacy accessor
 }
 
 func (g *Gemquick) createMailer() email.Mail {
@@ -517,7 +526,7 @@ func (g *Gemquick) createRedisPool() *redis.Pool {
 func (g *Gemquick) createBadgerConn() *badger.DB {
 	db, err := badger.Open(badger.DefaultOptions(fmt.Sprintf("%s/tmp/badger", g.RootPath)))
 	if err != nil {
-		g.ErrorLog.Fatal(err)
+		g.Logging.Error.Fatal(err)
 	}
 
 	return db
@@ -530,11 +539,7 @@ func (g *Gemquick) BuildDSN() string {
 }
 
 // createFileSystems initializes file storage systems and registers them with the type-safe registry.
-// It also returns a legacy map[string]interface{} for backwards compatibility.
-func (g *Gemquick) createFileSystems() map[string]interface{} {
-	// Legacy map for backwards compatibility
-	legacyFileSystems := make(map[string]interface{})
-
+func (g *Gemquick) createFileSystems() {
 	if g.Config.Storage.IsMinIOEnabled() {
 		minio := &miniofilesystem.Minio{
 			Endpoint:  g.Config.Storage.MinIOEndpoint,
@@ -544,11 +549,7 @@ func (g *Gemquick) createFileSystems() map[string]interface{} {
 			Region:    g.Config.Storage.MinIORegion,
 			Bucket:    g.Config.Storage.MinIOBucket,
 		}
-
-		// Register with type-safe registry
 		g.Data.Files.Register("minio", minio)
-		// Also add to legacy map for backwards compatibility
-		legacyFileSystems["minio"] = minio
 	}
 
 	if g.Config.Storage.IsS3Enabled() {
@@ -559,12 +560,6 @@ func (g *Gemquick) createFileSystems() map[string]interface{} {
 			Endpoint: g.Config.Storage.S3Endpoint,
 			Bucket:   g.Config.Storage.S3Bucket,
 		}
-
-		// Register with type-safe registry
 		g.Data.Files.Register("s3", s3)
-		// Also add to legacy map for backwards compatibility
-		legacyFileSystems["s3"] = s3
 	}
-
-	return legacyFileSystems
 }

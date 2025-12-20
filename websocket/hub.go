@@ -3,6 +3,7 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -513,6 +514,26 @@ func (c *Client) GetMetadata(key string) interface{} {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.metadata[key]
+}
+
+// GetTypedMetadata is a generic helper for type-safe metadata retrieval.
+// Example: userID, err := GetTypedMetadata[int](client, "user_id")
+func GetTypedMetadata[T any](c *Client, key string) (T, error) {
+	var zero T
+	c.mu.RLock()
+	value, exists := c.metadata[key]
+	c.mu.RUnlock()
+
+	if !exists {
+		return zero, fmt.Errorf("key %s not found in metadata", key)
+	}
+
+	typed, ok := value.(T)
+	if !ok {
+		return zero, fmt.Errorf("key %s is not the expected type", key)
+	}
+
+	return typed, nil
 }
 
 func (c *Client) GetRooms() []string {

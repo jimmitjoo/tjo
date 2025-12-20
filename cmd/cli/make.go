@@ -145,11 +145,11 @@ func doMigration(name string) error {
 	}
 
 	// check if there is a database connection
-	if gem.DB.DataType == "" {
+	if gem.Data.DB.DataType == "" {
 		return errors.New("you have to define a database type to create migrations")
 	}
 
-	dbType := gem.DB.DataType
+	dbType := gem.Data.DB.DataType
 	fileName := fmt.Sprintf("%d_%s.%s", time.Now().UnixMicro(), name, dbType)
 
 	rootPath := getRootPath()
@@ -243,9 +243,9 @@ func doModel(name string) error {
 	color.Green(modelCamelName+" created: %s", fileName)
 
 	// create a migration for the model
-	if gem.DB.DataType != "" {
+	if gem.Data.DB.DataType != "" {
 
-		dbType := gem.DB.DataType
+		dbType := gem.Data.DB.DataType
 		migrationFileName := fmt.Sprintf("%d_%s.%s", time.Now().UnixMicro(), "create_"+tableName+"_table", dbType)
 
 		migrationUpFile := rootPath + "/migrations/" + migrationFileName + ".up.sql"

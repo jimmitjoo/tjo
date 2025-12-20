@@ -1,7 +1,9 @@
 package data
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -10,217 +12,305 @@ import (
 	up "github.com/upper/db/v4"
 )
 
+// User represents a user in the system
 type User struct {
-	ID             int       `db:"id,omitempty"`
-	FirstName      string    `db:"first_name"`
-	LastName       string    `db:"last_name"`
-	Email          string    `db:"email"`
-	Password       string    `db:"password"`
-	VerifyPassword string    `db:"-"`
-	Active         int       `db:"user_active"`
-	CreatedAt      time.Time `db:"created_at"`
-	UpdatedAt      time.Time `db:"updated_at"`
-	Token          Token     `db:"-"`
+	ID             int       `db:"id,omitempty" json:"id"`
+	FirstName      string    `db:"first_name" json:"first_name"`
+	LastName       string    `db:"last_name" json:"last_name"`
+	Email          string    `db:"email" json:"email"`
+	Password       string    `db:"password" json:"-"` // Never expose password in JSON
+	VerifyPassword string    `db:"-" json:"-"`        // Form validation only
+	Active         int       `db:"user_active" json:"active"`
+	CreatedAt      time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt      time.Time `db:"updated_at" json:"updated_at"`
+	Token          Token     `db:"-" json:"-"`
 }
 
+// Error constants for user operations
+var (
+	ErrUserNotFound   = errors.New("user not found")
+	ErrDuplicateEmail = errors.New("email already exists")
+	ErrInvalidCreds   = errors.New("invalid credentials")
+	ErrInactiveUser   = errors.New("account is not active")
+)
+
+// Table returns the database table name for users
 func (u *User) Table() string {
 	return "users"
 }
 
+// FullName returns the user's full name
+func (u *User) FullName() string {
+	return u.FirstName + " " + u.LastName
+}
+
+// Validate validates user input
 func (u *User) Validate(validator *gemquick.Validation) {
-	validator.Check(u.FirstName != "", "first_name", "this field is required")
-	validator.Check(u.LastName != "", "last_name", "this field is required")
-	validator.Check(u.Password != "", "password", "this field is required")
+	validator.Check(u.FirstName != "", "first_name", "First name is required")
+	validator.Check(u.LastName != "", "last_name", "Last name is required")
+	validator.Check(u.Password != "", "password", "Password is required")
+	validator.MinLength("password", u.Password, 8)
 	if u.Password != "" && u.VerifyPassword != "" {
 		validator.Equals(u.Password == u.VerifyPassword, "password", "verify_password")
 	}
 	validator.IsEmail("email", u.Email)
 }
 
+// Activate activates a user account
 func (u *User) Activate(user User) error {
 	collection := upper.Collection(u.Table())
 
 	res := collection.Find(up.Cond{"id =": user.ID})
-	err := res.Update(map[string]interface{}{
+	if err := res.Update(map[string]interface{}{
 		"user_active": 1,
-	})
-
-	if err != nil {
-		return err
+	}); err != nil {
+		return fmt.Errorf("Activate: %w", err)
 	}
 
 	return nil
 }
 
+// All returns all users ordered by creation date (newest first)
+// Note: For large datasets, use GetPaginated instead
 func (u *User) All() ([]*User, error) {
 	collection := upper.Collection(u.Table())
 
 	var users []*User
-
 	res := collection.Find().OrderBy("created_at desc")
-	err := res.All(&users)
-
-	if err != nil {
-		return nil, err
+	if err := res.All(&users); err != nil {
+		return nil, fmt.Errorf("All: %w", err)
 	}
 
 	return users, nil
 }
 
+// PaginatedUsers holds paginated user data
+type PaginatedUsers struct {
+	Users      []*User `json:"users"`
+	Page       int     `json:"page"`
+	PerPage    int     `json:"per_page"`
+	Total      uint64  `json:"total"`
+	TotalPages int     `json:"total_pages"`
+}
+
+// GetPaginated returns a paginated list of users
+func (u *User) GetPaginated(page, perPage int) (*PaginatedUsers, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 10
+	}
+	if perPage > 100 {
+		perPage = 100 // Cap to prevent excessive queries
+	}
+
+	collection := upper.Collection(u.Table())
+	var users []*User
+
+	res := collection.Find().OrderBy("created_at desc")
+
+	// Get total count
+	total, err := res.Count()
+	if err != nil {
+		return nil, fmt.Errorf("GetPaginated count: %w", err)
+	}
+
+	// Calculate pagination
+	offset := (page - 1) * perPage
+	totalPages := int((total + uint64(perPage) - 1) / uint64(perPage))
+
+	// Get paginated results
+	if err := res.Offset(offset).Limit(perPage).All(&users); err != nil {
+		return nil, fmt.Errorf("GetPaginated: %w", err)
+	}
+
+	return &PaginatedUsers{
+		Users:      users,
+		Page:       page,
+		PerPage:    perPage,
+		Total:      total,
+		TotalPages: totalPages,
+	}, nil
+}
+
+// Find retrieves a user by ID with their active token
 func (u *User) Find(id int) (*User, error) {
 	collection := upper.Collection(u.Table())
 
 	var user User
-
 	res := collection.Find(up.Cond{"id =": id})
-	err := res.One(&user)
-
-	if err != nil {
-		return nil, err
+	if err := res.One(&user); err != nil {
+		if errors.Is(err, up.ErrNoMoreRows) || errors.Is(err, up.ErrNilRecord) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("Find: %w", err)
 	}
 
+	// Load active token if exists
 	var token Token
+	tokenCollection := upper.Collection(token.Table())
+	tokenRes := tokenCollection.Find(up.Cond{
+		"user_id =": user.ID,
+		"expiry >":  time.Now(),
+	}).OrderBy("created_at desc").Limit(1)
 
-	collection = upper.Collection(token.Table())
-	res = collection.Find(up.Cond{"user_id =": user.ID, "expiry >": time.Now()}).OrderBy("created_at desc").Limit(1)
-	err = res.One(&token)
-
-	if err != nil {
-		if err != up.ErrNoMoreRows && err != up.ErrNilRecord {
-			return nil, err
+	if err := tokenRes.One(&token); err != nil {
+		if !errors.Is(err, up.ErrNoMoreRows) && !errors.Is(err, up.ErrNilRecord) {
+			return nil, fmt.Errorf("Find token: %w", err)
 		}
 	}
 
 	user.Token = token
-
 	return &user, nil
 }
 
+// ByEmail retrieves a user by email address with their active token
 func (u *User) ByEmail(email string) (*User, error) {
 	collection := upper.Collection(u.Table())
 
 	var user User
-
 	res := collection.Find(up.Cond{"email =": email})
-	err := res.One(&user)
-
-	if err != nil {
-		return nil, err
+	if err := res.One(&user); err != nil {
+		if errors.Is(err, up.ErrNoMoreRows) || errors.Is(err, up.ErrNilRecord) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("ByEmail: %w", err)
 	}
 
+	// Load active token if exists
 	var token Token
-	collection = upper.Collection(token.Table())
-	res = collection.Find(up.Cond{"user_id =": user.ID, "expiry >": time.Now()}).OrderBy("created_at desc").Limit(1)
-	err = res.One(&token)
+	tokenCollection := upper.Collection(token.Table())
+	tokenRes := tokenCollection.Find(up.Cond{
+		"user_id =": user.ID,
+		"expiry >":  time.Now(),
+	}).OrderBy("created_at desc").Limit(1)
 
-	if err != nil {
-		if err != up.ErrNoMoreRows && err != up.ErrNilRecord {
-			return nil, err
+	if err := tokenRes.One(&token); err != nil {
+		if !errors.Is(err, up.ErrNoMoreRows) && !errors.Is(err, up.ErrNilRecord) {
+			return nil, fmt.Errorf("ByEmail token: %w", err)
 		}
 	}
 
 	user.Token = token
-
 	return &user, nil
 }
 
+// Update updates an existing user
 func (u *User) Update(user User) (*User, error) {
-	collection := upper.Collection(u.Table())
-
 	user.UpdatedAt = time.Now()
 
+	collection := upper.Collection(u.Table())
 	res := collection.Find(up.Cond{"id =": user.ID})
-	err := res.Update(user)
-
-	if err != nil {
-		return nil, err
+	if err := res.Update(user); err != nil {
+		return nil, fmt.Errorf("Update: %w", err)
 	}
 
 	return &user, nil
 }
 
+// Create creates a new user with hashed password
 func (u *User) Create(user User) (*User, error) {
-	collection := upper.Collection(u.Table())
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), 12)
-
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Create hash: %w", err)
 	}
 
+	user.Password = string(hashedPassword)
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = time.Now()
-	user.Password = string(hashedPassword)
 
+	collection := upper.Collection(u.Table())
 	res, err := collection.Insert(user)
-
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Create: %w", err)
 	}
 
-	user.ID = getInsertID(res.ID)
-
+	user.ID = getInsertID(res.ID())
 	return &user, nil
 }
 
+// Delete removes a user from the database
 func (u *User) Delete(id int) error {
 	collection := upper.Collection(u.Table())
-
 	res := collection.Find(up.Cond{"id =": id})
-	err := res.Delete()
-
-	if err != nil {
-		return err
+	if err := res.Delete(); err != nil {
+		return fmt.Errorf("Delete: %w", err)
 	}
-
 	return nil
 }
 
+// ResetPassword updates the user's password
 func (u *User) ResetPassword(id int, password string) error {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), 12)
-
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return err
+		return fmt.Errorf("ResetPassword hash: %w", err)
 	}
 
 	user, err := u.Find(id)
-
 	if err != nil {
-		return err
+		return fmt.Errorf("ResetPassword find: %w", err)
 	}
 
 	user.Password = string(hashedPassword)
-
-	_, err = u.Update(*user)
-
-	if err != nil {
-		return err
+	if _, err := u.Update(*user); err != nil {
+		return fmt.Errorf("ResetPassword update: %w", err)
 	}
 
 	return nil
 }
 
+// PasswordMatches verifies that the provided password matches the user's hashed password
 func (u *User) PasswordMatches(plainText string) (bool, error) {
 	err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(plainText))
-
 	if err != nil {
-		switch {
-		case errors.Is(err, bcrypt.ErrMismatchedHashAndPassword):
+		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
 			return false, nil
-		default:
-			return false, err
 		}
+		return false, fmt.Errorf("PasswordMatches: %w", err)
 	}
-
 	return true, nil
 }
 
+// CheckForRememberToken checks if a remember token exists for the user
 func (u *User) CheckForRememberToken(id int, token string) bool {
 	var rememberToken RememberToken
 	rt := RememberToken{}
 	collection := upper.Collection(rt.Table())
 	res := collection.Find(up.Cond{"user_id =": id, "remember_token =": token})
 	err := res.One(&rememberToken)
-
 	return err == nil
+}
+
+// Authenticate verifies email and password and returns the user if valid
+func (u *User) Authenticate(email, password string) (*User, error) {
+	user, err := u.ByEmail(email)
+	if err != nil {
+		return nil, ErrInvalidCreds
+	}
+
+	matches, err := user.PasswordMatches(password)
+	if err != nil {
+		return nil, fmt.Errorf("Authenticate: %w", err)
+	}
+
+	if !matches {
+		return nil, ErrInvalidCreds
+	}
+
+	if user.Active != 1 {
+		return nil, ErrInactiveUser
+	}
+
+	return user, nil
+}
+
+// FindWithContext retrieves a user with context support for timeouts
+func (u *User) FindWithContext(ctx context.Context, id int) (*User, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	return u.Find(id)
 }

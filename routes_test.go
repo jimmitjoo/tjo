@@ -1,8 +1,10 @@
 package gemquick
 
 import (
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/alexedwards/scs/v2"
@@ -12,8 +14,10 @@ import (
 
 func TestRoutes(t *testing.T) {
 	g := &Gemquick{
-		Routes: chi.NewRouter(),
-		Debug:  false,
+		HTTP: &HTTPService{
+			Router: chi.NewRouter(),
+		},
+		Debug: false,
 	}
 
 	// Get routes
@@ -38,8 +42,10 @@ func TestRoutes(t *testing.T) {
 
 func TestRoutesWithDebug(t *testing.T) {
 	g := &Gemquick{
-		Routes: chi.NewRouter(),
-		Debug:  true, // Enable debug mode
+		HTTP: &HTTPService{
+			Router: chi.NewRouter(),
+		},
+		Debug: true, // Enable debug mode
 	}
 
 	routes := g.routes()
@@ -51,21 +57,25 @@ func TestRoutesWithDebug(t *testing.T) {
 
 func TestRoutesMiddleware(t *testing.T) {
 	g := &Gemquick{
-		Routes: chi.NewRouter(),
-		Debug:  false,
+		HTTP: &HTTPService{
+			Router:  chi.NewRouter(),
+			Session: scs.New(),
+		},
+		Logging: &LoggingService{
+			Info: log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime),
+		},
+		Debug: false,
 		Config: &config.Config{
 			Cookie: config.CookieConfig{
 				Secure: false,
 				Domain: "localhost",
 			},
 		},
-		InfoLog: createTestLogger(),
-		Session: scs.New(),
 	}
 
 	// Get the router with middleware
 	router := g.routes().(*chi.Mux)
-	
+
 	// Add a test route
 	router.Get("/test", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -90,7 +100,9 @@ func TestRoutesMiddleware(t *testing.T) {
 
 func TestStaticFileServing(t *testing.T) {
 	g := &Gemquick{
-		Routes:   chi.NewRouter(),
+		HTTP: &HTTPService{
+			Router: chi.NewRouter(),
+		},
 		Debug:    false,
 		RootPath: "./",
 	}

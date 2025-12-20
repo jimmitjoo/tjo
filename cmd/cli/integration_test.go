@@ -199,8 +199,10 @@ func TestEndToEndWorkflow(t *testing.T) {
 	// Initialize gem
 	gem = gemquick.Gemquick{
 		Version: "1.0.0-test",
-		DB: gemquick.Database{
-			DataType: "postgres",
+		Data: &gemquick.DataService{
+			DB: gemquick.Database{
+				DataType: "postgres",
+			},
 		},
 	}
 

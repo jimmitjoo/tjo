@@ -219,3 +219,61 @@ func TestJobClone(t *testing.T) {
 	clone.Metadata["key"] = "modified"
 	assert.NotEqual(t, job.Metadata["key"], clone.Metadata["key"])
 }
+
+func TestGetPayloadGeneric(t *testing.T) {
+	payload := map[string]interface{}{
+		"email":   "test@example.com",
+		"count":   42.0, // JSON unmarshals numbers as float64
+		"enabled": true,
+	}
+
+	job := NewJob("test", "default", payload)
+
+	// Test successful retrieval
+	email, err := GetPayload[string](job, "email")
+	require.NoError(t, err)
+	assert.Equal(t, "test@example.com", email)
+
+	count, err := GetPayload[float64](job, "count")
+	require.NoError(t, err)
+	assert.Equal(t, 42.0, count)
+
+	enabled, err := GetPayload[bool](job, "enabled")
+	require.NoError(t, err)
+	assert.True(t, enabled)
+
+	// Test missing key
+	_, err = GetPayload[string](job, "missing")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+
+	// Test wrong type
+	_, err = GetPayload[int](job, "email")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not the expected type")
+}
+
+func TestGetMetadataGeneric(t *testing.T) {
+	job := NewJob("test", "default", nil)
+	job.WithMetadata("retry_count", 3)
+	job.WithMetadata("source", "api")
+
+	// Test successful retrieval
+	count, err := GetMetadata[int](job, "retry_count")
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
+
+	source, err := GetMetadata[string](job, "source")
+	require.NoError(t, err)
+	assert.Equal(t, "api", source)
+
+	// Test missing key
+	_, err = GetMetadata[string](job, "missing")
+	assert.Error(t, err)
+
+	// Test nil metadata
+	emptyJob := &Job{}
+	_, err = GetMetadata[string](emptyJob, "key")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "metadata is nil")
+}
