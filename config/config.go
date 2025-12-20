@@ -31,6 +31,8 @@ type AppConfig struct {
 	Debug         bool
 	EncryptionKey string
 	Renderer      string
+	Cache         string // redis, badger, or empty
+	SMSProvider   string // SMS provider name
 }
 
 // ServerConfig holds HTTP server settings
@@ -135,6 +137,8 @@ func Load() (*Config, error) {
 	cfg.App.Debug = envBool("DEBUG", false)
 	cfg.App.EncryptionKey = os.Getenv("KEY")
 	cfg.App.Renderer = envDefault("RENDERER", "jet")
+	cfg.App.Cache = os.Getenv("CACHE")
+	cfg.App.SMSProvider = os.Getenv("SMS_PROVIDER")
 
 	// Server config
 	cfg.Server.Port = envInt("PORT", 4000)
