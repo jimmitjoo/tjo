@@ -1,0 +1,105 @@
+package v1
+
+import (
+	"encoding/json"
+	"net/http"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+type AuthHandler struct {
+	JWTSecret string
+}
+
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type LoginResponse struct {
+	Token     string `json:"token"`
+	ExpiresAt int64  `json:"expires_at"`
+}
+
+type Claims struct {
+	UserID int    `json:"user_id"`
+	Email  string `json:"email"`
+	jwt.RegisteredClaims
+}
+
+// Login handles user authentication and returns a JWT token
+func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var req LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// TODO: Validate credentials against database
+	// This is a placeholder - replace with actual authentication
+	if req.Email == "" || req.Password == "" {
+		respondWithError(w, http.StatusUnauthorized, "Invalid credentials")
+		return
+	}
+
+	// Create JWT token
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims := &Claims{
+		UserID: 1, // Replace with actual user ID
+		Email:  req.Email,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(h.JWTSecret))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not generate token")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, LoginResponse{
+		Token:     tokenString,
+		ExpiresAt: expirationTime.Unix(),
+	})
+}
+
+// Refresh refreshes an existing JWT token
+func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*Claims)
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "Invalid token")
+		return
+	}
+
+	// Create new token with extended expiration
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims.ExpiresAt = jwt.NewNumericDate(expirationTime)
+	claims.IssuedAt = jwt.NewNumericDate(time.Now())
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(h.JWTSecret))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not generate token")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, LoginResponse{
+		Token:     tokenString,
+		ExpiresAt: expirationTime.Unix(),
+	})
+}
+
+func respondWithError(w http.ResponseWriter, code int, message string) {
+	respondWithJSON(w, code, map[string]string{"error": message})
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	response, _ := json.Marshal(payload)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(response)
+}

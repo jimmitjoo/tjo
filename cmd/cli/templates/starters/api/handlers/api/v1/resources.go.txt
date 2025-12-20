@@ -1,0 +1,139 @@
+package v1
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+)
+
+type ResourceHandler struct {
+	// Add your dependencies here
+}
+
+type Resource struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type CreateResourceRequest struct {
+	Name string `json:"name"`
+}
+
+type ListResponse struct {
+	Data       []Resource `json:"data"`
+	Page       int        `json:"page"`
+	PerPage    int        `json:"per_page"`
+	Total      int        `json:"total"`
+	TotalPages int        `json:"total_pages"`
+}
+
+// List returns a paginated list of resources
+func (h *ResourceHandler) List(w http.ResponseWriter, r *http.Request) {
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+
+	// TODO: Replace with actual database query
+	resources := []Resource{
+		{ID: 1, Name: "Example Resource 1", CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z"},
+		{ID: 2, Name: "Example Resource 2", CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z"},
+	}
+
+	response := ListResponse{
+		Data:       resources,
+		Page:       page,
+		PerPage:    perPage,
+		Total:      len(resources),
+		TotalPages: 1,
+	}
+
+	respondWithJSON(w, http.StatusOK, response)
+}
+
+// Get returns a single resource by ID
+func (h *ResourceHandler) Get(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid resource ID")
+		return
+	}
+
+	// TODO: Replace with actual database query
+	resource := Resource{
+		ID:        id,
+		Name:      "Example Resource",
+		CreatedAt: "2024-01-01T00:00:00Z",
+		UpdatedAt: "2024-01-01T00:00:00Z",
+	}
+
+	respondWithJSON(w, http.StatusOK, resource)
+}
+
+// Create creates a new resource
+func (h *ResourceHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var req CreateResourceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Name == "" {
+		respondWithError(w, http.StatusBadRequest, "Name is required")
+		return
+	}
+
+	// TODO: Replace with actual database insert
+	resource := Resource{
+		ID:        1,
+		Name:      req.Name,
+		CreatedAt: "2024-01-01T00:00:00Z",
+		UpdatedAt: "2024-01-01T00:00:00Z",
+	}
+
+	respondWithJSON(w, http.StatusCreated, resource)
+}
+
+// Update updates an existing resource
+func (h *ResourceHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid resource ID")
+		return
+	}
+
+	var req CreateResourceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// TODO: Replace with actual database update
+	resource := Resource{
+		ID:        id,
+		Name:      req.Name,
+		CreatedAt: "2024-01-01T00:00:00Z",
+		UpdatedAt: "2024-01-01T00:00:00Z",
+	}
+
+	respondWithJSON(w, http.StatusOK, resource)
+}
+
+// Delete removes a resource
+func (h *ResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	_, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid resource ID")
+		return
+	}
+
+	// TODO: Replace with actual database delete
+
+	w.WriteHeader(http.StatusNoContent)
+}
