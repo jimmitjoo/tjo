@@ -4,6 +4,6 @@ go 1.23.0
 
 require (
 	github.com/go-chi/chi/v5 v5.2.3
-	github.com/jimmitjoo/gemquick v0.2.0
+	github.com/jimmitjoo/gemquick v0.2.2
 	github.com/upper/db/v4 v4.10.0
 )
