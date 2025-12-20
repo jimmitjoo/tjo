@@ -43,14 +43,22 @@ func doMCP() error {
 	}, nil)
 
 	// Tool 1: Create new project
+	type CreateProjectArgs struct {
+		Name     string `json:"name" jsonschema:"description=Name of the project"`
+		Template string `json:"template,omitempty" jsonschema:"description=Starter template (default/blog/api/saas)"`
+	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "gemquick_create_project",
-		Description: "Create a new GemQuick project with full scaffolding",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args NameArg) (*mcp.CallToolResult, any, error) {
-		if err := doNew(args.Name); err != nil {
+		Description: "Create a new GemQuick project with full scaffolding. Available templates: default, blog, api, saas",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args CreateProjectArgs) (*mcp.CallToolResult, any, error) {
+		template := args.Template
+		if template == "" {
+			template = "default"
+		}
+		if err := doNew(args.Name, template); err != nil {
 			return errorResult(err.Error()), nil, nil
 		}
-		return textResult("Created project: " + args.Name), nil, nil
+		return textResult("Created project: " + args.Name + " (template: " + template + ")"), nil, nil
 	})
 
 	// Tool 2: Create model
