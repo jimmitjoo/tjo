@@ -3,16 +3,10 @@ package gemquick
 import (
 	"database/sql"
 	"fmt"
-	"github.com/jimmitjoo/gemquick/filesystems/miniofilesystem"
-	"github.com/jimmitjoo/gemquick/filesystems/s3filesystem"
-	"github.com/jimmitjoo/gemquick/jobs"
-	"github.com/jimmitjoo/gemquick/logging"
-	"github.com/jimmitjoo/gemquick/sms"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/CloudyKit/jet/v6"
@@ -21,19 +15,20 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/gomodule/redigo/redis"
 	"github.com/jimmitjoo/gemquick/cache"
+	"github.com/jimmitjoo/gemquick/config"
 	"github.com/jimmitjoo/gemquick/email"
+	"github.com/jimmitjoo/gemquick/filesystems/miniofilesystem"
+	"github.com/jimmitjoo/gemquick/filesystems/s3filesystem"
+	"github.com/jimmitjoo/gemquick/jobs"
+	"github.com/jimmitjoo/gemquick/logging"
 	"github.com/jimmitjoo/gemquick/render"
 	"github.com/jimmitjoo/gemquick/session"
+	"github.com/jimmitjoo/gemquick/sms"
 	"github.com/joho/godotenv"
 	"github.com/robfig/cron/v3"
 )
 
 const version = "0.0.1"
-
-var myRedisCache *cache.RedisCache
-var myBadgerCache *cache.BadgerCache
-var redisPool *redis.Pool
-var badgerConn *badger.DB
 
 // Gemquick is the main framework struct that orchestrates all components.
 // It uses composition to organize functionality into focused services:
@@ -49,7 +44,7 @@ type Gemquick struct {
 	RootPath      string
 	EncryptionKey string
 	Server        Server
-	config        config
+	Config        *config.Config
 
 	// Services (composed)
 	Logging    *LoggingService
@@ -85,15 +80,6 @@ type Server struct {
 	URL        string
 }
 
-type config struct {
-	port        string
-	renderer    string
-	cookie      cookieConfig
-	sessionType string
-	database    databaseConfig
-	redis       redisConfig
-}
-
 func (g *Gemquick) New(rootPath string) error {
 	pathConfig := initPaths{
 		rootPath:    rootPath,
@@ -116,6 +102,12 @@ func (g *Gemquick) New(rootPath string) error {
 		return err
 	}
 
+	// Load and validate configuration
+	g.Config, err = config.Load()
+	if err != nil {
+		return fmt.Errorf("configuration error: %w", err)
+	}
+
 	// Initialize services
 	g.Logging = NewLoggingService()
 	g.HTTP = NewHTTPService()
@@ -130,17 +122,17 @@ func (g *Gemquick) New(rootPath string) error {
 	g.setupStructuredLogging()
 
 	// connect to database
-	if os.Getenv("DATABASE_TYPE") != "" {
-		db, err := g.OpenDB(os.Getenv("DATABASE_TYPE"), g.BuildDSN())
+	if g.Config.Database.IsEnabled() {
+		db, err := g.OpenDB(g.Config.Database.Type, g.Config.Database.DSN(rootPath))
 		if err != nil {
 			errorLog.Println(err)
 			os.Exit(1)
 		}
 
 		dbConfig := Database{
-			DataType:    os.Getenv("DATABASE_TYPE"),
+			DataType:    g.Config.Database.Type,
 			Pool:        db,
-			TablePrefix: os.Getenv("DATABASE_TABLE_PREFIX"),
+			TablePrefix: g.Config.Database.TablePrefix,
 		}
 		g.Data.DB = dbConfig
 		g.DB = dbConfig // Legacy accessor
@@ -152,14 +144,8 @@ func (g *Gemquick) New(rootPath string) error {
 
 	// initialize job manager
 	jobConfig := jobs.DefaultManagerConfig()
-	if os.Getenv("JOB_WORKERS") != "" {
-		if workers, err := strconv.Atoi(os.Getenv("JOB_WORKERS")); err == nil {
-			jobConfig.DefaultWorkers = workers
-		}
-	}
-	if os.Getenv("JOB_ENABLE_PERSISTENCE") == "true" {
-		jobConfig.EnablePersistence = true
-	}
+	jobConfig.DefaultWorkers = g.Config.Jobs.Workers
+	jobConfig.EnablePersistence = g.Config.Jobs.EnablePersistence
 	g.Background.Jobs = jobs.NewJobManager(jobConfig)
 	g.JobManager = g.Background.Jobs // Legacy accessor
 
@@ -172,23 +158,23 @@ func (g *Gemquick) New(rootPath string) error {
 	}
 
 	// connect to redis
-	if os.Getenv("CACHE") == "redis" || os.Getenv("SESSION_TYPE") == "redis" {
-		myRedisCache = g.createClientRedisCache()
-		g.Data.Cache = myRedisCache
-		g.Cache = myRedisCache // Legacy accessor
-		redisPool = myRedisCache.Conn
+	if g.Config.App.Cache == "redis" || g.Config.Session.Type == "redis" {
+		g.Data.redisCache = g.createClientRedisCache()
+		g.Data.Cache = g.Data.redisCache
+		g.Cache = g.Data.redisCache // Legacy accessor
+		g.Data.redisPool = g.Data.redisCache.Conn
 	}
 
 	// connect to badger
-	if os.Getenv("CACHE") == "badger" || os.Getenv("SESSION_TYPE") == "badger" {
-		myBadgerCache = g.createClientBadgerCache()
-		g.Data.Cache = myBadgerCache
-		g.Cache = myBadgerCache // Legacy accessor
-		badgerConn = myBadgerCache.Conn
+	if g.Config.App.Cache == "badger" || g.Config.Session.Type == "badger" {
+		g.Data.badgerCache = g.createClientBadgerCache()
+		g.Data.Cache = g.Data.badgerCache
+		g.Cache = g.Data.badgerCache // Legacy accessor
+		g.Data.badgerConn = g.Data.badgerCache.Conn
 
 		// start badger garbage collector
 		_, err := g.Background.Scheduler.AddFunc("@daily", func() {
-			_ = myBadgerCache.Conn.RunValueLogGC(0.7)
+			_ = g.Data.badgerCache.Conn.RunValueLogGC(0.7)
 		})
 		if err != nil {
 			return err
@@ -197,70 +183,43 @@ func (g *Gemquick) New(rootPath string) error {
 
 	g.InfoLog = infoLog   // Legacy accessor
 	g.ErrorLog = errorLog // Legacy accessor
-	g.Debug, _ = strconv.ParseBool(os.Getenv("DEBUG"))
+	g.Debug = g.Config.App.Debug
 	g.Version = version
 	g.RootPath = rootPath
-	g.AppName = os.Getenv("APP_NAME")
+	g.AppName = g.Config.App.Name
 
 	// Setup HTTP router
 	g.HTTP.Router = g.routes().(*chi.Mux)
 	g.Routes = g.HTTP.Router // Legacy accessor
 
-	g.config = config{
-		port:     os.Getenv("PORT"),
-		renderer: os.Getenv("RENDERER"),
-		cookie: cookieConfig{
-			name:     os.Getenv("COOKIE_NAME"),
-			lifetime: os.Getenv("COOKIE_LIFETIME"),
-			persist:  os.Getenv("COOKIE_PERSISTS"),
-			secure:   os.Getenv("COOKIE_SECURE"),
-			domain:   os.Getenv("COOKIE_DOMAIN"),
-		},
-		sessionType: os.Getenv("SESSION_TYPE"),
-		database: databaseConfig{
-			database: os.Getenv("DATABASE_TYPE"),
-			dsn:      g.BuildDSN(),
-		},
-		redis: redisConfig{
-			host:     os.Getenv("REDIS_HOST"),
-			port:     os.Getenv("REDIS_PORT"),
-			password: os.Getenv("REDIS_PASSWORD"),
-			prefix:   os.Getenv("REDIS_PREFIX"),
-		},
-	}
-
-	secure := true
-	if strings.ToLower(os.Getenv("SECURE")) == "false" {
-		secure = false
-	}
-
 	g.Server = Server{
-		ServerName: os.Getenv("SERVER_NAME"),
-		Port:       os.Getenv("PORT"),
-		Secure:     secure,
-		URL:        os.Getenv("APP_URL"),
+		ServerName: g.Config.Server.ServerName,
+		Port:       strconv.Itoa(g.Config.Server.Port),
+		Secure:     g.Config.Server.Secure,
+		URL:        g.Config.Server.URL,
 	}
 
 	// create a session
 	sess := session.Session{
-		CookieLifetime: g.config.cookie.lifetime,
-		CookiePersist:  g.config.cookie.persist,
-		CookieName:     g.config.cookie.name,
-		SessionType:    g.config.sessionType,
-		CookieDomain:   g.config.cookie.domain,
+		CookieLifetime: strconv.Itoa(g.Config.Cookie.Lifetime),
+		CookiePersist:  strconv.FormatBool(g.Config.Cookie.Persist),
+		CookieName:     g.Config.Cookie.Name,
+		SessionType:    g.Config.Session.Type,
+		CookieDomain:   g.Config.Cookie.Domain,
+		CookieSecure:   strconv.FormatBool(g.Config.Cookie.Secure),
 		DBPool:         g.DB.Pool,
 	}
 
-	switch g.config.sessionType {
+	switch g.Config.Session.Type {
 	case "redis":
-		sess.RedisPool = myRedisCache.Conn
+		sess.RedisPool = g.Data.redisCache.Conn
 	case "mysql", "postgres", "mariadb", "postgresql", "pgx", "sqlite", "sqlite3":
 		sess.DBPool = g.Data.DB.Pool
 	}
 
 	g.HTTP.Session = sess.InitSession()
 	g.Session = g.HTTP.Session // Legacy accessor
-	g.EncryptionKey = os.Getenv("KEY")
+	g.EncryptionKey = g.Config.App.EncryptionKey
 
 	// Setup Jet template engine
 	var views *jet.Set
@@ -283,7 +242,7 @@ func (g *Gemquick) New(rootPath string) error {
 	g.FileSystems = g.createFileSystems()
 
 	// Setup SMS provider
-	g.Background.SMS = sms.CreateSMSProvider(os.Getenv("SMS_PROVIDER"))
+	g.Background.SMS = sms.CreateSMSProvider(g.Config.App.SMSProvider)
 	g.SMSProvider = g.Background.SMS // Legacy accessor
 
 	// Setup mail service
@@ -312,7 +271,7 @@ func (g *Gemquick) Init(p initPaths) error {
 // ListenAndServe starts the web server
 func (g *Gemquick) ListenAndServe() {
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%s", os.Getenv("PORT")),
+		Addr:         fmt.Sprintf(":%d", g.Config.Server.Port),
 		ErrorLog:     g.ErrorLog,
 		Handler:      g.Routes,
 		IdleTimeout:  30 * time.Second,
@@ -329,22 +288,22 @@ func (g *Gemquick) ListenAndServe() {
 		}(g.DB.Pool)
 	}
 
-	if redisPool != nil {
+	if g.Data.redisPool != nil {
 		defer func(redisPool *redis.Pool) {
 			err := redisPool.Close()
 			if err != nil {
 				g.ErrorLog.Println(err)
 			}
-		}(redisPool)
+		}(g.Data.redisPool)
 	}
 
-	if badgerConn != nil {
+	if g.Data.badgerConn != nil {
 		defer func(badgerConn *badger.DB) {
 			err := badgerConn.Close()
 			if err != nil {
 				g.ErrorLog.Println(err)
 			}
-		}(badgerConn)
+		}(g.Data.badgerConn)
 	}
 
 	// start job manager
@@ -374,12 +333,12 @@ func (g *Gemquick) ListenAndServe() {
 	// Log server startup with structured logging
 	if g.Logger != nil {
 		g.Logger.Info("Starting server", map[string]interface{}{
-			"port":    os.Getenv("PORT"),
+			"port":    g.Config.Server.Port,
 			"version": g.Version,
 			"debug":   g.Debug,
 		})
 	} else {
-		g.InfoLog.Printf("Listening on port %s", os.Getenv("PORT"))
+		g.InfoLog.Printf("Listening on port %d", g.Config.Server.Port)
 	}
 
 	err := srv.ListenAndServe()
@@ -419,17 +378,11 @@ func (g *Gemquick) startLoggers() (*log.Logger, *log.Logger) {
 }
 
 func (g *Gemquick) setupStructuredLogging() {
-	// Determine log level from environment
-	logLevel := logging.InfoLevel
-	if envLevel := os.Getenv("LOG_LEVEL"); envLevel != "" {
-		logLevel = logging.ParseLogLevel(envLevel)
-	}
+	// Determine log level from config
+	logLevel := logging.ParseLogLevel(g.Config.Logging.Level)
 
-	// Enable JSON logging in production
-	enableJSON := true
-	if os.Getenv("LOG_FORMAT") == "text" {
-		enableJSON = false
-	}
+	// Enable JSON logging based on config
+	enableJSON := g.Config.Logging.Format != "text"
 
 	// Create structured logger
 	g.Logging.Logger = logging.New(logging.Config{
@@ -458,9 +411,9 @@ func (g *Gemquick) setupStructuredLogging() {
 		}))
 	}
 
-	if myRedisCache != nil {
+	if g.Data.redisCache != nil {
 		g.Logging.Health.AddCheck("redis", logging.RedisHealthChecker(func() error {
-			conn := myRedisCache.Conn.Get()
+			conn := g.Data.redisCache.Conn.Get()
 			defer conn.Close()
 			_, err := conn.Do("PING")
 			return err
@@ -479,9 +432,9 @@ func (g *Gemquick) setupStructuredLogging() {
 
 func (g *Gemquick) createRenderer() {
 	myRenderer := render.Render{
-		Renderer: g.config.renderer,
+		Renderer: g.Config.App.Renderer,
 		RootPath: g.RootPath,
-		Port:     g.config.port,
+		Port:     strconv.Itoa(g.Config.Server.Port),
 		JetViews: g.HTTP.JetViews,
 		Session:  g.HTTP.Session,
 	}
@@ -491,26 +444,25 @@ func (g *Gemquick) createRenderer() {
 }
 
 func (g *Gemquick) createMailer() email.Mail {
-	port, _ := strconv.Atoi(os.Getenv("SMTP_PORT"))
 	m := email.Mail{
 		Templates: g.RootPath + "/email",
 
-		Host:       os.Getenv("SMTP_HOST"),
-		Username:   os.Getenv("SMTP_USERNAME"),
-		Password:   os.Getenv("SMTP_PASSWORD"),
-		Encryption: os.Getenv("SMTP_ENCRYPTION"),
-		Port:       port,
+		Host:       g.Config.Mail.SMTPHost,
+		Username:   g.Config.Mail.SMTPUsername,
+		Password:   g.Config.Mail.SMTPPassword,
+		Encryption: g.Config.Mail.SMTPEncryption,
+		Port:       g.Config.Mail.SMTPPort,
 
-		Domain:   os.Getenv("MAIL_DOMAIN"),
-		From:     os.Getenv("MAIL_FROM_ADDRESS"),
-		FromName: os.Getenv("MAIL_FROM_NAME"),
+		Domain:   g.Config.Mail.Domain,
+		From:     g.Config.Mail.FromAddress,
+		FromName: g.Config.Mail.FromName,
 
 		Jobs:    make(chan email.Message, 20),
 		Results: make(chan email.Result, 20),
 
-		API:    os.Getenv("MAILER_API"),
-		APIKey: os.Getenv("MAILER_KEY"),
-		APIUrl: os.Getenv("MAILER_URL"),
+		API:    g.Config.Mail.API,
+		APIKey: g.Config.Mail.APIKey,
+		APIUrl: g.Config.Mail.APIURL,
 	}
 	return m
 }
@@ -518,7 +470,7 @@ func (g *Gemquick) createMailer() email.Mail {
 func (g *Gemquick) createClientRedisCache() *cache.RedisCache {
 	cacheClient := cache.RedisCache{
 		Conn:   g.createRedisPool(),
-		Prefix: g.config.redis.prefix,
+		Prefix: g.Config.Redis.Prefix,
 	}
 	return &cacheClient
 }
@@ -536,14 +488,14 @@ func (g *Gemquick) createRedisPool() *redis.Pool {
 		MaxActive:   10000,
 		IdleTimeout: 240 * time.Second,
 		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", fmt.Sprintf("%s:%s", os.Getenv("REDIS_HOST"), os.Getenv("REDIS_PORT")))
+			c, err := redis.Dial("tcp", fmt.Sprintf("%s:%d", g.Config.Redis.Host, g.Config.Redis.Port))
 
 			if err != nil {
 				return nil, err
 			}
 
-			if os.Getenv("REDIS_PASSWORD") != "" {
-				if _, err := c.Do("AUTH", os.Getenv("REDIS_PASSWORD")); err != nil {
+			if g.Config.Redis.Password != "" {
+				if _, err := c.Do("AUTH", g.Config.Redis.Password); err != nil {
 					closeError := c.Close()
 					if closeError != nil {
 						return nil, closeError
@@ -571,47 +523,10 @@ func (g *Gemquick) createBadgerConn() *badger.DB {
 	return db
 }
 
+// BuildDSN returns the database connection string.
+// Deprecated: Use g.Config.Database.DSN(g.RootPath) instead.
 func (g *Gemquick) BuildDSN() string {
-	var dsn string
-
-	switch os.Getenv("DATABASE_TYPE") {
-	case "postgres", "postgresql", "pgx":
-		dsn = fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=%s timezone=UTC connect_timeout=5",
-			os.Getenv("DATABASE_HOST"),
-			os.Getenv("DATABASE_PORT"),
-			os.Getenv("DATABASE_USER"),
-			os.Getenv("DATABASE_NAME"),
-			os.Getenv("DATABASE_SSL_MODE"))
-
-		if os.Getenv("DATABASE_PASS") != "" {
-			dsn = fmt.Sprintf("%s password=%s", dsn, os.Getenv("DATABASE_PASS"))
-		}
-
-	case "mysql", "mariadb":
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?collation=utf8mb4_unicode_ci&parseTime=true&loc=UTC&timeout=5s",
-			os.Getenv("DATABASE_USER"),
-			os.Getenv("DATABASE_PASS"),
-			os.Getenv("DATABASE_HOST"),
-			os.Getenv("DATABASE_PORT"),
-			os.Getenv("DATABASE_NAME"))
-
-	case "sqlite", "sqlite3":
-		// For SQLite, we typically use just the database file path
-		// If DATABASE_NAME contains a full path, use it as is
-		// Otherwise, use it as a filename in the data directory
-		dbPath := os.Getenv("DATABASE_NAME")
-		if !strings.HasPrefix(dbPath, "/") && !strings.Contains(dbPath, ":") {
-			// Relative path - put it in the data directory
-			dsn = fmt.Sprintf("%s/data/%s", g.RootPath, dbPath)
-		} else {
-			// Absolute path or special SQLite DSN (like :memory:)
-			dsn = dbPath
-		}
-
-	default:
-	}
-
-	return dsn
+	return g.Config.Database.DSN(g.RootPath)
 }
 
 // createFileSystems initializes file storage systems and registers them with the type-safe registry.
@@ -620,19 +535,14 @@ func (g *Gemquick) createFileSystems() map[string]interface{} {
 	// Legacy map for backwards compatibility
 	legacyFileSystems := make(map[string]interface{})
 
-	if os.Getenv("MINIO_SECRET") != "" {
-		useSSL := false
-		if os.Getenv("MINIO_USE_SSL") == "true" {
-			useSSL = true
-		}
-
+	if g.Config.Storage.IsMinIOEnabled() {
 		minio := &miniofilesystem.Minio{
-			Endpoint:  os.Getenv("MINIO_ENDPOINT"),
-			AccessKey: os.Getenv("MINIO_ACCESS_KEY"),
-			SecretKey: os.Getenv("MINIO_SECRET"),
-			UseSSL:    useSSL,
-			Region:    os.Getenv("MINIO_REGION"),
-			Bucket:    os.Getenv("MINIO_BUCKET"),
+			Endpoint:  g.Config.Storage.MinIOEndpoint,
+			AccessKey: g.Config.Storage.MinIOAccessKey,
+			SecretKey: g.Config.Storage.MinIOSecret,
+			UseSSL:    g.Config.Storage.MinIOUseSSL,
+			Region:    g.Config.Storage.MinIORegion,
+			Bucket:    g.Config.Storage.MinIOBucket,
 		}
 
 		// Register with type-safe registry
@@ -641,13 +551,13 @@ func (g *Gemquick) createFileSystems() map[string]interface{} {
 		legacyFileSystems["minio"] = minio
 	}
 
-	if os.Getenv("S3_BUCKET") != "" {
+	if g.Config.Storage.IsS3Enabled() {
 		s3 := &s3filesystem.S3{
-			Key:      os.Getenv("S3_KEY"),
-			Secret:   os.Getenv("S3_SECRET"),
-			Region:   os.Getenv("S3_REGION"),
-			Endpoint: os.Getenv("S3_ENDPOINT"),
-			Bucket:   os.Getenv("S3_BUCKET"),
+			Key:      g.Config.Storage.S3Key,
+			Secret:   g.Config.Storage.S3Secret,
+			Region:   g.Config.Storage.S3Region,
+			Endpoint: g.Config.Storage.S3Endpoint,
+			Bucket:   g.Config.Storage.S3Bucket,
 		}
 
 		// Register with type-safe registry
