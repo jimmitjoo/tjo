@@ -72,6 +72,7 @@ func showHelp() {
 
 	help 					- show this help
 	version 				- show Gemquick version
+	mcp 					- start MCP server for AI assistants
 	migrate 				- runs all migrations up
 	migrate down 			- runs the last migration down
 	migrate reset 			- drops all tables and migrates them back up
