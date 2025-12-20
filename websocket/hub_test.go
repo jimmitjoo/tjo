@@ -207,56 +207,137 @@ func TestClientMessageHandling(t *testing.T) {
 }
 
 func TestWebSocketUpgrade(t *testing.T) {
-	hub := NewHub(DefaultConfig())
+	config := NewConfig(WithAllowedOrigins([]string{"*"}))
+	hub := NewHub(config)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	go hub.Run(ctx)
-	
+
 	server := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
 	defer server.Close()
-	
+
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	
+
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
 	defer conn.Close()
-	
+
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, 1, hub.GetConnectedClients())
 }
 
 func TestMessageTypes(t *testing.T) {
-	hub := NewHub(DefaultConfig())
+	config := NewConfig(WithAllowedOrigins([]string{"*"}))
+	hub := NewHub(config)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	go hub.Run(ctx)
-	
+
 	server := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
 	defer server.Close()
-	
+
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	
+
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
 	defer conn.Close()
-	
+
 	time.Sleep(50 * time.Millisecond)
-	
+
 	roomMsg := Message{
 		Type: "join_room",
 		Data: "test-room",
 	}
-	
+
 	msgBytes, err := json.Marshal(roomMsg)
 	require.NoError(t, err)
-	
+
 	err = conn.WriteMessage(websocket.TextMessage, msgBytes)
 	require.NoError(t, err)
-	
+
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, 1, hub.GetRoomClients("test-room"))
+}
+
+func TestOriginValidation(t *testing.T) {
+	t.Run("rejects when no origins configured", func(t *testing.T) {
+		hub := NewHub(DefaultConfig()) // No origins = reject all
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go hub.Run(ctx)
+
+		server := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
+		defer server.Close()
+
+		wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+		_, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		assert.Error(t, err, "should reject connection when no origins configured")
+	})
+
+	t.Run("accepts wildcard origin", func(t *testing.T) {
+		config := NewConfig(WithAllowedOrigins([]string{"*"}))
+		hub := NewHub(config)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go hub.Run(ctx)
+
+		server := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
+		defer server.Close()
+
+		wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+		conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		assert.NoError(t, err, "should accept connection with wildcard origin")
+		if conn != nil {
+			conn.Close()
+		}
+	})
+
+	t.Run("accepts matching origin", func(t *testing.T) {
+		config := NewConfig(WithAllowedOrigins([]string{"http://example.com", "http://localhost"}))
+		hub := NewHub(config)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go hub.Run(ctx)
+
+		server := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
+		defer server.Close()
+
+		wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+		header := http.Header{}
+		header.Set("Origin", "http://example.com")
+		conn, _, err := websocket.DefaultDialer.Dial(wsURL, header)
+		assert.NoError(t, err, "should accept connection from allowed origin")
+		if conn != nil {
+			conn.Close()
+		}
+	})
+
+	t.Run("rejects non-matching origin", func(t *testing.T) {
+		config := NewConfig(WithAllowedOrigins([]string{"http://example.com"}))
+		hub := NewHub(config)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go hub.Run(ctx)
+
+		server := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
+		defer server.Close()
+
+		wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+		header := http.Header{}
+		header.Set("Origin", "http://malicious.com")
+		_, _, err := websocket.DefaultDialer.Dial(wsURL, header)
+		assert.Error(t, err, "should reject connection from non-allowed origin")
+	})
 }
 
 func TestConfigOptions(t *testing.T) {
@@ -265,14 +346,16 @@ func TestConfigOptions(t *testing.T) {
 		WithPongTimeout(30*time.Second),
 		WithMaxMessageSize(2048),
 		WithBufferSizes(512, 512, 512),
+		WithAllowedOrigins([]string{"http://example.com"}),
 	)
-	
+
 	assert.Equal(t, 5*time.Second, config.WriteWait)
 	assert.Equal(t, 30*time.Second, config.PongWait)
 	assert.Equal(t, int64(2048), config.MaxMessageSize)
 	assert.Equal(t, 512, config.BroadcastBuffer)
 	assert.Equal(t, 512, config.RoomMessageBuffer)
 	assert.Equal(t, 512, config.ClientBuffer)
+	assert.Equal(t, []string{"http://example.com"}, config.AllowedOrigins)
 }
 
 func TestEventHandlers(t *testing.T) {

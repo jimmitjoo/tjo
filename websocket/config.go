@@ -12,6 +12,7 @@ type Config struct {
 	BroadcastBuffer   int
 	RoomMessageBuffer int
 	ClientBuffer      int
+	AllowedOrigins    []string // List of allowed origins for WebSocket connections
 	OnConnect         func(*Client)
 	OnDisconnect      func(*Client)
 	OnMessage         func(*Client, *Message)
@@ -87,6 +88,15 @@ func WithOnJoinRoom(handler func(*Client, string)) Option {
 func WithOnLeaveRoom(handler func(*Client, string)) Option {
 	return func(c *Config) {
 		c.OnLeaveRoom = handler
+	}
+}
+
+// WithAllowedOrigins sets the allowed origins for WebSocket connections.
+// If empty, all origins are rejected (secure default).
+// Use []string{"*"} to allow all origins (not recommended for production).
+func WithAllowedOrigins(origins []string) Option {
+	return func(c *Config) {
+		c.AllowedOrigins = origins
 	}
 }
 

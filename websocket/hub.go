@@ -11,14 +11,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
-
 type Hub struct {
 	clients      map[*Client]bool
 	rooms        map[string]*Room
@@ -28,6 +20,7 @@ type Hub struct {
 	roomMessages chan *RoomMessage
 	mu           sync.RWMutex
 	config       *Config
+	upgrader     websocket.Upgrader
 }
 
 type Client struct {
@@ -67,7 +60,7 @@ func NewHub(config *Config) *Hub {
 		config = DefaultConfig()
 	}
 
-	return &Hub{
+	hub := &Hub{
 		clients:      make(map[*Client]bool),
 		rooms:        make(map[string]*Room),
 		broadcast:    make(chan []byte, config.BroadcastBuffer),
@@ -76,6 +69,44 @@ func NewHub(config *Config) *Hub {
 		roomMessages: make(chan *RoomMessage, config.RoomMessageBuffer),
 		config:       config,
 	}
+
+	// Configure upgrader with origin checking
+	hub.upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin:     hub.checkOrigin,
+	}
+
+	return hub
+}
+
+// checkOrigin validates the origin of WebSocket connections.
+// If AllowedOrigins is empty, all origins are rejected (secure default).
+// If AllowedOrigins contains "*", all origins are allowed.
+// Otherwise, origin must match one of the allowed origins exactly.
+func (h *Hub) checkOrigin(r *http.Request) bool {
+	// If no origins configured, reject all (secure default)
+	if len(h.config.AllowedOrigins) == 0 {
+		log.Printf("WebSocket connection rejected: no allowed origins configured")
+		return false
+	}
+
+	origin := r.Header.Get("Origin")
+
+	// Check each allowed origin
+	for _, allowed := range h.config.AllowedOrigins {
+		// Wildcard allows all origins (use with caution)
+		if allowed == "*" {
+			return true
+		}
+		// Exact match
+		if origin == allowed {
+			return true
+		}
+	}
+
+	log.Printf("WebSocket connection rejected: origin %q not in allowed list", origin)
+	return false
 }
 
 func (h *Hub) Run(ctx context.Context) {
@@ -301,7 +332,7 @@ func (h *Hub) shutdown() {
 }
 
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return

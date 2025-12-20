@@ -30,42 +30,51 @@ func TestSetDefaultHub(t *testing.T) {
 }
 
 func TestRegisterRoutes(t *testing.T) {
-	hub := NewHub(DefaultConfig())
+	config := NewConfig(WithAllowedOrigins([]string{"*"}))
+	hub := NewHub(config)
 	SetDefaultHub(hub)
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
-	
+
 	router := chi.NewRouter()
 	RegisterRoutes(router, "/websocket")
-	
+
 	ts := httptest.NewServer(router)
 	defer ts.Close()
-	
+
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/websocket"
-	
+
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
 	defer conn.Close()
-	
+
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, 1, GetConnectedClients())
 }
 
 func TestRegisterRoutesWithDefaultPath(t *testing.T) {
+	config := NewConfig(WithAllowedOrigins([]string{"*"}))
+	hub := NewHub(config)
+	SetDefaultHub(hub)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
+
 	router := chi.NewRouter()
 	RegisterRoutes(router, "")
-	
+
 	ts := httptest.NewServer(router)
 	defer ts.Close()
-	
+
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
-	
+
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
 	defer conn.Close()
-	
+
 	time.Sleep(50 * time.Millisecond)
 }
 
