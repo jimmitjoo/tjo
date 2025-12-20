@@ -1,6 +1,7 @@
 package gemquick
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -108,7 +109,7 @@ func TestDownloadFilePathTraversal(t *testing.T) {
 // Helper function that mimics the validation logic from DownloadFile
 func validateDownloadPath(pathToFile, filename string) error {
 	if strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
-		return &ValidationError{Message: "invalid filename"}
+		return errors.New("invalid filename")
 	}
 	
 	cleanPath := filepath.Clean(pathToFile)
@@ -121,18 +122,10 @@ func validateDownloadPath(pathToFile, filename string) error {
 	fileToServe := filepath.Clean(fp)
 	
 	if !strings.HasPrefix(fileToServe, absPath) {
-		return &ValidationError{Message: "invalid file path"}
+		return errors.New("invalid file path")
 	}
 	
 	return nil
-}
-
-type ValidationError struct {
-	Message string
-}
-
-func (e *ValidationError) Error() string {
-	return e.Message
 }
 
 // TestEncryptionErrorHandling verifies proper error handling in encryption functions
