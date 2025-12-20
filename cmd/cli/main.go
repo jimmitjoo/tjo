@@ -17,6 +17,14 @@ func main() {
 		exitGracefully(err)
 	}
 
+	// MCP runs standalone without .env
+	if arg1 == "mcp" {
+		if err := doMCP(); err != nil {
+			exitGracefully(err)
+		}
+		return
+	}
+
 	setup(arg1, arg2)
 
 	switch arg1 {
