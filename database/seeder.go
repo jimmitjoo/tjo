@@ -8,6 +8,18 @@ import (
 	"strings"
 )
 
+// validateTableName checks if the table name is a valid SQL identifier
+// to prevent SQL injection attacks
+func validateTableName(tableName string) error {
+	if tableName == "" {
+		return fmt.Errorf("table name is required")
+	}
+	if !isValidIdentifier(tableName) {
+		return fmt.Errorf("invalid table name: %q - must contain only letters, numbers, and underscores", tableName)
+	}
+	return nil
+}
+
 // Seeder interface defines the structure for database seeders
 type Seeder interface {
 	Run(db *sql.DB) error
@@ -81,14 +93,18 @@ func (bs *BaseSeeder) BulkInsert(db *sql.DB, data []map[string]interface{}) erro
 	if len(data) == 0 {
 		return nil
 	}
-	
-	if bs.TableName == "" {
-		return fmt.Errorf("table name is required")
+
+	// Validate table name to prevent SQL injection
+	if err := validateTableName(bs.TableName); err != nil {
+		return err
 	}
 	
-	// Get columns from first row
+	// Get columns from first row and validate them
 	var columns []string
 	for col := range data[0] {
+		if !isValidIdentifier(col) {
+			return fmt.Errorf("invalid column name: %q", col)
+		}
 		columns = append(columns, col)
 	}
 	
@@ -128,10 +144,11 @@ func (bs *BaseSeeder) BulkInsert(db *sql.DB, data []map[string]interface{}) erro
 
 // TruncateTable clears all data from a table
 func (bs *BaseSeeder) TruncateTable(db *sql.DB) error {
-	if bs.TableName == "" {
-		return fmt.Errorf("table name is required")
+	// Validate table name to prevent SQL injection
+	if err := validateTableName(bs.TableName); err != nil {
+		return err
 	}
-	
+
 	// Use DELETE for better compatibility across databases
 	query := fmt.Sprintf("DELETE FROM %s", bs.TableName)
 	
@@ -145,10 +162,11 @@ func (bs *BaseSeeder) TruncateTable(db *sql.DB) error {
 
 // DropAndRecreateTable drops and recreates a table (requires table schema)
 func (bs *BaseSeeder) DropAndRecreateTable(db *sql.DB, createSQL string) error {
-	if bs.TableName == "" {
-		return fmt.Errorf("table name is required")
+	// Validate table name to prevent SQL injection
+	if err := validateTableName(bs.TableName); err != nil {
+		return err
 	}
-	
+
 	// Drop table if exists
 	dropQuery := fmt.Sprintf("DROP TABLE IF EXISTS %s", bs.TableName)
 	if _, err := db.Exec(dropQuery); err != nil {

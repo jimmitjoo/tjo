@@ -1,8 +1,9 @@
 package database
 
 import (
+	"database/sql"
 	"testing"
-	
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -314,9 +315,216 @@ func TestQueryBuilder_InsertUpdateDelete(t *testing.T) {
 			Delete()
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		
+
 		rowsAffected, err := result.RowsAffected()
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), rowsAffected)
+	})
+}
+
+// ============================================================================
+// MODEL TESTS
+// ============================================================================
+
+func TestModel(t *testing.T) {
+	t.Run("create model with defaults", func(t *testing.T) {
+		model := NewModel("users")
+		assert.Equal(t, "users", model.Table())
+		assert.Equal(t, "id", model.PrimaryKey())
+		assert.False(t, model.HasSoftDelete())
+	})
+
+	t.Run("model with custom primary key", func(t *testing.T) {
+		model := NewModel("users").WithPrimaryKey("user_id")
+		assert.Equal(t, "user_id", model.PrimaryKey())
+	})
+
+	t.Run("model with soft delete", func(t *testing.T) {
+		model := NewModel("posts").WithSoftDelete()
+		assert.True(t, model.HasSoftDelete())
+	})
+
+	t.Run("model query adds soft delete filter", func(t *testing.T) {
+		model := NewModel("posts").WithSoftDelete()
+		qb := model.Query(nil)
+		sql, _, err := qb.ToSQL()
+		require.NoError(t, err)
+		assert.Contains(t, sql, "WHERE deleted_at IS NULL")
+	})
+
+	t.Run("model query without soft delete", func(t *testing.T) {
+		model := NewModel("users")
+		qb := model.Query(nil)
+		sql, _, err := qb.ToSQL()
+		require.NoError(t, err)
+		assert.NotContains(t, sql, "deleted_at")
+	})
+}
+
+// ============================================================================
+// SCOPE TESTS
+// ============================================================================
+
+func TestScopes(t *testing.T) {
+	t.Run("apply single scope", func(t *testing.T) {
+		qb := NewQueryBuilder(nil)
+		sql, params, err := qb.Table("users").Scope(Active).ToSQL()
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT * FROM users WHERE active = ?", sql)
+		assert.Equal(t, []interface{}{true}, params)
+	})
+
+	t.Run("apply multiple scopes", func(t *testing.T) {
+		qb := NewQueryBuilder(nil)
+		sql, _, err := qb.Table("users").Scope(Active, Recent).ToSQL()
+		require.NoError(t, err)
+		assert.Contains(t, sql, "WHERE active = ?")
+		assert.Contains(t, sql, "ORDER BY created_at DESC")
+	})
+
+	t.Run("custom scope", func(t *testing.T) {
+		customScope := func(qb *QueryBuilder) *QueryBuilder {
+			return qb.Where("role", "=", "admin")
+		}
+
+		qb := NewQueryBuilder(nil)
+		sql, params, err := qb.Table("users").Scope(customScope).ToSQL()
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT * FROM users WHERE role = ?", sql)
+		assert.Equal(t, []interface{}{"admin"}, params)
+	})
+
+	t.Run("published scope", func(t *testing.T) {
+		qb := NewQueryBuilder(nil)
+		sql, _, err := qb.Table("posts").Scope(Published).ToSQL()
+		require.NoError(t, err)
+		assert.Contains(t, sql, "published = ?")
+		assert.Contains(t, sql, "published_at IS NOT NULL")
+	})
+
+	t.Run("draft scope", func(t *testing.T) {
+		qb := NewQueryBuilder(nil)
+		sql, params, err := qb.Table("posts").Scope(Draft).ToSQL()
+		require.NoError(t, err)
+		assert.Contains(t, sql, "published = ?")
+		assert.Equal(t, []interface{}{false}, params)
+	})
+}
+
+// ============================================================================
+// SOFT DELETE TESTS
+// ============================================================================
+
+func TestSoftDelete(t *testing.T) {
+	t.Run("only trashed adds where not null", func(t *testing.T) {
+		qb := NewQueryBuilder(nil)
+		sql, _, err := qb.Table("posts").OnlyTrashed().ToSQL()
+		require.NoError(t, err)
+		assert.Contains(t, sql, "WHERE deleted_at IS NOT NULL")
+	})
+
+	t.Run("with trashed flag is set", func(t *testing.T) {
+		qb := NewQueryBuilder(nil)
+		qb.Table("posts").WithTrashed()
+		assert.True(t, qb.includeTrashed)
+	})
+}
+
+// ============================================================================
+// RELATION TESTS
+// ============================================================================
+
+func TestRelations(t *testing.T) {
+	t.Run("has many generates correct query", func(t *testing.T) {
+		qb := NewQueryBuilder(nil).Table("users")
+		relatedQB := qb.HasMany("posts", "user_id", 1)
+		sql, params, err := relatedQB.ToSQL()
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT * FROM posts WHERE user_id = ?", sql)
+		assert.Equal(t, []interface{}{1}, params)
+	})
+
+	t.Run("belongs to generates correct query", func(t *testing.T) {
+		qb := NewQueryBuilder(nil).Table("posts")
+		relatedQB := qb.BelongsTo("users", "user_id", 5)
+		sql, params, err := relatedQB.ToSQL()
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT * FROM users WHERE id = ?", sql)
+		assert.Equal(t, []interface{}{5}, params)
+	})
+
+	t.Run("has many with additional conditions", func(t *testing.T) {
+		qb := NewQueryBuilder(nil).Table("users")
+		relatedQB := qb.HasMany("posts", "user_id", 1).
+			Where("published", "=", true).
+			OrderBy("created_at", "DESC")
+		sql, params, err := relatedQB.ToSQL()
+		require.NoError(t, err)
+		assert.Contains(t, sql, "FROM posts")
+		assert.Contains(t, sql, "user_id = ?")
+		assert.Contains(t, sql, "published = ?")
+		assert.Contains(t, sql, "ORDER BY created_at DESC")
+		assert.Equal(t, []interface{}{1, true}, params)
+	})
+}
+
+// ============================================================================
+// SECURITY TESTS
+// ============================================================================
+
+func TestSecurityValidation(t *testing.T) {
+	t.Run("reject invalid table name", func(t *testing.T) {
+		qb := NewQueryBuilder(nil)
+		_, _, err := qb.Table("users; DROP TABLE users;--").ToSQL()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid table name")
+	})
+
+	t.Run("reject invalid column name in where", func(t *testing.T) {
+		qb := NewQueryBuilder(nil)
+		_, _, err := qb.Table("users").Where("id; DROP TABLE users;--", "=", 1).ToSQL()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid column name")
+	})
+
+	t.Run("reject invalid operator", func(t *testing.T) {
+		qb := NewQueryBuilder(nil)
+		_, _, err := qb.Table("users").Where("id", "INVALID", 1).ToSQL()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid operator")
+	})
+
+	t.Run("accept valid operators", func(t *testing.T) {
+		validOps := []string{"=", "!=", "<>", "<", ">", "<=", ">=", "LIKE", "NOT LIKE"}
+		for _, op := range validOps {
+			qb := NewQueryBuilder(nil)
+			_, _, err := qb.Table("users").Where("id", op, 1).ToSQL()
+			assert.NoError(t, err, "operator %s should be valid", op)
+		}
+	})
+
+	t.Run("reject SQL injection in join condition", func(t *testing.T) {
+		qb := NewQueryBuilder(nil)
+		_, _, err := qb.Table("users").Join("posts", "users.id = posts.user_id; DROP TABLE users;--").ToSQL()
+		assert.Error(t, err)
+	})
+}
+
+// ============================================================================
+// CHUNK TESTS
+// ============================================================================
+
+func TestChunk(t *testing.T) {
+	t.Run("chunk size must be positive", func(t *testing.T) {
+		qb := NewQueryBuilder(nil).Table("users")
+		err := qb.Chunk(0, func(rows *sql.Rows) bool { return true })
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "chunk size must be positive")
+	})
+
+	t.Run("chunk size negative", func(t *testing.T) {
+		qb := NewQueryBuilder(nil).Table("users")
+		err := qb.Chunk(-1, func(rows *sql.Rows) bool { return true })
+		assert.Error(t, err)
 	})
 }
