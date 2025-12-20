@@ -23,6 +23,7 @@ type Config struct {
 	Storage  StorageConfig
 	Logging  LoggingConfig
 	Jobs     JobsConfig
+	CORS     CORSConfig
 }
 
 // AppConfig holds core application settings
@@ -127,6 +128,11 @@ type JobsConfig struct {
 	EnablePersistence bool
 }
 
+// CORSConfig holds CORS settings
+type CORSConfig struct {
+	AllowedOrigins []string // Empty means block all cross-origin requests
+}
+
 // Load reads configuration from environment variables and validates it.
 // Returns an error if required values are missing or invalid.
 func Load() (*Config, error) {
@@ -207,6 +213,9 @@ func Load() (*Config, error) {
 	// Jobs config
 	cfg.Jobs.Workers = envInt("JOB_WORKERS", 5)
 	cfg.Jobs.EnablePersistence = envBool("JOB_ENABLE_PERSISTENCE", false)
+
+	// CORS config
+	cfg.CORS.AllowedOrigins = envStringSlice("CORS_ALLOWED_ORIGINS")
 
 	// Validate
 	if err := cfg.Validate(); err != nil {
@@ -313,6 +322,21 @@ func envInt(key string, defaultVal int) int {
 		return defaultVal
 	}
 	return i
+}
+
+func envStringSlice(key string) []string {
+	val := os.Getenv(key)
+	if val == "" {
+		return nil
+	}
+	parts := strings.Split(val, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 // DSN returns the database connection string for the configured database type
