@@ -1,0 +1,26 @@
+package main
+
+import (
+	"${APP_NAME}/handlers/billing"
+	"${APP_NAME}/handlers/dashboard"
+
+	"github.com/go-chi/chi/v5"
+)
+
+// saasRoutes sets up SaaS-specific routes
+func saasRoutes(mux *chi.Mux, dashboardHandlers *dashboard.Handlers, billingHandlers *billing.Handlers) {
+	// Dashboard routes
+	mux.Get("/dashboard", dashboardHandlers.Index)
+
+	// Team routes
+	mux.Route("/team/{team}", func(r chi.Router) {
+		r.Get("/", dashboardHandlers.TeamDashboard)
+		r.Get("/settings", dashboardHandlers.Settings)
+
+		// Billing routes
+		r.Get("/billing", billingHandlers.Plans)
+		r.Post("/billing/subscribe/{plan}", billingHandlers.Subscribe)
+		r.Post("/billing/cancel", billingHandlers.Cancel)
+		r.Get("/billing/invoices", billingHandlers.Invoices)
+	})
+}

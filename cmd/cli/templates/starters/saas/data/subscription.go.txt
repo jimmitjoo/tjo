@@ -1,0 +1,134 @@
+package data
+
+import (
+	"time"
+
+	up "github.com/upper/db/v4"
+)
+
+// Subscription represents a team's subscription
+type Subscription struct {
+	ID               int        `db:"id,omitempty"`
+	TeamID           int        `db:"team_id"`
+	PlanID           string     `db:"plan_id"` // free, starter, pro, enterprise
+	Status           string     `db:"status"`  // active, canceled, past_due, trialing
+	StripeCustomerID string     `db:"stripe_customer_id,omitempty"`
+	StripeSubID      string     `db:"stripe_subscription_id,omitempty"`
+	CurrentPeriodEnd time.Time  `db:"current_period_end"`
+	CanceledAt       *time.Time `db:"canceled_at,omitempty"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
+}
+
+// Plan represents a subscription plan
+type Plan struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	PriceMonth  int    `json:"price_month"` // in cents
+	PriceYear   int    `json:"price_year"`  // in cents
+	Features    []string `json:"features"`
+}
+
+// AvailablePlans returns all available subscription plans
+func AvailablePlans() []Plan {
+	return []Plan{
+		{
+			ID:          "free",
+			Name:        "Free",
+			Description: "Perfect for getting started",
+			PriceMonth:  0,
+			PriceYear:   0,
+			Features:    []string{"1 team member", "100 API calls/month", "Community support"},
+		},
+		{
+			ID:          "starter",
+			Name:        "Starter",
+			Description: "For small teams",
+			PriceMonth:  1900, // $19
+			PriceYear:   19000, // $190/year
+			Features:    []string{"5 team members", "10,000 API calls/month", "Email support", "Basic analytics"},
+		},
+		{
+			ID:          "pro",
+			Name:        "Pro",
+			Description: "For growing businesses",
+			PriceMonth:  4900, // $49
+			PriceYear:   49000, // $490/year
+			Features:    []string{"Unlimited team members", "100,000 API calls/month", "Priority support", "Advanced analytics", "Custom integrations"},
+		},
+		{
+			ID:          "enterprise",
+			Name:        "Enterprise",
+			Description: "For large organizations",
+			PriceMonth:  0, // Contact sales
+			PriceYear:   0,
+			Features:    []string{"Everything in Pro", "Dedicated support", "SLA", "Custom contracts", "On-premise option"},
+		},
+	}
+}
+
+// Table returns the table name
+func (s *Subscription) Table() string {
+	return "subscriptions"
+}
+
+// GetByTeam returns a team's subscription
+func (s *Subscription) GetByTeam(teamID int) (*Subscription, error) {
+	collection := upper.Collection(s.Table())
+
+	var sub Subscription
+	res := collection.Find(up.Cond{"team_id": teamID})
+	err := res.One(&sub)
+	if err != nil {
+		return nil, err
+	}
+
+	return &sub, nil
+}
+
+// Insert creates a new subscription
+func (s *Subscription) Insert(sub Subscription) (int, error) {
+	sub.CreatedAt = time.Now()
+	sub.UpdatedAt = time.Now()
+
+	collection := upper.Collection(s.Table())
+	res, err := collection.Insert(&sub)
+	if err != nil {
+		return 0, err
+	}
+
+	return getInsertID(res.ID()), nil
+}
+
+// Update updates a subscription
+func (s *Subscription) Update(sub Subscription) error {
+	sub.UpdatedAt = time.Now()
+
+	collection := upper.Collection(s.Table())
+	res := collection.Find(up.Cond{"id": sub.ID})
+	return res.Update(&sub)
+}
+
+// Cancel cancels a subscription
+func (s *Subscription) Cancel(id int) error {
+	collection := upper.Collection(s.Table())
+	res := collection.Find(up.Cond{"id": id})
+
+	now := time.Now()
+	return res.Update(map[string]interface{}{
+		"status":      "canceled",
+		"canceled_at": now,
+		"updated_at":  now,
+	})
+}
+
+// IsActive returns true if the subscription is active
+func (s *Subscription) IsActive() bool {
+	return s.Status == "active" || s.Status == "trialing"
+}
+
+// IsPro returns true if the subscription is pro or enterprise
+func (s *Subscription) IsPro() bool {
+	return s.PlanID == "pro" || s.PlanID == "enterprise"
+}

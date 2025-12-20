@@ -1,0 +1,198 @@
+package data
+
+import (
+	"time"
+
+	up "github.com/upper/db/v4"
+)
+
+// Team represents an organization/team
+type Team struct {
+	ID        int       `db:"id,omitempty"`
+	Name      string    `db:"name"`
+	Slug      string    `db:"slug"`
+	OwnerID   int       `db:"owner_id"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+}
+
+// TeamMember represents a user's membership in a team
+type TeamMember struct {
+	ID        int       `db:"id,omitempty"`
+	TeamID    int       `db:"team_id"`
+	UserID    int       `db:"user_id"`
+	Role      string    `db:"role"` // owner, admin, member
+	CreatedAt time.Time `db:"created_at"`
+}
+
+// Table returns the table name
+func (t *Team) Table() string {
+	return "teams"
+}
+
+// GetAll returns all teams
+func (t *Team) GetAll() ([]*Team, error) {
+	collection := upper.Collection(t.Table())
+
+	var teams []*Team
+	res := collection.Find().OrderBy("name")
+	err := res.All(&teams)
+	if err != nil {
+		return nil, err
+	}
+
+	return teams, nil
+}
+
+// Get returns a team by ID
+func (t *Team) Get(id int) (*Team, error) {
+	collection := upper.Collection(t.Table())
+
+	var team Team
+	res := collection.Find(up.Cond{"id": id})
+	err := res.One(&team)
+	if err != nil {
+		return nil, err
+	}
+
+	return &team, nil
+}
+
+// GetBySlug returns a team by slug
+func (t *Team) GetBySlug(slug string) (*Team, error) {
+	collection := upper.Collection(t.Table())
+
+	var team Team
+	res := collection.Find(up.Cond{"slug": slug})
+	err := res.One(&team)
+	if err != nil {
+		return nil, err
+	}
+
+	return &team, nil
+}
+
+// GetUserTeams returns all teams for a user
+func (t *Team) GetUserTeams(userID int) ([]*Team, error) {
+	// Query team_members to get team IDs, then fetch teams
+	memberCollection := upper.Collection("team_members")
+
+	var members []TeamMember
+	res := memberCollection.Find(up.Cond{"user_id": userID})
+	err := res.All(&members)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(members) == 0 {
+		return []*Team{}, nil
+	}
+
+	teamIDs := make([]int, len(members))
+	for i, m := range members {
+		teamIDs[i] = m.TeamID
+	}
+
+	collection := upper.Collection(t.Table())
+	var teams []*Team
+	res = collection.Find(up.Cond{"id": up.In(teamIDs...)})
+	err = res.All(&teams)
+	if err != nil {
+		return nil, err
+	}
+
+	return teams, nil
+}
+
+// Insert creates a new team
+func (t *Team) Insert(team Team) (int, error) {
+	team.CreatedAt = time.Now()
+	team.UpdatedAt = time.Now()
+
+	collection := upper.Collection(t.Table())
+	res, err := collection.Insert(&team)
+	if err != nil {
+		return 0, err
+	}
+
+	id := getInsertID(res.ID())
+
+	// Add owner as team member
+	memberCollection := upper.Collection("team_members")
+	_, err = memberCollection.Insert(&TeamMember{
+		TeamID:    id,
+		UserID:    team.OwnerID,
+		Role:      "owner",
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	return id, nil
+}
+
+// Update updates an existing team
+func (t *Team) Update(team Team) error {
+	team.UpdatedAt = time.Now()
+
+	collection := upper.Collection(t.Table())
+	res := collection.Find(up.Cond{"id": team.ID})
+	err := res.Update(&team)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Delete removes a team
+func (t *Team) Delete(id int) error {
+	// Delete team members first
+	memberCollection := upper.Collection("team_members")
+	res := memberCollection.Find(up.Cond{"team_id": id})
+	_ = res.Delete()
+
+	// Delete team
+	collection := upper.Collection(t.Table())
+	res = collection.Find(up.Cond{"id": id})
+	err := res.Delete()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AddMember adds a user to a team
+func (t *Team) AddMember(teamID, userID int, role string) error {
+	collection := upper.Collection("team_members")
+	_, err := collection.Insert(&TeamMember{
+		TeamID:    teamID,
+		UserID:    userID,
+		Role:      role,
+		CreatedAt: time.Now(),
+	})
+	return err
+}
+
+// RemoveMember removes a user from a team
+func (t *Team) RemoveMember(teamID, userID int) error {
+	collection := upper.Collection("team_members")
+	res := collection.Find(up.Cond{"team_id": teamID, "user_id": userID})
+	return res.Delete()
+}
+
+// GetMembers returns all members of a team
+func (t *Team) GetMembers(teamID int) ([]TeamMember, error) {
+	collection := upper.Collection("team_members")
+
+	var members []TeamMember
+	res := collection.Find(up.Cond{"team_id": teamID})
+	err := res.All(&members)
+	if err != nil {
+		return nil, err
+	}
+
+	return members, nil
+}

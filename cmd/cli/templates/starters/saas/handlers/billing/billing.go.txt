@@ -1,0 +1,133 @@
+package billing
+
+import (
+	"net/http"
+
+	"${APP_NAME}/data"
+
+	"github.com/jimmitjoo/gemquick"
+)
+
+type Handlers struct {
+	App    *gemquick.Gemquick
+	Models data.Models
+}
+
+// Plans displays available subscription plans
+func (h *Handlers) Plans(w http.ResponseWriter, r *http.Request) {
+	teamSlug := r.PathValue("team")
+	if teamSlug == "" {
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+
+	team, err := h.Models.Teams.GetBySlug(teamSlug)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+
+	// Get current subscription
+	currentSub, _ := h.Models.Subscriptions.GetByTeam(team.ID)
+
+	vars := make(map[string]interface{})
+	vars["team"] = team
+	vars["plans"] = data.AvailablePlans()
+	vars["currentSubscription"] = currentSub
+
+	err = h.App.Render.Page(w, r, "billing/plans", vars, nil)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+	}
+}
+
+// Subscribe handles plan subscription
+func (h *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
+	teamSlug := r.PathValue("team")
+	planID := r.PathValue("plan")
+
+	team, err := h.Models.Teams.GetBySlug(teamSlug)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+
+	// TODO: Integrate with Stripe
+	// For now, just update the subscription in the database
+	currentSub, err := h.Models.Subscriptions.GetByTeam(team.ID)
+	if err != nil {
+		// Create new subscription
+		_, err = h.Models.Subscriptions.Insert(data.Subscription{
+			TeamID: team.ID,
+			PlanID: planID,
+			Status: "active",
+		})
+	} else {
+		// Update existing subscription
+		currentSub.PlanID = planID
+		err = h.Models.Subscriptions.Update(*currentSub)
+	}
+
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+		h.App.Session.Put(r.Context(), "error", "Failed to update subscription")
+	} else {
+		h.App.Session.Put(r.Context(), "flash", "Subscription updated successfully!")
+	}
+
+	http.Redirect(w, r, "/team/"+teamSlug+"/billing", http.StatusSeeOther)
+}
+
+// Cancel handles subscription cancellation
+func (h *Handlers) Cancel(w http.ResponseWriter, r *http.Request) {
+	teamSlug := r.PathValue("team")
+
+	team, err := h.Models.Teams.GetBySlug(teamSlug)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+
+	currentSub, err := h.Models.Subscriptions.GetByTeam(team.ID)
+	if err != nil {
+		h.App.Session.Put(r.Context(), "error", "No subscription found")
+		http.Redirect(w, r, "/team/"+teamSlug+"/billing", http.StatusSeeOther)
+		return
+	}
+
+	// TODO: Cancel with Stripe
+	err = h.Models.Subscriptions.Cancel(currentSub.ID)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+		h.App.Session.Put(r.Context(), "error", "Failed to cancel subscription")
+	} else {
+		h.App.Session.Put(r.Context(), "flash", "Subscription canceled")
+	}
+
+	http.Redirect(w, r, "/team/"+teamSlug+"/billing", http.StatusSeeOther)
+}
+
+// Invoices displays billing history
+func (h *Handlers) Invoices(w http.ResponseWriter, r *http.Request) {
+	teamSlug := r.PathValue("team")
+
+	team, err := h.Models.Teams.GetBySlug(teamSlug)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+
+	// TODO: Fetch invoices from Stripe
+	vars := make(map[string]interface{})
+	vars["team"] = team
+	vars["invoices"] = []interface{}{} // Empty for now
+
+	err = h.App.Render.Page(w, r, "billing/invoices", vars, nil)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+	}
+}

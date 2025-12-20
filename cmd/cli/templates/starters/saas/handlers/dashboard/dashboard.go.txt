@@ -1,0 +1,93 @@
+package dashboard
+
+import (
+	"net/http"
+
+	"${APP_NAME}/data"
+
+	"github.com/jimmitjoo/gemquick"
+)
+
+type Handlers struct {
+	App    *gemquick.Gemquick
+	Models data.Models
+}
+
+// Index displays the main dashboard
+func (h *Handlers) Index(w http.ResponseWriter, r *http.Request) {
+	userID := h.App.Session.GetInt(r.Context(), "userID")
+	if userID == 0 {
+		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+		return
+	}
+
+	// Get user's teams
+	teams, err := h.Models.Teams.GetUserTeams(userID)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+	}
+
+	vars := make(map[string]interface{})
+	vars["teams"] = teams
+
+	err = h.App.Render.Page(w, r, "dashboard/index", vars, nil)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+	}
+}
+
+// TeamDashboard displays a specific team's dashboard
+func (h *Handlers) TeamDashboard(w http.ResponseWriter, r *http.Request) {
+	teamSlug := r.PathValue("team")
+	if teamSlug == "" {
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+
+	team, err := h.Models.Teams.GetBySlug(teamSlug)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+
+	// Get team subscription
+	sub, _ := h.Models.Subscriptions.GetByTeam(team.ID)
+
+	// Get team members
+	members, _ := h.Models.Teams.GetMembers(team.ID)
+
+	vars := make(map[string]interface{})
+	vars["team"] = team
+	vars["subscription"] = sub
+	vars["members"] = members
+
+	err = h.App.Render.Page(w, r, "dashboard/team", vars, nil)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+	}
+}
+
+// Settings displays team settings
+func (h *Handlers) Settings(w http.ResponseWriter, r *http.Request) {
+	teamSlug := r.PathValue("team")
+	if teamSlug == "" {
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+
+	team, err := h.Models.Teams.GetBySlug(teamSlug)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+
+	vars := make(map[string]interface{})
+	vars["team"] = team
+
+	err = h.App.Render.Page(w, r, "dashboard/settings", vars, nil)
+	if err != nil {
+		h.App.ErrorLog.Println(err)
+	}
+}

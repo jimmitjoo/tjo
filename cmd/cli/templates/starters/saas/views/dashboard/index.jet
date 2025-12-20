@@ -1,0 +1,36 @@
+{{extends "layouts/base"}}
+
+{{block documentBody()}}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-8">Dashboard</h1>
+
+    {{if isset(flash)}}
+    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+        {{flash}}
+    </div>
+    {{end}}
+
+    <div class="mb-8">
+        <h2 class="text-xl font-semibold mb-4">Your Teams</h2>
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {{range teams}}
+            <a href="/team/{{.Slug}}" class="block bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow">
+                <h3 class="text-lg font-semibold">{{.Name}}</h3>
+                <p class="text-gray-500 text-sm">Created {{.CreatedAt.Format("Jan 02, 2006")}}</p>
+            </a>
+            {{else}}
+            <div class="col-span-full text-center py-8 text-gray-500">
+                <p>You don't have any teams yet.</p>
+                <a href="/teams/new" class="text-blue-500 hover:text-blue-700 mt-2 inline-block">Create your first team</a>
+            </div>
+            {{end}}
+        </div>
+    </div>
+
+    <div class="mt-8">
+        <a href="/teams/new" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+            Create New Team
+        </a>
+    </div>
+</div>
+{{end}}
