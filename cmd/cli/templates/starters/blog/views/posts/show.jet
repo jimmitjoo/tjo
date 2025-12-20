@@ -1,0 +1,26 @@
+{{extends "layouts/base"}}
+
+{{block documentBody()}}
+<div class="container mx-auto px-4 py-8">
+    <article class="max-w-3xl mx-auto">
+        <header class="mb-8">
+            <a href="/posts" class="text-blue-500 hover:text-blue-700 mb-4 inline-block">&larr; Back to posts</a>
+            <h1 class="text-4xl font-bold mb-2">{{post.Title}}</h1>
+            <p class="text-gray-500">{{post.CreatedAt.Format("January 02, 2006")}}</p>
+        </header>
+
+        <div class="prose max-w-none">
+            {{post.Content | raw}}
+        </div>
+
+        <footer class="mt-8 pt-8 border-t flex justify-between">
+            <a href="/posts/{{post.ID}}/edit" class="text-blue-500 hover:text-blue-700">Edit post</a>
+            <form action="/posts/{{post.ID}}/delete" method="POST" class="inline">
+                <button type="submit" class="text-red-500 hover:text-red-700" onclick="return confirm('Are you sure you want to delete this post?')">
+                    Delete post
+                </button>
+            </form>
+        </footer>
+    </article>
+</div>
+{{end}}

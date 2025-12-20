@@ -1,0 +1,120 @@
+package data
+
+import (
+	"time"
+
+	up "github.com/upper/db/v4"
+)
+
+// Post represents a blog post
+type Post struct {
+	ID        int       `db:"id,omitempty"`
+	Title     string    `db:"title"`
+	Slug      string    `db:"slug"`
+	Content   string    `db:"content"`
+	Published bool      `db:"published"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+}
+
+// Table returns the table name
+func (p *Post) Table() string {
+	return "posts"
+}
+
+// GetAll returns all posts
+func (p *Post) GetAll() ([]*Post, error) {
+	collection := upper.Collection(p.Table())
+
+	var posts []*Post
+	res := collection.Find().OrderBy("-created_at")
+	err := res.All(&posts)
+	if err != nil {
+		return nil, err
+	}
+
+	return posts, nil
+}
+
+// GetPublished returns all published posts
+func (p *Post) GetPublished() ([]*Post, error) {
+	collection := upper.Collection(p.Table())
+
+	var posts []*Post
+	res := collection.Find(up.Cond{"published": true}).OrderBy("-created_at")
+	err := res.All(&posts)
+	if err != nil {
+		return nil, err
+	}
+
+	return posts, nil
+}
+
+// Get returns a post by ID
+func (p *Post) Get(id int) (*Post, error) {
+	collection := upper.Collection(p.Table())
+
+	var post Post
+	res := collection.Find(up.Cond{"id": id})
+	err := res.One(&post)
+	if err != nil {
+		return nil, err
+	}
+
+	return &post, nil
+}
+
+// GetBySlug returns a post by slug
+func (p *Post) GetBySlug(slug string) (*Post, error) {
+	collection := upper.Collection(p.Table())
+
+	var post Post
+	res := collection.Find(up.Cond{"slug": slug})
+	err := res.One(&post)
+	if err != nil {
+		return nil, err
+	}
+
+	return &post, nil
+}
+
+// Insert creates a new post
+func (p *Post) Insert(post Post) (int, error) {
+	post.CreatedAt = time.Now()
+	post.UpdatedAt = time.Now()
+
+	collection := upper.Collection(p.Table())
+	res, err := collection.Insert(&post)
+	if err != nil {
+		return 0, err
+	}
+
+	id := getInsertID(res.ID())
+	return id, nil
+}
+
+// Update updates an existing post
+func (p *Post) Update(post Post) error {
+	post.UpdatedAt = time.Now()
+
+	collection := upper.Collection(p.Table())
+	res := collection.Find(up.Cond{"id": post.ID})
+	err := res.Update(&post)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Delete removes a post
+func (p *Post) Delete(id int) error {
+	collection := upper.Collection(p.Table())
+	res := collection.Find(up.Cond{"id": id})
+	err := res.Delete()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

@@ -1,0 +1,19 @@
+package main
+
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+)
+
+// blogRoutes adds blog-specific routes
+func blogRoutes(mux *chi.Mux, h *handlers.Handlers) {
+	// Blog posts
+	mux.Get("/posts", h.PostsIndex)
+	mux.Get("/posts/new", h.PostsNew)
+	mux.Post("/posts", h.PostsCreate)
+	mux.Get("/posts/{id}", h.PostsShow)
+	mux.Get("/posts/{id}/edit", h.PostsEdit)
+	mux.Post("/posts/{id}", h.PostsUpdate)
+	mux.Post("/posts/{id}/delete", h.PostsDelete)
+}
