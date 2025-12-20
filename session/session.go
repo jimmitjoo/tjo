@@ -1,7 +1,7 @@
 package session
 
 import (
-	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"net/http"
@@ -237,6 +237,7 @@ func (ash *AuthSessionHandler) ValidateSession(r *http.Request) bool {
 }
 
 // generateSessionFingerprint creates a fingerprint for session validation
+// based on stable client characteristics. This helps detect session hijacking.
 func generateSessionFingerprint(r *http.Request) (string, error) {
 	// Create fingerprint from stable client characteristics
 	// Note: Be careful not to include characteristics that change frequently
@@ -244,12 +245,10 @@ func generateSessionFingerprint(r *http.Request) (string, error) {
 	fingerprintBuilder.WriteString(r.UserAgent())
 	fingerprintBuilder.WriteString("|")
 	fingerprintBuilder.WriteString(r.Header.Get("Accept-Language"))
-	
-	// Hash the fingerprint for storage
-	hash := make([]byte, 16)
-	if _, err := rand.Read(hash); err != nil {
-		return "", err
-	}
-	
-	return hex.EncodeToString(hash), nil
+
+	// Hash the fingerprint for storage using SHA-256
+	hash := sha256.Sum256([]byte(fingerprintBuilder.String()))
+
+	// Return first 32 hex characters (16 bytes) for a compact fingerprint
+	return hex.EncodeToString(hash[:16]), nil
 }
