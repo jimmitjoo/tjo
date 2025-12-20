@@ -39,7 +39,7 @@ func TestMain(m *testing.M) {
 	_ = os.RemoveAll("./testdata/tmp/badger")
 
 	if _, err := os.Stat("./testdata/tmp"); os.IsNotExist(err) {
-		err := os.Mkdir("./testdata/tmp", 0755)
+		err := os.MkdirAll("./testdata/tmp", 0755)
 		if err != nil {
 			log.Fatal(err)
 		}
