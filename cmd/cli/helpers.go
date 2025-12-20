@@ -72,6 +72,9 @@ func showHelp() {
 
 	help                    - show this help
 	version                 - show Gemquick version
+	new <name>              - create a new Gemquick project
+	new <name> -t <template> - create project with starter template
+	                          templates: default, blog, api, saas
 	run                     - run the application
 	run --watch (-w)        - run with hot-reload (uses air)
 	mcp                     - start MCP server for AI assistants
