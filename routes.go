@@ -35,8 +35,9 @@ func (g *Gemquick) routes() http.Handler {
 	return mux
 }
 
-// addMonitoringRoutes adds health and metrics endpoints
-func (g *Gemquick) addMonitoringRoutes(mux *chi.Mux) {
+// AddMonitoringRoutes adds health and metrics endpoints.
+// Call this in your routes() function AFTER adding your middleware.
+func (g *Gemquick) AddMonitoringRoutes(mux *chi.Mux) {
 	if g.MetricRegistry == nil || g.HealthMonitor == nil {
 		return
 	}
