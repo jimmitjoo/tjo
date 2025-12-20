@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -14,9 +16,22 @@ import (
 
 var appUrl string
 
-func doNew(appName string) error {
+// Available templates
+var validTemplates = map[string]bool{
+	"default": true,
+	"blog":    true,
+	"api":     true,
+	"saas":    true,
+}
+
+func doNew(appName string, template string) error {
 	appname := strings.ToLower(appName)
 	appUrl = appname
+
+	// Validate template
+	if !validTemplates[template] {
+		return fmt.Errorf("unknown template: %s. Available templates: default, blog, api, saas", template)
+	}
 
 	// Sanitize the new application name
 	if strings.Contains(appname, "/") {
@@ -24,7 +39,11 @@ func doNew(appName string) error {
 		appname = exploded[len(exploded)-1]
 	}
 
-	color.Green("Creating new application: " + appname)
+	if template != "default" {
+		color.Green("Creating new application: %s (template: %s)", appname, template)
+	} else {
+		color.Green("Creating new application: " + appname)
+	}
 
 	// Git clone the skeleton application
 	color.Green("\tCloning skeleton application...")
@@ -127,6 +146,15 @@ func doNew(appName string) error {
 	}
 	updateSource()
 
+	// Apply starter template if not default
+	if template != "default" {
+		color.Green("\tApplying %s template...", template)
+		err = applyStarterTemplate(template, appname)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Run go mod tidy
 	color.Green("\tRunning go mod tidy...")
 	cmd := exec.Command("go", "mod", "tidy")
@@ -139,4 +167,56 @@ func doNew(appName string) error {
 	color.Green("\tGo build something great!")
 
 	return nil
+}
+
+// applyStarterTemplate copies starter template files into the project
+func applyStarterTemplate(template, appname string) error {
+	templateDir := "templates/starters/" + template
+
+	return fs.WalkDir(templateFS, templateDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip the root directory
+		if path == templateDir {
+			return nil
+		}
+
+		// Calculate relative path from template dir
+		relPath := strings.TrimPrefix(path, templateDir+"/")
+		targetPath := relPath
+
+		// Convert .go.txt back to .go
+		if strings.HasSuffix(targetPath, ".go.txt") {
+			targetPath = strings.TrimSuffix(targetPath, ".txt")
+		}
+
+		if d.IsDir() {
+			// Create directory
+			return os.MkdirAll(targetPath, 0755)
+		}
+
+		// Read template file
+		data, err := templateFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		// Replace placeholders
+		content := string(data)
+		content = strings.ReplaceAll(content, "${APP_NAME}", appname)
+		content = strings.ReplaceAll(content, "{{.ProjectName}}", appname)
+
+		// Ensure parent directory exists
+		parentDir := filepath.Dir(targetPath)
+		if parentDir != "." {
+			if err := os.MkdirAll(parentDir, 0755); err != nil {
+				return err
+			}
+		}
+
+		// Write file (overwrite if exists)
+		return os.WriteFile(targetPath, []byte(content), 0644)
+	})
 }
