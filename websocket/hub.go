@@ -323,16 +323,25 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		metadata: make(map[string]interface{}),
 	}
 
-	client.hub.register <- client
-
-	go client.writePump()
-	go client.readPump()
+	// Safely register - recover if hub is shutting down
+	func() {
+		defer func() {
+			if recover() != nil {
+				conn.Close()
+			}
+		}()
+		client.hub.register <- client
+		go client.writePump()
+		go client.readPump()
+	}()
 }
 
 func (c *Client) readPump() {
+	defer c.conn.Close()
 	defer func() {
+		// Safely unregister - recover if hub is shutting down
+		defer func() { recover() }()
 		c.hub.unregister <- c
-		c.conn.Close()
 	}()
 
 	c.conn.SetReadLimit(c.hub.config.MaxMessageSize)
