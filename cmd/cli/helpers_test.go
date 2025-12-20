@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jimmitjoo/gemquick"
+	"github.com/jimmitjoo/gemquick/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -91,7 +92,12 @@ func TestGetDSN(t *testing.T) {
 				os.Setenv(k, v)
 			}
 
-			// Set up gem
+			// Load config after setting environment variables
+			cfg, err := config.Load()
+			if err != nil {
+				t.Fatalf("Failed to load config: %v", err)
+			}
+			gem.Config = cfg
 			gem.DB.DataType = tt.dbType
 
 			result := getDSN()

@@ -7,6 +7,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/jimmitjoo/gemquick/config"
 )
 
 func TestRoutes(t *testing.T) {
@@ -52,10 +53,10 @@ func TestRoutesMiddleware(t *testing.T) {
 	g := &Gemquick{
 		Routes: chi.NewRouter(),
 		Debug:  false,
-		config: config{
-			cookie: cookieConfig{
-				secure: "false",
-				domain: "localhost",
+		Config: &config.Config{
+			Cookie: config.CookieConfig{
+				Secure: false,
+				Domain: "localhost",
 			},
 		},
 		InfoLog: createTestLogger(),

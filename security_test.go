@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jimmitjoo/gemquick/config"
 )
 
 // TestRandomStringCryptographicallySecure verifies that RandomString uses secure randomness
@@ -297,10 +299,10 @@ func TestValidationSanitization(t *testing.T) {
 // TestCSRFProtection verifies CSRF middleware configuration
 func TestCSRFProtection(t *testing.T) {
 	g := &Gemquick{
-		config: config{
-			cookie: cookieConfig{
-				secure: "true",
-				domain: "example.com",
+		Config: &config.Config{
+			Cookie: config.CookieConfig{
+				Secure: true,
+				Domain: "example.com",
 			},
 		},
 	}

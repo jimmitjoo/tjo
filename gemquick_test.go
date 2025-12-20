@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/jimmitjoo/gemquick/config"
 )
 
 func TestGemquick_New(t *testing.T) {
@@ -153,22 +154,20 @@ func TestGemquick_CreateFileIfNotExists(t *testing.T) {
 }
 
 func TestConfig_Cookie(t *testing.T) {
-	c := config{
-		cookie: cookieConfig{
-			name:     "test_cookie",
-			lifetime: "1440",
-			persist:  "true",
-			secure:   "false",
-			domain:   "localhost",
-		},
+	c := config.CookieConfig{
+		Name:     "test_cookie",
+		Lifetime: 1440,
+		Persist:  true,
+		Secure:   false,
+		Domain:   "localhost",
 	}
 
-	if c.cookie.name != "test_cookie" {
-		t.Errorf("Expected cookie name to be test_cookie, got %s", c.cookie.name)
+	if c.Name != "test_cookie" {
+		t.Errorf("Expected cookie name to be test_cookie, got %s", c.Name)
 	}
 
-	if c.cookie.lifetime != "1440" {
-		t.Errorf("Expected cookie lifetime to be 1440, got %s", c.cookie.lifetime)
+	if c.Lifetime != 1440 {
+		t.Errorf("Expected cookie lifetime to be 1440, got %d", c.Lifetime)
 	}
 }
 
@@ -236,6 +235,13 @@ func TestBuildDSN(t *testing.T) {
 				defer os.Unsetenv(k)
 			}
 
+			// Load config after setting environment variables
+			cfg, err := config.Load()
+			if err != nil {
+				t.Fatalf("Failed to load config: %v", err)
+			}
+			g.Config = cfg
+
 			dsn := g.BuildDSN()
 			if dsn != tt.expected {
 				t.Errorf("Expected DSN %s, got %s", tt.expected, dsn)
@@ -248,10 +254,10 @@ func TestGemquick_SessionManager(t *testing.T) {
 	g := &Gemquick{
 		Session: scs.New(),
 		InfoLog: createTestLogger(),
-		config: config{
-			cookie: cookieConfig{
-				secure:   "false",
-				domain:   "localhost",
+		Config: &config.Config{
+			Cookie: config.CookieConfig{
+				Secure: false,
+				Domain: "localhost",
 			},
 		},
 	}
