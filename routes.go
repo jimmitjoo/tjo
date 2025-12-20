@@ -32,9 +32,6 @@ func (g *Gemquick) routes() http.Handler {
 	mux.Use(g.SessionLoad)
 	mux.Use(g.NoSurf)
 
-	// Add monitoring endpoints
-	g.addMonitoringRoutes(mux)
-
 	return mux
 }
 
