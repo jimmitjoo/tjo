@@ -32,7 +32,8 @@ func main() {
 		if arg2 == "" {
 			exitGracefully(errors.New("new requires a project name"))
 		}
-		err := doNew(arg2)
+		template := parseTemplateFlag()
+		err := doNew(arg2, template)
 		if err != nil {
 			exitGracefully(err)
 		}
@@ -109,4 +110,22 @@ func exitGracefully(err error, msg ...string) {
 	if message != "" {
 		color.Yellow(message)
 	}
+}
+
+func parseTemplateFlag() string {
+	for i, arg := range os.Args {
+		if arg == "--template" || arg == "-t" {
+			if i+1 < len(os.Args) {
+				return os.Args[i+1]
+			}
+		}
+		// Support --template=value format
+		if len(arg) > 11 && arg[:11] == "--template=" {
+			return arg[11:]
+		}
+		if len(arg) > 3 && arg[:3] == "-t=" {
+			return arg[3:]
+		}
+	}
+	return "default"
 }
