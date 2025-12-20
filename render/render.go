@@ -23,18 +23,53 @@ type Render struct {
 	Session    *scs.SessionManager
 }
 
+// TemplateData holds data that is automatically passed to all templates.
+// These variables are available in your Jet or Go templates:
+//
+// Automatically Populated (via defaultData):
+//   - CSRFToken: CSRF protection token for forms. Use in forms like:
+//     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+//   - Flash: One-time flash message from session (auto-removed after display)
+//   - Error: One-time error message from session (auto-removed after display)
+//   - IsAuthenticated: True if "userID" exists in session
+//   - Secure: Whether the connection is HTTPS
+//   - ServerName: The server name from configuration
+//   - Port: The port the server is running on
+//
+// User-Provided Data Maps:
+//   - IntMap: For passing integer values to templates
+//   - StringMap: For passing string values to templates
+//   - FloatMap: For passing float values to templates
+//   - Data: For passing any other data to templates
+//
+// Example usage in handler:
+//
+//	td := &render.TemplateData{
+//	    StringMap: map[string]string{"title": "My Page"},
+//	    Data: map[string]interface{}{"users": users},
+//	}
+//	h.render(w, r, "users", nil, td)
+//
+// Example usage in template (Jet):
+//
+//	<h1>{{ .StringMap.title }}</h1>
+//	{{ if .Flash }}<div class="alert">{{ .Flash }}</div>{{ end }}
+//	{{ if .Error }}<div class="error">{{ .Error }}</div>{{ end }}
+//	<form>
+//	    <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+//	</form>
 type TemplateData struct {
-	IsAuthenticated bool
-	IntMap          map[string]int
-	StringMap       map[string]string
-	FloatMap        map[string]float32
-	Data            map[string]interface{}
-	CSRFToken       string
-	Port            string
-	ServerName      string
-	Secure          bool
-	Error           string
-	Flash           string
+	IsAuthenticated bool                   // True if user is logged in (userID in session)
+	IntMap          map[string]int         // Integer values to pass to template
+	StringMap       map[string]string      // String values to pass to template
+	FloatMap        map[string]float32     // Float values to pass to template
+	Data            map[string]interface{} // Any other data to pass to template
+	CSRFToken       string                 // CSRF protection token for forms
+	Port            string                 // Server port
+	ServerName      string                 // Server name
+	Secure          bool                   // True if HTTPS
+	Error           string                 // One-time error message (from session)
+	Flash           string                 // One-time flash message (from session)
 }
 
 func (g *Render) defaultData(td *TemplateData, r *http.Request) *TemplateData {

@@ -1,7 +1,5 @@
 package gemquick
 
-import "database/sql"
-
 type initPaths struct {
 	rootPath    string
 	folderNames []string
@@ -20,11 +18,7 @@ type databaseConfig struct {
 	database string
 }
 
-type Database struct {
-	DataType    string
-	Pool        *sql.DB
-	TablePrefix string
-}
+// Database is now defined in services.go
 
 type redisConfig struct {
 	host     string

@@ -35,31 +35,47 @@ var myBadgerCache *cache.BadgerCache
 var redisPool *redis.Pool
 var badgerConn *badger.DB
 
+// Gemquick is the main framework struct that orchestrates all components.
+// It uses composition to organize functionality into focused services:
+// - Logging: structured logging, metrics, and health monitoring
+// - HTTP: routing, sessions, and template rendering
+// - Data: database, caching, and file storage
+// - Background: job processing, scheduling, mail, and SMS
 type Gemquick struct {
-	AppName         string
-	Debug           bool
-	Version         string
-	ErrorLog        *log.Logger
-	InfoLog         *log.Logger
-	Logger          *logging.Logger
-	MetricRegistry  *logging.MetricRegistry
-	HealthMonitor   *logging.HealthMonitor
-	AppMetrics      *logging.ApplicationMetrics
-	RootPath        string
-	Routes          *chi.Mux
-	Render          *render.Render
-	Session         *scs.SessionManager
-	DB              Database
-	JetViews        *jet.Set
-	config          config
-	EncryptionKey   string
-	Cache           cache.Cache
-	Scheduler       *cron.Cron
-	JobManager      *jobs.JobManager
-	SMSProvider     sms.SMSProvider
-	Mail            email.Mail
-	Server          Server
-	FileSystems     map[string]interface{}
+	// Core configuration
+	AppName       string
+	Debug         bool
+	Version       string
+	RootPath      string
+	EncryptionKey string
+	Server        Server
+	config        config
+
+	// Services (composed)
+	Logging    *LoggingService
+	HTTP       *HTTPService
+	Data       *DataService
+	Background *BackgroundService
+
+	// Legacy accessors (for backwards compatibility during migration)
+	// These will be deprecated in favor of service accessors
+	ErrorLog       *log.Logger              // Use Logging.Error instead
+	InfoLog        *log.Logger              // Use Logging.Info instead
+	Logger         *logging.Logger          // Use Logging.Logger instead
+	MetricRegistry *logging.MetricRegistry  // Use Logging.Metrics instead
+	HealthMonitor  *logging.HealthMonitor   // Use Logging.Health instead
+	AppMetrics     *logging.ApplicationMetrics // Use Logging.App instead
+	Routes         *chi.Mux                 // Use HTTP.Router instead
+	Render         *render.Render           // Use HTTP.Render instead
+	Session        *scs.SessionManager      // Use HTTP.Session instead
+	JetViews       *jet.Set                 // Use HTTP.JetViews instead
+	DB             Database                 // Use Data.DB instead
+	Cache          cache.Cache              // Use Data.Cache instead
+	FileSystems    map[string]interface{}   // Use Data.Files instead
+	Scheduler      *cron.Cron               // Use Background.Scheduler instead
+	JobManager     *jobs.JobManager         // Use Background.Jobs instead
+	SMSProvider    sms.SMSProvider          // Use Background.SMS instead
+	Mail           email.Mail               // Use Background.Mail instead
 }
 
 type Server struct {
@@ -85,46 +101,54 @@ func (g *Gemquick) New(rootPath string) error {
 	}
 
 	err := g.Init(pathConfig)
-
 	if err != nil {
 		return err
 	}
 
 	err = g.checkDotEnv(rootPath)
-
 	if err != nil {
 		return err
 	}
 
 	// read .env
 	err = godotenv.Load(rootPath + "/.env")
-
 	if err != nil {
 		return err
 	}
 
+	// Initialize services
+	g.Logging = NewLoggingService()
+	g.HTTP = NewHTTPService()
+	g.Data = NewDataService()
+	g.Background = NewBackgroundService()
+
 	// create loggers
 	infoLog, errorLog := g.startLoggers()
+	g.Logging.Error = errorLog
+	g.Logging.Info = infoLog
+
 	g.setupStructuredLogging()
 
 	// connect to database
 	if os.Getenv("DATABASE_TYPE") != "" {
 		db, err := g.OpenDB(os.Getenv("DATABASE_TYPE"), g.BuildDSN())
-
 		if err != nil {
 			errorLog.Println(err)
 			os.Exit(1)
 		}
 
-		g.DB = Database{
+		dbConfig := Database{
 			DataType:    os.Getenv("DATABASE_TYPE"),
 			Pool:        db,
 			TablePrefix: os.Getenv("DATABASE_TABLE_PREFIX"),
 		}
+		g.Data.DB = dbConfig
+		g.DB = dbConfig // Legacy accessor
 	}
 
 	scheduler := cron.New()
-	g.Scheduler = scheduler
+	g.Background.Scheduler = scheduler
+	g.Scheduler = scheduler // Legacy accessor
 
 	// initialize job manager
 	jobConfig := jobs.DefaultManagerConfig()
@@ -136,7 +160,8 @@ func (g *Gemquick) New(rootPath string) error {
 	if os.Getenv("JOB_ENABLE_PERSISTENCE") == "true" {
 		jobConfig.EnablePersistence = true
 	}
-	g.JobManager = jobs.NewJobManager(jobConfig)
+	g.Background.Jobs = jobs.NewJobManager(jobConfig)
+	g.JobManager = g.Background.Jobs // Legacy accessor
 
 	// setup job persistence if database is available and persistence is enabled
 	if jobConfig.EnablePersistence && g.DB.Pool != nil {
@@ -149,20 +174,20 @@ func (g *Gemquick) New(rootPath string) error {
 	// connect to redis
 	if os.Getenv("CACHE") == "redis" || os.Getenv("SESSION_TYPE") == "redis" {
 		myRedisCache = g.createClientRedisCache()
-		g.Cache = myRedisCache
-
+		g.Data.Cache = myRedisCache
+		g.Cache = myRedisCache // Legacy accessor
 		redisPool = myRedisCache.Conn
 	}
 
 	// connect to badger
 	if os.Getenv("CACHE") == "badger" || os.Getenv("SESSION_TYPE") == "badger" {
 		myBadgerCache = g.createClientBadgerCache()
-		g.Cache = myBadgerCache
-
+		g.Data.Cache = myBadgerCache
+		g.Cache = myBadgerCache // Legacy accessor
 		badgerConn = myBadgerCache.Conn
 
 		// start badger garbage collector
-		_, err := g.Scheduler.AddFunc("@daily", func() {
+		_, err := g.Background.Scheduler.AddFunc("@daily", func() {
 			_ = myBadgerCache.Conn.RunValueLogGC(0.7)
 		})
 		if err != nil {
@@ -170,13 +195,16 @@ func (g *Gemquick) New(rootPath string) error {
 		}
 	}
 
-	g.InfoLog = infoLog
-	g.ErrorLog = errorLog
+	g.InfoLog = infoLog   // Legacy accessor
+	g.ErrorLog = errorLog // Legacy accessor
 	g.Debug, _ = strconv.ParseBool(os.Getenv("DEBUG"))
 	g.Version = version
 	g.RootPath = rootPath
 	g.AppName = os.Getenv("APP_NAME")
-	g.Routes = g.routes().(*chi.Mux)
+
+	// Setup HTTP router
+	g.HTTP.Router = g.routes().(*chi.Mux)
+	g.Routes = g.HTTP.Router // Legacy accessor
 
 	g.config = config{
 		port:     os.Getenv("PORT"),
@@ -227,17 +255,18 @@ func (g *Gemquick) New(rootPath string) error {
 	case "redis":
 		sess.RedisPool = myRedisCache.Conn
 	case "mysql", "postgres", "mariadb", "postgresql", "pgx", "sqlite", "sqlite3":
-		sess.DBPool = g.DB.Pool
+		sess.DBPool = g.Data.DB.Pool
 	}
 
-	g.Session = sess.InitSession()
+	g.HTTP.Session = sess.InitSession()
+	g.Session = g.HTTP.Session // Legacy accessor
 	g.EncryptionKey = os.Getenv("KEY")
 
+	// Setup Jet template engine
 	var views *jet.Set
 	if g.Debug {
 		views = jet.NewSet(
 			jet.NewOSFileSystemLoader(fmt.Sprintf("%s/views", rootPath)),
-
 			jet.InDevelopmentMode(),
 		)
 	} else {
@@ -245,16 +274,21 @@ func (g *Gemquick) New(rootPath string) error {
 			jet.NewOSFileSystemLoader(fmt.Sprintf("%s/views", rootPath)),
 		)
 	}
-
-	g.JetViews = views
+	g.HTTP.JetViews = views
+	g.JetViews = views // Legacy accessor
 
 	g.createRenderer()
 
+	// Setup file systems (legacy map for backwards compatibility)
 	g.FileSystems = g.createFileSystems()
 
-	g.SMSProvider = sms.CreateSMSProvider(os.Getenv("SMS_PROVIDER"))
+	// Setup SMS provider
+	g.Background.SMS = sms.CreateSMSProvider(os.Getenv("SMS_PROVIDER"))
+	g.SMSProvider = g.Background.SMS // Legacy accessor
 
-	g.Mail = g.createMailer()
+	// Setup mail service
+	g.Background.Mail = g.createMailer()
+	g.Mail = g.Background.Mail // Legacy accessor
 
 	go g.Mail.ListenForMail()
 
@@ -398,29 +432,34 @@ func (g *Gemquick) setupStructuredLogging() {
 	}
 
 	// Create structured logger
-	g.Logger = logging.New(logging.Config{
+	g.Logging.Logger = logging.New(logging.Config{
 		Level:      logLevel,
 		Service:    g.AppName,
 		EnableJSON: enableJSON,
 	})
+	g.Logger = g.Logging.Logger // Legacy accessor
 
 	// Create metric registry and application metrics
-	g.MetricRegistry = logging.NewMetricRegistry()
-	g.AppMetrics = logging.NewApplicationMetrics()
-	g.AppMetrics.Register(g.MetricRegistry)
+	g.Logging.Metrics = logging.NewMetricRegistry()
+	g.MetricRegistry = g.Logging.Metrics // Legacy accessor
+
+	g.Logging.App = logging.NewApplicationMetrics()
+	g.AppMetrics = g.Logging.App // Legacy accessor
+	g.Logging.App.Register(g.Logging.Metrics)
 
 	// Create health monitor with version
-	g.HealthMonitor = logging.NewHealthMonitor(g.Version)
+	g.Logging.Health = logging.NewHealthMonitor(g.Version)
+	g.HealthMonitor = g.Logging.Health // Legacy accessor
 
 	// Add default health checks
-	if g.DB.Pool != nil {
-		g.HealthMonitor.AddCheck("database", logging.DatabaseHealthChecker(func() error {
-			return g.DB.Pool.Ping()
+	if g.Data.DB.Pool != nil {
+		g.Logging.Health.AddCheck("database", logging.DatabaseHealthChecker(func() error {
+			return g.Data.DB.Pool.Ping()
 		}))
 	}
 
 	if myRedisCache != nil {
-		g.HealthMonitor.AddCheck("redis", logging.RedisHealthChecker(func() error {
+		g.Logging.Health.AddCheck("redis", logging.RedisHealthChecker(func() error {
 			conn := myRedisCache.Conn.Get()
 			defer conn.Close()
 			_, err := conn.Do("PING")
@@ -429,7 +468,7 @@ func (g *Gemquick) setupStructuredLogging() {
 	}
 
 	// Log startup message
-	g.Logger.Info("Structured logging initialized", map[string]interface{}{
+	g.Logging.Logger.Info("Structured logging initialized", map[string]interface{}{
 		"version":    g.Version,
 		"app_name":   g.AppName,
 		"debug":      g.Debug,
@@ -443,11 +482,12 @@ func (g *Gemquick) createRenderer() {
 		Renderer: g.config.renderer,
 		RootPath: g.RootPath,
 		Port:     g.config.port,
-		JetViews: g.JetViews,
-		Session:  g.Session,
+		JetViews: g.HTTP.JetViews,
+		Session:  g.HTTP.Session,
 	}
 
-	g.Render = &myRenderer
+	g.HTTP.Render = &myRenderer
+	g.Render = g.HTTP.Render // Legacy accessor
 }
 
 func (g *Gemquick) createMailer() email.Mail {
@@ -574,17 +614,19 @@ func (g *Gemquick) BuildDSN() string {
 	return dsn
 }
 
+// createFileSystems initializes file storage systems and registers them with the type-safe registry.
+// It also returns a legacy map[string]interface{} for backwards compatibility.
 func (g *Gemquick) createFileSystems() map[string]interface{} {
-	fileSystems := make(map[string]interface{})
+	// Legacy map for backwards compatibility
+	legacyFileSystems := make(map[string]interface{})
 
 	if os.Getenv("MINIO_SECRET") != "" {
-
 		useSSL := false
 		if os.Getenv("MINIO_USE_SSL") == "true" {
 			useSSL = true
 		}
 
-		minio := miniofilesystem.Minio{
+		minio := &miniofilesystem.Minio{
 			Endpoint:  os.Getenv("MINIO_ENDPOINT"),
 			AccessKey: os.Getenv("MINIO_ACCESS_KEY"),
 			SecretKey: os.Getenv("MINIO_SECRET"),
@@ -593,11 +635,14 @@ func (g *Gemquick) createFileSystems() map[string]interface{} {
 			Bucket:    os.Getenv("MINIO_BUCKET"),
 		}
 
-		fileSystems["minio"] = minio
+		// Register with type-safe registry
+		g.Data.Files.Register("minio", minio)
+		// Also add to legacy map for backwards compatibility
+		legacyFileSystems["minio"] = minio
 	}
 
 	if os.Getenv("S3_BUCKET") != "" {
-		s3 := s3filesystem.S3{
+		s3 := &s3filesystem.S3{
 			Key:      os.Getenv("S3_KEY"),
 			Secret:   os.Getenv("S3_SECRET"),
 			Region:   os.Getenv("S3_REGION"),
@@ -605,8 +650,11 @@ func (g *Gemquick) createFileSystems() map[string]interface{} {
 			Bucket:   os.Getenv("S3_BUCKET"),
 		}
 
-		fileSystems["s3"] = s3
+		// Register with type-safe registry
+		g.Data.Files.Register("s3", s3)
+		// Also add to legacy map for backwards compatibility
+		legacyFileSystems["s3"] = s3
 	}
 
-	return fileSystems
+	return legacyFileSystems
 }
