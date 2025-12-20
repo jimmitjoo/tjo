@@ -19,6 +19,46 @@ Gemquick is a modern, full-featured web application framework for Go that provid
 - 📊 **Logging & Metrics** - Structured logging with health monitoring
 - 🔑 **Session Management** - Secure session handling with multiple stores
 - 🛠️ **CLI Tools** - Project scaffolding and code generation
+- 🤖 **AI-Native Development** - MCP server for AI assistants
+
+## AI-Native Development (MCP)
+
+Gemquick is the first AI-native Go framework. Use natural language with AI assistants to build your application.
+
+### Setup
+
+Add to your Claude Code / Cursor MCP config:
+
+```json
+{
+  "mcpServers": {
+    "gemquick": {
+      "command": "gq",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `gemquick_create_project` | Create a new GemQuick project |
+| `gemquick_create_model` | Create a new database model |
+| `gemquick_create_handler` | Create a new HTTP handler |
+| `gemquick_create_migration` | Create a new database migration |
+| `gemquick_run_migrations` | Run pending migrations |
+| `gemquick_rollback` | Rollback migrations |
+
+### Usage
+
+Just ask your AI assistant:
+
+- "Create a User model with name and email"
+- "Add a migration to create a posts table"
+- "Create a handler for managing products"
+- "Run the database migrations"
 
 ## Installation
 
