@@ -112,7 +112,7 @@
 
 | Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
 |---------|----------|-----|------|-------|---------|-------|-------|------|
-| CLI Tool | gq | No | No | No | buffalo | bee | revel | No |
+| CLI Tool | tjo | No | No | No | buffalo | bee | revel | No |
 | Code Generation | Extensive | No | No | No | Scaffolding | Scaffolding | Yes | No |
 | Project Scaffolding | Yes | No | No | No | Yes | Yes | Yes | No |
 | MCP/AI Integration | 12 tools | No | No | No | No | No | No | No |
@@ -283,7 +283,7 @@ Features **only Tjo has** compared to all others:
 5. **S3/MinIO integration** - File storage built-in
 6. **Health checks** - Production-ready
 7. **Badger cache** - Embedded caching without Redis
-8. **Docker generator** - `gq make docker`
+8. **Docker generator** - `tjo make docker`
 9. **Query Builder + Multi-DB** - Without heavy ORM
 
 ---

@@ -174,7 +174,7 @@ New to Tjo? Look for issues labeled [`good first issue`](https://github.com/jimm
 tjo/
 ├── api/           # REST API utilities
 ├── cache/         # Cache implementations (Redis, Badger)
-├── cmd/cli/       # CLI tool (gq command)
+├── cmd/cli/       # CLI tool (tjo command)
 ├── config/        # Configuration handling
 ├── database/      # Database utilities
 ├── email/         # Email providers
@@ -196,7 +196,7 @@ tjo/
 make build
 
 # Run from dist/
-./dist/gq help
+./dist/tjo help
 
 # Or install globally
 go install ./cmd/cli

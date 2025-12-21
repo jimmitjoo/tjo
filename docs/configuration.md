@@ -29,7 +29,7 @@ KEY=your-32-character-encryption-key
 ### Generating an Encryption Key
 
 ```bash
-gq make key
+tjo make key
 ```
 
 ---
