@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 )
 
@@ -70,7 +71,33 @@ type Encryption struct {
 	Key []byte
 }
 
+// ValidateEncryptionKey checks that the key meets AES requirements.
+// AES requires keys of exactly 16, 24, or 32 bytes for AES-128, AES-192, or AES-256.
+func ValidateEncryptionKey(key []byte) error {
+	if len(key) == 0 {
+		return errors.New("encryption key cannot be empty")
+	}
+	switch len(key) {
+	case 16, 24, 32:
+		return nil
+	default:
+		return fmt.Errorf("encryption key must be 16, 24, or 32 bytes for AES (got %d bytes)", len(key))
+	}
+}
+
+// NewEncryption creates a validated encryption instance.
+// Returns an error if the key doesn't meet AES requirements.
+func NewEncryption(key []byte) (*Encryption, error) {
+	if err := ValidateEncryptionKey(key); err != nil {
+		return nil, err
+	}
+	return &Encryption{Key: key}, nil
+}
+
 func (e Encryption) Encrypt(data string) (string, error) {
+	if err := ValidateEncryptionKey(e.Key); err != nil {
+		return "", err
+	}
 
 	plainText := []byte(data)
 
@@ -92,6 +119,9 @@ func (e Encryption) Encrypt(data string) (string, error) {
 }
 
 func (e Encryption) Decrypt(cryptoText string) (string, error) {
+	if err := ValidateEncryptionKey(e.Key); err != nil {
+		return "", err
+	}
 
 	cipherText, err := base64.URLEncoding.DecodeString(cryptoText)
 	if err != nil {

@@ -13,6 +13,11 @@ func (g *Gemquick) routes() http.Handler {
 	mux.Use(middleware.RequestID)
 	mux.Use(middleware.RealIP)
 
+	// Add OpenTelemetry tracing middleware if enabled
+	if g.Logging != nil && g.Logging.OTel != nil && g.Logging.OTel.IsEnabled() {
+		mux.Use(g.Logging.OTel.Middleware())
+	}
+
 	// Add structured logging middleware if available
 	if g.Logging != nil && g.Logging.Logger != nil {
 		mux.Use(logging.StructuredLoggingMiddleware(g.Logging.Logger))

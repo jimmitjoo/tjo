@@ -15,6 +15,7 @@ import (
 	"github.com/jimmitjoo/gemquick/filesystems"
 	"github.com/jimmitjoo/gemquick/jobs"
 	"github.com/jimmitjoo/gemquick/logging"
+	"github.com/jimmitjoo/gemquick/otel"
 	"github.com/jimmitjoo/gemquick/render"
 	"github.com/jimmitjoo/gemquick/sms"
 	"github.com/robfig/cron/v3"
@@ -28,11 +29,7 @@ type LoggingService struct {
 	Metrics *logging.MetricRegistry
 	Health  *logging.HealthMonitor
 	App     *logging.ApplicationMetrics
-}
-
-// NewLoggingService creates a new logging service with default loggers
-func NewLoggingService() *LoggingService {
-	return &LoggingService{}
+	OTel    *otel.Provider // OpenTelemetry provider for distributed tracing
 }
 
 // HTTPService handles HTTP routing, sessions, and rendering
@@ -41,11 +38,6 @@ type HTTPService struct {
 	Session  *scs.SessionManager
 	Render   *render.Render
 	JetViews *jet.Set
-}
-
-// NewHTTPService creates a new HTTP service
-func NewHTTPService() *HTTPService {
-	return &HTTPService{}
 }
 
 // DataService handles database, caching, and file storage
@@ -72,11 +64,6 @@ type BackgroundService struct {
 	Scheduler *cron.Cron
 	Mail      email.Mail
 	SMS       sms.SMSProvider
-}
-
-// NewBackgroundService creates a new background service
-func NewBackgroundService() *BackgroundService {
-	return &BackgroundService{}
 }
 
 // FileSystemRegistry provides thread-safe access to registered file systems.

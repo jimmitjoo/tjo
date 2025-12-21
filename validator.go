@@ -2,6 +2,7 @@ package gemquick
 
 import (
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/asaskevich/govalidator"
+	"github.com/microcosm-cc/bluemonday"
 )
 
 type Validation struct {
@@ -127,14 +129,24 @@ func (v *Validation) IsURL(field, value string) {
 	}
 }
 
-// SanitizeHTML removes potentially dangerous HTML/JavaScript from input
+// SanitizeHTML removes ALL HTML tags from input using bluemonday's strict policy.
+// Use this for input that should be displayed as plain text.
 func (v *Validation) SanitizeHTML(value string) string {
-	// Basic HTML sanitization - removes script tags and event handlers
-	value = strings.ReplaceAll(value, "<script", "&lt;script")
-	value = strings.ReplaceAll(value, "</script>", "&lt;/script&gt;")
-	value = strings.ReplaceAll(value, "javascript:", "")
-	value = strings.ReplaceAll(value, "onerror=", "")
-	value = strings.ReplaceAll(value, "onclick=", "")
-	value = strings.ReplaceAll(value, "onload=", "")
-	return value
+	p := bluemonday.StrictPolicy()
+	return p.Sanitize(value)
+}
+
+// SanitizeRichText allows safe HTML formatting (bold, italic, links, etc.) while
+// removing dangerous elements like scripts, iframes, and event handlers.
+// Use this for user-generated content like blog posts, comments, or rich text editors.
+func (v *Validation) SanitizeRichText(value string) string {
+	p := bluemonday.UGCPolicy()
+	return p.Sanitize(value)
+}
+
+// EscapeHTML completely escapes all HTML special characters.
+// Use this when you want to display user input as literal text, preserving
+// characters like < > & as visible text rather than HTML entities.
+func (v *Validation) EscapeHTML(value string) string {
+	return html.EscapeString(value)
 }
