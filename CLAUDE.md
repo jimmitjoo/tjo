@@ -73,6 +73,7 @@ The main Gemquick struct orchestrates all framework components:
 - `filesystems/` - File storage abstractions (S3, MinIO)
 - `jobs/` - Background job processing system
 - `logging/` - Structured logging and metrics
+- `otel/` - OpenTelemetry distributed tracing and observability
 - `render/` - Template rendering utilities
 - `security/` - Security middleware (CSRF, rate limiting, validation)
 - `session/` - Session management
@@ -105,3 +106,35 @@ The `gq` command provides:
 - `migrate` - Run database migrations
 - `make auth/mail/model/handler` - Generate boilerplate code
 - `session` - Create session tables in database
+
+### OpenTelemetry (`otel/`)
+Distributed tracing and observability with OpenTelemetry:
+
+**Environment Variables:**
+```bash
+OTEL_ENABLED=true              # Enable OpenTelemetry
+OTEL_SERVICE_NAME=my-app       # Service name in traces
+OTEL_SERVICE_VERSION=1.0.0     # Service version
+OTEL_ENVIRONMENT=production    # Deployment environment
+OTEL_EXPORTER=otlp             # Exporter: otlp, zipkin, none
+OTEL_ENDPOINT=localhost:4317   # Collector endpoint
+OTEL_INSECURE=true             # Disable TLS (dev only)
+OTEL_SAMPLER=always            # Sampling: always, never, ratio, parent
+OTEL_SAMPLE_RATIO=0.1          # Ratio when using ratio sampler
+```
+
+**Features:**
+- Automatic HTTP request tracing via middleware
+- Database operation tracing with `otel.WrapDB()`
+- Log correlation with `otel.LoggerWithTrace(ctx, logger)`
+- Custom spans with `otel.Start(ctx, "operation")`
+- Support for OTLP, Zipkin exporters
+
+**Local Development with Jaeger:**
+```bash
+docker run -d --name jaeger \
+  -p 16686:16686 \
+  -p 4317:4317 \
+  jaegertracing/all-in-one:latest
+# View traces at http://localhost:16686
+```
