@@ -3,7 +3,7 @@ module github.com/jimmitjoo/gemquick/otel
 go 1.24.0
 
 require (
-	github.com/jimmitjoo/gemquick v0.5.2
+	github.com/jimmitjoo/gemquick v0.5.3
 	go.opentelemetry.io/otel v1.39.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.39.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.39.0
