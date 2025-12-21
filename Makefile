@@ -33,8 +33,32 @@ build:
 release:
 	@if [ -z "$(v)" ]; then echo "Usage: make release v=0.5.0"; exit 1; fi
 	@echo "Creating release v$(v)..."
+	@echo "Updating version references in gemquick..."
+	@# Update otel/go.mod
+	@sed -i 's|github.com/jimmitjoo/gemquick v[0-9.]*|github.com/jimmitjoo/gemquick v$(v)|g' otel/go.mod
+	@# Update template go.mod
+	@sed -i 's|github.com/jimmitjoo/gemquick v[0-9.]*|github.com/jimmitjoo/gemquick v$(v)|g' cmd/cli/templates/go.mod.txt
+	@# Run go mod tidy in otel to update go.sum
+	@cd otel && go mod tidy 2>/dev/null || true
+	@# Commit changes if any
+	@git add -A
+	@git diff --cached --quiet || git commit -m "Update version references to v$(v)"
 	@git tag -a v$(v) -m "Release v$(v)"
-	@echo "Tag v$(v) created. Push with: git push origin v$(v)"
+	@echo ""
+	@echo "Updating gemquick-bare..."
+	@if [ -d "../gemquick-bare" ]; then \
+		sed -i 's|github.com/jimmitjoo/gemquick v[0-9.]*|github.com/jimmitjoo/gemquick v$(v)|g' ../gemquick-bare/go.mod; \
+		cd ../gemquick-bare && go mod tidy 2>/dev/null || true; \
+		git add -A; \
+		git diff --cached --quiet || git commit -m "Update gemquick to v$(v)"; \
+		echo "gemquick-bare updated"; \
+	else \
+		echo "Warning: ../gemquick-bare not found, skipping"; \
+	fi
+	@echo ""
+	@echo "Release v$(v) created!"
+	@echo "Push gemquick:      git push && git push origin v$(v)"
+	@echo "Push gemquick-bare: cd ../gemquick-bare && git push"
 
 clean:
 	@rm -rf ./dist/*
