@@ -24,8 +24,8 @@ func New(config *APIConfig) *API {
 		config = &APIConfig{
 			Version:         "v1",
 			RateLimitPerMin: 60,
-			EnableCORS:      true,
-			AllowedOrigins:  []string{"*"},
+			EnableCORS:      false, // Disabled by default for security
+			AllowedOrigins:  nil,   // Must be explicitly configured
 			EnableMetrics:   true,
 			Debug:           false,
 		}
