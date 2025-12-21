@@ -8,7 +8,7 @@ Gemquick is a modern, full-featured web application framework for Go that provid
 
 - 🚀 **Chi Router** - Fast and lightweight HTTP router
 - 🗄️ **Multi-Database Support** - PostgreSQL, MySQL, MariaDB, SQLite
-- 🔐 **Security First** - CSRF protection, rate limiting, input validation, XSS prevention
+- 🔐 **Security First** - CSRF protection, rate limiting, input validation, XSS prevention, 2FA
 - 📧 **Email System** - Multiple provider support with templates
 - 💾 **Caching** - Redis and Badger cache implementations
 - 🔄 **Background Jobs** - Job queue with cron scheduler
@@ -284,6 +284,7 @@ go hub.Run()
 - XSS protection
 - Session fixation protection
 - Secure password hashing
+- Two-Factor Authentication (TOTP)
 
 ### OpenTelemetry (Distributed Tracing)
 
