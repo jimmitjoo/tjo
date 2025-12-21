@@ -49,8 +49,14 @@ Add to your Claude Code / Cursor MCP config:
 | `gemquick_create_model` | Create a new database model |
 | `gemquick_create_handler` | Create a new HTTP handler |
 | `gemquick_create_migration` | Create a new database migration |
+| `gemquick_create_middleware` | Create a new middleware |
+| `gemquick_create_mail` | Create email template |
 | `gemquick_run_migrations` | Run pending migrations |
 | `gemquick_rollback` | Rollback migrations |
+| `gemquick_setup_auth` | Setup auth with 2FA support |
+| `gemquick_create_session_table` | Create session table |
+| `gemquick_setup_docker` | Generate Docker config |
+| `gemquick_module_info` | Get module setup instructions |
 
 ### Usage
 
@@ -60,6 +66,9 @@ Just ask your AI assistant:
 - "Add a migration to create a posts table"
 - "Create a handler for managing products"
 - "Run the database migrations"
+- "Setup authentication for my app"
+- "How do I add WebSocket support?"
+- "Generate Docker configuration"
 
 ## Installation
 
