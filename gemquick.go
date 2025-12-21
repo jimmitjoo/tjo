@@ -728,3 +728,27 @@ func (g *Gemquick) Shutdown(ctx context.Context) error {
 	}
 	return fmt.Errorf("%s", errMsg)
 }
+
+// GetModule returns a module by name, or nil if not registered.
+// Use type assertion to get the concrete module type.
+//
+// Example:
+//
+//	if m := app.GetModule("sms"); m != nil {
+//	    smsModule := m.(*sms.Module)
+//	    smsModule.Send("+1234567890", "Hello!", false)
+//	}
+func (g *Gemquick) GetModule(name string) Module {
+	if g.Modules == nil {
+		return nil
+	}
+	return g.Modules.Get(name)
+}
+
+// HasModule checks if a module is registered.
+func (g *Gemquick) HasModule(name string) bool {
+	if g.Modules == nil {
+		return false
+	}
+	return g.Modules.Has(name)
+}
