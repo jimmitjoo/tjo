@@ -22,6 +22,7 @@ import (
 	"github.com/jimmitjoo/gemquick/filesystems/s3filesystem"
 	"github.com/jimmitjoo/gemquick/jobs"
 	"github.com/jimmitjoo/gemquick/logging"
+	"github.com/jimmitjoo/gemquick/otel"
 	"github.com/jimmitjoo/gemquick/render"
 	"github.com/jimmitjoo/gemquick/session"
 	"github.com/jimmitjoo/gemquick/sms"
@@ -29,7 +30,8 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-const version = "0.0.1"
+// version is injected at build time via ldflags
+var version = "dev"
 
 // Gemquick is the main framework struct that orchestrates all components.
 // It uses composition to organize functionality into focused services:
@@ -37,6 +39,7 @@ const version = "0.0.1"
 // - HTTP: routing, sessions, and template rendering
 // - Data: database, caching, and file storage
 // - Background: job processing, scheduling, mail, and SMS
+// - Modules: optional components (SMS, Email, WebSocket, OTel, etc.)
 type Gemquick struct {
 	// Core configuration
 	AppName       string
@@ -52,6 +55,9 @@ type Gemquick struct {
 	HTTP       *HTTPService
 	Data       *DataService
 	Background *BackgroundService
+
+	// Modules (opt-in components)
+	Modules *ModuleRegistry
 }
 
 type Server struct {
@@ -61,7 +67,16 @@ type Server struct {
 	URL        string
 }
 
-func (g *Gemquick) New(rootPath string) error {
+// New initializes the Gemquick framework with optional modules.
+// Modules are opt-in components for features like SMS, Email, WebSocket, etc.
+// Example:
+//
+//	app := gemquick.Gemquick{}
+//	app.New(rootPath,
+//	    sms.NewModule(),
+//	    email.NewModule(),
+//	)
+func (g *Gemquick) New(rootPath string, modules ...Module) error {
 	pathConfig := initPaths{
 		rootPath:    rootPath,
 		folderNames: []string{"handlers", "migrations", "views", "email", "data", "public", "tmp", "logs", "middleware"},
@@ -89,11 +104,14 @@ func (g *Gemquick) New(rootPath string) error {
 		return fmt.Errorf("configuration error: %w", err)
 	}
 
+	// Initialize module registry
+	g.Modules = NewModuleRegistry()
+
 	// Initialize services
-	g.Logging = NewLoggingService()
-	g.HTTP = NewHTTPService()
-	g.Data = NewDataService()
-	g.Background = NewBackgroundService()
+	g.Logging = &LoggingService{}
+	g.HTTP = &HTTPService{}
+	g.Data = NewDataService() // Has actual initialization logic
+	g.Background = &BackgroundService{}
 
 	// create loggers
 	infoLog, errorLog := g.startLoggers()
@@ -212,13 +230,24 @@ func (g *Gemquick) New(rootPath string) error {
 	// Setup file systems
 	g.createFileSystems()
 
-	// Setup SMS provider
+	// Setup SMS provider (will be removed when SMS module is used)
 	g.Background.SMS = sms.CreateSMSProvider(g.Config.App.SMSProvider)
 
-	// Setup mail service
+	// Setup mail service (will be removed when Email module is used)
 	g.Background.Mail = g.createMailer()
 
 	go g.Background.Mail.ListenForMail()
+
+	// Register and initialize user-provided modules
+	for _, m := range modules {
+		if err := g.Modules.Register(m); err != nil {
+			return fmt.Errorf("failed to register module: %w", err)
+		}
+	}
+
+	if err := g.Modules.InitializeAll(g); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -364,6 +393,20 @@ func (g *Gemquick) ListenAndServe() {
 		}
 	}
 
+	// Shutdown OpenTelemetry (flushes pending spans)
+	if g.Logging.OTel != nil {
+		if err := g.Logging.OTel.Shutdown(ctx); err != nil {
+			g.Logging.Error.Printf("Error shutting down OpenTelemetry: %v", err)
+		}
+	}
+
+	// Shutdown all modules (in reverse order)
+	if g.Modules != nil && g.Modules.Count() > 0 {
+		if err := g.Modules.ShutdownAll(ctx); err != nil {
+			g.Logging.Error.Printf("Error shutting down modules: %v", err)
+		}
+	}
+
 	if g.Logging.Logger != nil {
 		g.Logging.Logger.Info("Server shutdown complete")
 	} else {
@@ -437,6 +480,68 @@ func (g *Gemquick) setupStructuredLogging() {
 		"debug":      g.Debug,
 		"log_level":  logLevel.String(),
 		"json_logs":  enableJSON,
+	})
+
+	// Initialize OpenTelemetry if enabled
+	if g.Config.OTel.IsEnabled() {
+		g.setupOpenTelemetry()
+	}
+}
+
+// setupOpenTelemetry initializes the OpenTelemetry provider for distributed tracing.
+func (g *Gemquick) setupOpenTelemetry() {
+	cfg := otel.Config{
+		ServiceName:    g.Config.OTel.ServiceName,
+		ServiceVersion: g.Config.OTel.ServiceVersion,
+		Environment:    g.Config.OTel.Environment,
+		Endpoint:       g.Config.OTel.Endpoint,
+		Insecure:       g.Config.OTel.Insecure,
+		EnableTracing:  true,
+		EnableMetrics:  g.Config.OTel.EnableMetrics,
+	}
+
+	// Set exporter type
+	switch g.Config.OTel.Exporter {
+	case "otlp":
+		cfg.Exporter = otel.ExporterOTLP
+	case "zipkin":
+		cfg.Exporter = otel.ExporterZipkin
+	case "none":
+		cfg.Exporter = otel.ExporterNone
+	default:
+		cfg.Exporter = otel.ExporterOTLP
+	}
+
+	// Set sampler
+	switch g.Config.OTel.Sampler {
+	case "always":
+		cfg.Sampler = otel.SamplerAlways
+	case "never":
+		cfg.Sampler = otel.SamplerNever
+	case "ratio":
+		cfg.Sampler = otel.SamplerRatio
+		cfg.SampleRatio = g.Config.OTel.SampleRatio
+	case "parent":
+		cfg.Sampler = otel.SamplerParentBased
+	default:
+		cfg.Sampler = otel.SamplerAlways
+	}
+
+	provider, err := otel.New(cfg)
+	if err != nil {
+		g.Logging.Logger.Error("Failed to initialize OpenTelemetry", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	g.Logging.OTel = provider
+
+	g.Logging.Logger.Info("OpenTelemetry initialized", map[string]interface{}{
+		"service":  cfg.ServiceName,
+		"exporter": string(cfg.Exporter),
+		"endpoint": cfg.Endpoint,
+		"sampler":  string(cfg.Sampler),
 	})
 }
 
