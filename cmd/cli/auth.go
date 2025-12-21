@@ -98,6 +98,11 @@ func doAuth() error {
 		exitGracefully(err)
 	}
 
+	err = copyFileFromTemplate("templates/handlers/totp-handlers.go.txt", rootPath+"/handlers/totp-handlers.go")
+	if err != nil {
+		exitGracefully(err)
+	}
+
 	err = copyFileFromTemplate("templates/email/welcome.html.tmpl", rootPath+"/email/welcome.html.tmpl")
 	if err != nil {
 		exitGracefully(err)
@@ -134,6 +139,21 @@ func doAuth() error {
 	}
 
 	err = copyFileFromTemplate("templates/views/reset-password.jet", rootPath+"/views/reset-password.jet")
+	if err != nil {
+		exitGracefully(err)
+	}
+
+	err = copyFileFromTemplate("templates/views/2fa-setup.jet", rootPath+"/views/2fa-setup.jet")
+	if err != nil {
+		exitGracefully(err)
+	}
+
+	err = copyFileFromTemplate("templates/views/2fa-challenge.jet", rootPath+"/views/2fa-challenge.jet")
+	if err != nil {
+		exitGracefully(err)
+	}
+
+	err = copyFileFromTemplate("templates/views/2fa-disable.jet", rootPath+"/views/2fa-disable.jet")
 	if err != nil {
 		exitGracefully(err)
 	}
@@ -185,8 +205,14 @@ func doAuth() error {
 		exitGracefully(err)
 	}
 
+	// copy templates/2fa.routes.txt into a variable
+	tfaRoutes, err := templateFS.ReadFile("templates/2fa.routes.txt")
+	if err != nil {
+		exitGracefully(err)
+	}
+
 	// find the line with 'return route.App.Routes' in routesContent
-	output := bytes.Replace(routesContent, []byte("return route.App.Routes"), []byte(string(authRoutes)+"\n\n\treturn route.App.Routes"), 1)
+	output := bytes.Replace(routesContent, []byte("return route.App.Routes"), []byte(string(authRoutes)+"\n\n"+string(tfaRoutes)+"\n\n\treturn route.App.Routes"), 1)
 	if err = os.WriteFile(routesFile, output, 0644); err != nil {
 		exitGracefully(err)
 	}
@@ -194,8 +220,10 @@ func doAuth() error {
 	color.Yellow("  - users, tokens and remember_tokens migrations created and ran")
 	color.Yellow("  - user and token models created")
 	color.Yellow("  - auth middleware created")
+	color.Yellow("  - 2FA (TOTP) support included")
 	color.Yellow("")
 	color.Yellow("Don't forget to add user and token models in data/models.go, and to add appropriate middlewares to your routes.")
+	color.Yellow("To enable 2FA for a user, direct them to /user/2fa/setup")
 
 	return nil
 }

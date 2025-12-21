@@ -1,0 +1,7 @@
+	// 2FA routes - added by make auth command
+	route.get("/2fa/challenge", route.Handlers.TwoFactorChallenge)
+	route.post("/2fa/verify", route.Handlers.TwoFactorVerify)
+	route.get("/user/2fa/setup", route.Handlers.TwoFactorSetup)
+	route.post("/user/2fa/verify-setup", route.Handlers.TwoFactorVerifySetup)
+	route.get("/user/2fa/disable", route.Handlers.TwoFactorDisable)
+	route.post("/user/2fa/disable", route.Handlers.TwoFactorDisablePost)
