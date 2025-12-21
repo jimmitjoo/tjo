@@ -2,6 +2,7 @@ package security
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/justinas/nosurf"
@@ -304,16 +305,35 @@ func EnhancedCSRFMiddleware(config CSRFConfig) func(next http.Handler) http.Hand
 	}
 }
 
-// isValidReferrer checks if the referrer header is valid
+// isValidReferrer checks if the referrer header is valid.
+// Uses proper URL parsing to prevent bypass attacks.
 func isValidReferrer(r *http.Request) bool {
 	referrer := r.Header.Get("Referer")
 	if referrer == "" {
 		return false // Require referrer for state-changing operations
 	}
 
-	// Check if referrer matches the host
-	host := r.Header.Get("Host")
-	return strings.Contains(referrer, host)
+	// Parse the referrer URL properly
+	refURL, err := url.Parse(referrer)
+	if err != nil {
+		return false
+	}
+
+	// Get the expected host
+	expectedHost := r.Host
+	if expectedHost == "" {
+		expectedHost = r.Header.Get("Host")
+	}
+
+	// Compare hosts exactly (not as substring!)
+	refHost := refURL.Host
+
+	// Handle port normalization - if expected has no port, strip port from referrer
+	if !strings.Contains(expectedHost, ":") {
+		refHost = strings.Split(refHost, ":")[0]
+	}
+
+	return refHost == expectedHost
 }
 
 // isSuspiciousRequest detects potentially malicious patterns

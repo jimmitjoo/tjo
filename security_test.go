@@ -256,9 +256,10 @@ func TestValidationMaxLength(t *testing.T) {
 }
 
 // TestValidationSanitization verifies HTML/XSS sanitization
+// SanitizeHTML now uses bluemonday's StrictPolicy which removes ALL HTML tags
 func TestValidationSanitization(t *testing.T) {
 	v := &Validation{Errors: make(map[string]string)}
-	
+
 	tests := []struct {
 		name     string
 		input    string
@@ -267,30 +268,45 @@ func TestValidationSanitization(t *testing.T) {
 		{
 			name:     "Script tag",
 			input:    "<script>alert('XSS')</script>",
-			expected: "&lt;script>alert('XSS')&lt;/script&gt;",
+			expected: "", // bluemonday removes all HTML tags
 		},
 		{
 			name:     "JavaScript protocol",
 			input:    "<a href='javascript:alert(1)'>Click</a>",
-			expected: "<a href='alert(1)'>Click</a>",
+			expected: "Click", // bluemonday removes tags but keeps text content
 		},
 		{
 			name:     "Event handlers",
 			input:    "<img src=x onerror=alert(1) onclick=alert(2)>",
-			expected: "<img src=x alert(1) alert(2)>",
+			expected: "", // bluemonday removes all HTML tags
 		},
 		{
 			name:     "Normal text",
 			input:    "This is normal text",
 			expected: "This is normal text",
 		},
+		{
+			name:     "Mixed content",
+			input:    "Hello <b>world</b>!",
+			expected: "Hello world!", // Tags removed, text preserved
+		},
+		{
+			name:     "SVG XSS",
+			input:    "<svg onload=alert(1)>",
+			expected: "", // bluemonday removes all HTML tags
+		},
+		{
+			name:     "Uppercase script",
+			input:    "<SCRIPT>alert('XSS')</SCRIPT>",
+			expected: "", // bluemonday handles case-insensitive
+		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sanitized := v.SanitizeHTML(tt.input)
 			if sanitized != tt.expected {
-				t.Errorf("Sanitization failed. Got: %s, Want: %s", sanitized, tt.expected)
+				t.Errorf("Sanitization failed. Got: %q, Want: %q", sanitized, tt.expected)
 			}
 		})
 	}

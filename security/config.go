@@ -47,6 +47,26 @@ type Config struct {
 	APIKeyHeader   string
 }
 
+// RateLimitConfig holds rate limiting configuration
+type RateLimitConfig struct {
+	RequestsPerMinute int           // Number of requests per minute
+	BurstSize         int           // Burst allowance
+	WindowSize        time.Duration // Time window for rate limiting
+	SkipSuccessful    bool          // Only count failed requests (4xx, 5xx)
+	SkipPaths         []string      // Paths to skip rate limiting
+}
+
+// DefaultRateLimitConfig returns sensible defaults
+func DefaultRateLimitConfig() RateLimitConfig {
+	return RateLimitConfig{
+		RequestsPerMinute: 60,
+		BurstSize:         10,
+		WindowSize:        time.Minute,
+		SkipSuccessful:    false,
+		SkipPaths:         []string{"/health", "/metrics", "/health/ready", "/health/live"},
+	}
+}
+
 // LoadFromEnv loads security configuration from environment variables
 func LoadFromEnv() Config {
 	config := Config{
