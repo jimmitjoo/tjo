@@ -17,6 +17,7 @@ Gemquick is a modern, full-featured web application framework for Go that provid
 - 📱 **SMS Integration** - Multiple SMS provider support
 - 🎨 **Template Engine** - Jet template engine for dynamic views
 - 📊 **Logging & Metrics** - Structured logging with health monitoring
+- 🔭 **OpenTelemetry** - Distributed tracing and observability
 - 🔑 **Session Management** - Secure session handling with multiple stores
 - 🛠️ **CLI Tools** - Project scaffolding and code generation
 - 🤖 **AI-Native Development** - MCP server for AI assistants
@@ -207,6 +208,53 @@ go hub.Run()
 - Session fixation protection
 - Secure password hashing
 
+### OpenTelemetry (Distributed Tracing)
+
+Enable distributed tracing for production observability:
+
+```env
+OTEL_ENABLED=true
+OTEL_SERVICE_NAME=my-app
+OTEL_ENDPOINT=localhost:4317
+OTEL_INSECURE=true
+```
+
+**Features:**
+- Automatic HTTP request tracing
+- Database query tracing
+- Log correlation with trace IDs
+- Support for OTLP, Zipkin exporters
+
+**Custom Spans:**
+```go
+import "github.com/jimmitjoo/gemquick/otel"
+
+func (h *Handler) ProcessOrder(w http.ResponseWriter, r *http.Request) {
+    ctx, span := otel.Start(r.Context(), "process_order")
+    defer span.End()
+
+    otel.SetAttributes(ctx, otel.String("order.id", orderID))
+
+    if err != nil {
+        otel.RecordError(ctx, err)
+    }
+}
+```
+
+**Database Tracing:**
+```go
+tracedDB := otel.WrapDB(db, "postgres", "mydb")
+rows, _ := tracedDB.Query(ctx, "SELECT * FROM users")
+```
+
+**Local Development with Jaeger:**
+```bash
+docker run -d --name jaeger \
+  -p 16686:16686 -p 4317:4317 \
+  jaegertracing/all-in-one:latest
+# View traces at http://localhost:16686
+```
+
 ## Configuration
 
 Configuration is managed through `.env` file:
@@ -233,6 +281,11 @@ SESSION_LIFETIME=24
 MAIL_PROVIDER=smtp
 SMTP_HOST=localhost
 SMTP_PORT=1025
+
+# OpenTelemetry (optional)
+OTEL_ENABLED=false
+OTEL_SERVICE_NAME=my-app
+OTEL_ENDPOINT=localhost:4317
 ```
 
 ## API Development
@@ -276,7 +329,10 @@ For detailed documentation and examples, see:
 
 - [TESTING.md](TESTING.md) - Complete testing guide
 - [CLAUDE.md](CLAUDE.md) - AI assistant integration guide
-- [Examples](examples/) - Sample implementations
+- [docs/extending.md](docs/extending.md) - Creating custom implementations
+- [docs/opentelemetry.md](docs/opentelemetry.md) - OpenTelemetry integration guide
+- [docs/query-builder.md](docs/query-builder.md) - Database query builder guide
+- [docs/configuration.md](docs/configuration.md) - Full configuration reference
 
 ## Support
 
