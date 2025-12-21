@@ -24,6 +24,7 @@ type Config struct {
 	Logging  LoggingConfig
 	Jobs     JobsConfig
 	CORS     CORSConfig
+	OTel     OTelConfig
 }
 
 // AppConfig holds core application settings
@@ -133,6 +134,20 @@ type CORSConfig struct {
 	AllowedOrigins []string // Empty means block all cross-origin requests
 }
 
+// OTelConfig holds OpenTelemetry settings
+type OTelConfig struct {
+	Enabled        bool    // Enable OpenTelemetry tracing
+	ServiceName    string  // Service name for traces
+	ServiceVersion string  // Service version
+	Environment    string  // Deployment environment (production, staging, etc.)
+	Exporter       string  // Exporter type: otlp, zipkin, none
+	Endpoint       string  // Collector endpoint (e.g., localhost:4317)
+	Insecure       bool    // Disable TLS for exporter connection
+	Sampler        string  // Sampling strategy: always, never, ratio, parent
+	SampleRatio    float64 // Sample ratio (0.0-1.0) when using ratio sampler
+	EnableMetrics  bool    // Enable OpenTelemetry metrics
+}
+
 // Load reads configuration from environment variables and validates it.
 // Returns an error if required values are missing or invalid.
 func Load() (*Config, error) {
@@ -217,6 +232,18 @@ func Load() (*Config, error) {
 	// CORS config
 	cfg.CORS.AllowedOrigins = envStringSlice("CORS_ALLOWED_ORIGINS")
 
+	// OTel config
+	cfg.OTel.Enabled = envBool("OTEL_ENABLED", false)
+	cfg.OTel.ServiceName = os.Getenv("OTEL_SERVICE_NAME")
+	cfg.OTel.ServiceVersion = os.Getenv("OTEL_SERVICE_VERSION")
+	cfg.OTel.Environment = os.Getenv("OTEL_ENVIRONMENT")
+	cfg.OTel.Exporter = envDefault("OTEL_EXPORTER", "otlp")
+	cfg.OTel.Endpoint = os.Getenv("OTEL_ENDPOINT")
+	cfg.OTel.Insecure = envBool("OTEL_INSECURE", false)
+	cfg.OTel.Sampler = envDefault("OTEL_SAMPLER", "always")
+	cfg.OTel.SampleRatio = envFloat("OTEL_SAMPLE_RATIO", 1.0)
+	cfg.OTel.EnableMetrics = envBool("OTEL_ENABLE_METRICS", false)
+
 	// Validate
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -284,6 +311,45 @@ func (c *Config) Validate() error {
 		errs = append(errs, "JOB_WORKERS must be at least 1")
 	}
 
+	// OTel validation (only if enabled)
+	if c.OTel.Enabled {
+		if c.OTel.ServiceName == "" {
+			errs = append(errs, "OTEL_SERVICE_NAME is required when OTEL_ENABLED=true")
+		}
+
+		validExporters := map[string]bool{
+			"otlp": true, "zipkin": true, "none": true,
+		}
+		if !validExporters[strings.ToLower(c.OTel.Exporter)] {
+			errs = append(errs, fmt.Sprintf("invalid OTEL_EXPORTER: %s (must be otlp, zipkin, or none)", c.OTel.Exporter))
+		}
+
+		if c.OTel.Exporter != "none" && c.OTel.Endpoint == "" {
+			errs = append(errs, "OTEL_ENDPOINT is required when exporter is enabled")
+		}
+
+		validSamplers := map[string]bool{
+			"always": true, "never": true, "ratio": true, "parent": true,
+		}
+		if !validSamplers[strings.ToLower(c.OTel.Sampler)] {
+			errs = append(errs, fmt.Sprintf("invalid OTEL_SAMPLER: %s", c.OTel.Sampler))
+		}
+
+		if c.OTel.SampleRatio < 0 || c.OTel.SampleRatio > 1 {
+			errs = append(errs, "OTEL_SAMPLE_RATIO must be between 0.0 and 1.0")
+		}
+	}
+
+	// Encryption key validation (if set)
+	if c.App.EncryptionKey != "" {
+		keyLen := len(c.App.EncryptionKey)
+		if keyLen != 16 && keyLen != 24 && keyLen != 32 {
+			errs = append(errs, fmt.Sprintf(
+				"KEY must be 16, 24, or 32 characters for AES encryption (got %d). "+
+					"Use 'gq make key' to generate a valid key", keyLen))
+		}
+	}
+
 	if len(errs) > 0 {
 		return errors.New("configuration errors: " + strings.Join(errs, "; "))
 	}
@@ -322,6 +388,18 @@ func envInt(key string, defaultVal int) int {
 		return defaultVal
 	}
 	return i
+}
+
+func envFloat(key string, defaultVal float64) float64 {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultVal
+	}
+	f, err := strconv.ParseFloat(val, 64)
+	if err != nil {
+		return defaultVal
+	}
+	return f
 }
 
 func envStringSlice(key string) []string {
@@ -378,4 +456,9 @@ func (c *StorageConfig) IsS3Enabled() bool {
 // IsMinIOEnabled returns true if MinIO storage is configured
 func (c *StorageConfig) IsMinIOEnabled() bool {
 	return c.MinIOSecret != ""
+}
+
+// IsEnabled returns true if OpenTelemetry is configured and enabled
+func (c *OTelConfig) IsEnabled() bool {
+	return c.Enabled && c.ServiceName != ""
 }
