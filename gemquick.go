@@ -668,3 +668,63 @@ func (g *Gemquick) createFileSystems() {
 		g.Data.Files.Register("s3", s3)
 	}
 }
+
+// Shutdown gracefully shuts down the application and all its components.
+// It stops modules in reverse order, then stops background services, and closes connections.
+func (g *Gemquick) Shutdown(ctx context.Context) error {
+	var errs []error
+
+	// Shutdown modules in reverse order
+	if g.Modules != nil {
+		if err := g.Modules.ShutdownAll(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	// Stop cron scheduler
+	if g.Background.Scheduler != nil {
+		g.Background.Scheduler.Stop()
+	}
+
+	// Shutdown OpenTelemetry
+	if g.Logging.OTel != nil {
+		if err := g.Logging.OTel.Shutdown(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("otel shutdown: %w", err))
+		}
+	}
+
+	// Close database connection
+	if g.Data.DB.Pool != nil {
+		if err := g.Data.DB.Pool.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("database close: %w", err))
+		}
+	}
+
+	// Close Redis connection
+	if g.Data.redisPool != nil {
+		if err := g.Data.redisPool.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("redis close: %w", err))
+		}
+	}
+
+	// Close Badger connection
+	if g.Data.badgerConn != nil {
+		if err := g.Data.badgerConn.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("badger close: %w", err))
+		}
+	}
+
+	if len(errs) == 0 {
+		return nil
+	}
+
+	if len(errs) == 1 {
+		return errs[0]
+	}
+
+	errMsg := "shutdown errors:"
+	for _, err := range errs {
+		errMsg += "\n  - " + err.Error()
+	}
+	return fmt.Errorf("%s", errMsg)
+}
