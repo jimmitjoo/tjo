@@ -15,6 +15,8 @@ CREATE TABLE users (
     user_active integer NOT NULL DEFAULT 0,
     email character varying(255) NOT NULL UNIQUE,
     password character varying(60) NOT NULL,
+    totp_secret character varying(255) DEFAULT '',
+    totp_enabled boolean NOT NULL DEFAULT false,
     created_at timestamp without time zone NOT NULL DEFAULT now(),
     updated_at timestamp without time zone NOT NULL DEFAULT now()
 );

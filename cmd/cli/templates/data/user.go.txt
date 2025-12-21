@@ -21,6 +21,8 @@ type User struct {
 	Password       string    `db:"password" json:"-"` // Never expose password in JSON
 	VerifyPassword string    `db:"-" json:"-"`        // Form validation only
 	Active         int       `db:"user_active" json:"active"`
+	TOTPSecret     string    `db:"totp_secret" json:"-"`     // 2FA TOTP secret (encrypted)
+	TOTPEnabled    bool      `db:"totp_enabled" json:"totp_enabled"`
 	CreatedAt      time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt      time.Time `db:"updated_at" json:"updated_at"`
 	Token          Token     `db:"-" json:"-"`
@@ -313,4 +315,37 @@ func (u *User) FindWithContext(ctx context.Context, id int) (*User, error) {
 	default:
 	}
 	return u.Find(id)
+}
+
+// EnableTOTP enables 2FA for the user with the given secret
+func (u *User) EnableTOTP(id int, secret string) error {
+	collection := upper.Collection(u.Table())
+	res := collection.Find(up.Cond{"id =": id})
+	if err := res.Update(map[string]interface{}{
+		"totp_secret":  secret,
+		"totp_enabled": true,
+		"updated_at":   time.Now(),
+	}); err != nil {
+		return fmt.Errorf("EnableTOTP: %w", err)
+	}
+	return nil
+}
+
+// DisableTOTP disables 2FA for the user
+func (u *User) DisableTOTP(id int) error {
+	collection := upper.Collection(u.Table())
+	res := collection.Find(up.Cond{"id =": id})
+	if err := res.Update(map[string]interface{}{
+		"totp_secret":  "",
+		"totp_enabled": false,
+		"updated_at":   time.Now(),
+	}); err != nil {
+		return fmt.Errorf("DisableTOTP: %w", err)
+	}
+	return nil
+}
+
+// Has2FAEnabled returns true if the user has 2FA enabled
+func (u *User) Has2FAEnabled() bool {
+	return u.TOTPEnabled && u.TOTPSecret != ""
 }

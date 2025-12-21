@@ -7,6 +7,8 @@ CREATE TABLE `users` (
     `user_active` int(11) NOT NULL,
     `email` varchar(255) CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
     `password` char(60) CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
+    `totp_secret` varchar(255) DEFAULT '',
+    `totp_enabled` tinyint(1) NOT NULL DEFAULT 0,
     `created_at` timestamp NULL DEFAULT NULL,
     `updated_at` timestamp NULL DEFAULT NULL,
     PRIMARY KEY (`id`),
