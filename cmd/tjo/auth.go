@@ -20,6 +20,21 @@ func doAuth() error {
 		return err
 	}
 
+	// Create required directories
+	dirs := []string{
+		rootPath + "/migrations",
+		rootPath + "/data",
+		rootPath + "/middleware",
+		rootPath + "/handlers",
+		rootPath + "/email",
+		rootPath + "/views",
+	}
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+	}
+
 	// migrations
 	fileName := fmt.Sprintf("%d_create_auth_tables", time.Now().UnixMicro())
 	var pathBuilder strings.Builder

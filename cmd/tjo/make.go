@@ -184,6 +184,12 @@ func doHandler(name string) error {
 	}
 
 	rootPath := getRootPath()
+
+	// Create handlers directory if needed
+	if err := os.MkdirAll(rootPath+"/handlers", 0755); err != nil {
+		return err
+	}
+
 	fileName := rootPath + "/handlers/" + strings.ToLower(name) + ".go"
 	if fileExists(fileName) {
 		return errors.New(fileName + " already exists.")
@@ -218,6 +224,12 @@ func doMigration(name string) error {
 	fileName := fmt.Sprintf("%d_%s.%s", time.Now().UnixMicro(), name, dbType)
 
 	rootPath := getRootPath()
+
+	// Create migrations directory if needed
+	if err := os.MkdirAll(rootPath+"/migrations", 0755); err != nil {
+		return err
+	}
+
 	migrationUpFile := rootPath + "/migrations/" + fileName + ".up.sql"
 	migrationDownFile := rootPath + "/migrations/" + fileName + ".down.sql"
 
@@ -283,6 +295,12 @@ func doModel(name string) error {
 	}
 
 	rootPath := getRootPath()
+
+	// Create data directory if needed
+	if err := os.MkdirAll(rootPath+"/data", 0755); err != nil {
+		return err
+	}
+
 	fileName := rootPath + "/data/" + strings.ToLower(modelName) + ".go"
 	if fileExists(fileName) {
 		return errors.New(fileName + " already exists.")

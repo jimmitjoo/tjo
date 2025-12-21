@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -18,6 +19,11 @@ func doSession() error {
 		dbType = "postgres"
 	} else if dbType == "mariadb" {
 		dbType = "mysql"
+	}
+
+	// Create migrations directory if needed
+	if err := os.MkdirAll(rootPath+"/migrations", 0755); err != nil {
+		return err
 	}
 
 	fileName := fmt.Sprintf("%d_create_sessions_table", time.Now().UnixMicro())
