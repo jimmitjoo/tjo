@@ -404,12 +404,13 @@ The Gemquick framework is available as open source under the terms of the [MIT L
 
 For detailed documentation and examples, see:
 
-- [TESTING.md](TESTING.md) - Complete testing guide
-- [CLAUDE.md](CLAUDE.md) - AI assistant integration guide
+- [docs/modules.md](docs/modules.md) - SMS, Email, WebSocket, OTel modules guide
 - [docs/extending.md](docs/extending.md) - Creating custom implementations
 - [docs/opentelemetry.md](docs/opentelemetry.md) - OpenTelemetry integration guide
 - [docs/query-builder.md](docs/query-builder.md) - Database query builder guide
 - [docs/configuration.md](docs/configuration.md) - Full configuration reference
+- [TESTING.md](TESTING.md) - Complete testing guide
+- [CLAUDE.md](CLAUDE.md) - AI assistant integration guide
 
 ## Support
 
