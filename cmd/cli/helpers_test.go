@@ -70,6 +70,10 @@ func TestGetDSN(t *testing.T) {
 		},
 	}
 
+	// Save and restore cfg
+	originalCfg := cfg
+	defer func() { cfg = originalCfg }()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Save and restore environment

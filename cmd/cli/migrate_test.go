@@ -26,6 +26,10 @@ func TestDoMigrate(t *testing.T) {
 	err = os.Chdir(tempDir)
 	require.NoError(t, err)
 
+	// Save and restore cfg
+	originalCfg := cfg
+	defer func() { cfg = originalCfg }()
+
 	// Create migrations directory
 	err = os.MkdirAll("migrations", 0755)
 	require.NoError(t, err)

@@ -11,13 +11,15 @@ import (
 )
 
 func TestMainFunction(t *testing.T) {
-	// Save original args and working directory
+	// Save original args, working directory, and cfg
 	originalArgs := os.Args
 	originalWd, _ := os.Getwd()
-	
+	originalCfg := cfg
+
 	defer func() {
 		os.Args = originalArgs
 		os.Chdir(originalWd)
+		cfg = originalCfg
 	}()
 
 	tests := []struct {
@@ -197,6 +199,10 @@ func TestEndToEndWorkflow(t *testing.T) {
 
 	err = os.Chdir(tempDir)
 	require.NoError(t, err)
+
+	// Save and restore cfg
+	originalCfg := cfg
+	defer func() { cfg = originalCfg }()
 
 	// Initialize cfg
 	cfg = &core.CLIConfig{

@@ -142,10 +142,19 @@ func doNew(appName string, template string) error {
 
 	// Update the existing .go files with correct name/imports
 	color.Green("\tUpdating source files...")
+
+	// Save current working directory to restore later
+	originalWd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
 	err = os.Chdir("./" + appname)
 	if err != nil {
 		return err
 	}
+	defer os.Chdir(originalWd) // Restore working directory when function returns
+
 	updateSource()
 
 	// Apply starter template if not default
