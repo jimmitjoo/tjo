@@ -1,6 +1,6 @@
 # Tjo
 
-![alt tjo](https://raw.githubusercontent.com/jimmitjoo/tjo-bare/main/public/images/tjo-logo.png)
+![alt tjo](https://raw.githubusercontent.com/jimmitjoo/tjo-bare/main/public/images/tjo-logo.webp)
 
 Tjo is a modern, full-featured web application framework for Go that provides everything you need to build scalable web applications quickly and securely.
 
