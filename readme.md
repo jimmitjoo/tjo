@@ -4,31 +4,124 @@
 
 Tjo is a modern, full-featured web application framework for Go that provides everything you need to build scalable web applications quickly and securely.
 
+## Requirements
+
+- Go 1.24+
+
 ## Features
 
-- 🚀 **Chi Router** - Fast and lightweight HTTP router
-- 🗄️ **Multi-Database Support** - PostgreSQL, MySQL, MariaDB, SQLite
-- 🔐 **Security First** - CSRF protection, rate limiting, input validation, XSS prevention, 2FA
-- 📧 **Email System** - Multiple provider support with templates
-- 💾 **Caching** - Redis and Badger cache implementations
-- 🔄 **Background Jobs** - Job queue with cron scheduler
-- 🌐 **WebSocket Support** - Real-time communication with hub pattern
-- 📁 **File Storage** - S3 and MinIO filesystem integrations
-- 📱 **SMS Integration** - Multiple SMS provider support
-- 🎨 **Template Engine** - Jet template engine for dynamic views
-- 📊 **Logging & Metrics** - Structured logging with health monitoring
-- 🔭 **OpenTelemetry** - Distributed tracing and observability
-- 🔑 **Session Management** - Secure session handling with multiple stores
-- 🛠️ **CLI Tools** - Project scaffolding and code generation
-- 🤖 **AI-Native Development** - MCP server for AI assistants
+- Chi Router - Fast and lightweight HTTP router
+- Multi-Database Support - PostgreSQL, MySQL, MariaDB, SQLite
+- Security First - CSRF protection, rate limiting, input validation, XSS prevention, 2FA
+- Email System - Multiple provider support with templates
+- Caching - Redis and Badger cache implementations
+- Background Jobs - Job queue with cron scheduler
+- WebSocket Support - Real-time communication with hub pattern
+- File Storage - S3 and MinIO filesystem integrations
+- SMS Integration - Multiple SMS provider support
+- Template Engine - Jet template engine for dynamic views
+- Logging & Metrics - Structured logging with health monitoring
+- OpenTelemetry - Distributed tracing and observability
+- Session Management - Secure session handling with multiple stores
+- CLI Tools - Project scaffolding and code generation
+- AI-Native Development - MCP server for AI assistants
+
+## Installation
+
+### From Source
+
+```bash
+git clone https://github.com/jimmitjoo/tjo
+cd tjo
+make build
+```
+
+This creates the `tjo` executable in `dist/tjo`. Add it to your PATH for global access.
+
+### Go Install
+
+```bash
+go install github.com/jimmitjoo/tjo/cmd/cli@latest
+```
+
+## Quick Start
+
+### Create a New Project
+
+```bash
+tjo new myapp
+cd myapp
+tjo run
+```
+
+### Starter Templates
+
+Tjo includes starter templates for common use cases:
+
+```bash
+tjo new myapp                      # Default template
+tjo new myapp -t blog              # Blog starter
+tjo new myapp -t api               # API-only starter
+tjo new myapp -t saas              # SaaS starter with billing
+```
+
+| Template | Description |
+|----------|-------------|
+| `default` | Basic web application with authentication |
+| `blog` | Blog with posts, categories, and comments |
+| `api` | REST API with versioning and JWT auth |
+| `saas` | SaaS with Stripe billing and subscriptions |
+
+### Running Your Application
+
+```bash
+tjo run              # Start the application
+tjo run --watch      # Hot-reload during development (requires air)
+tjo run -w           # Short form
+```
+
+### Project Structure
+
+```
+myapp/
+├── .env                 # Environment configuration
+├── Makefile             # Build and development commands
+├── handlers/            # HTTP handlers
+├── migrations/          # Database migrations
+├── views/               # Template files
+├── email/               # Email templates
+├── data/                # Models and database logic
+├── public/              # Static assets
+├── middleware/          # Custom middleware
+└── logs/                # Application logs
+```
+
+## CLI Commands
+
+```bash
+tjo new <name>           # Create new project
+tjo new <name> -t <tpl>  # Create with starter template
+tjo run                  # Run application
+tjo run -w               # Run with hot-reload
+tjo migrate              # Run migrations up
+tjo migrate down         # Rollback last migration
+tjo migrate reset        # Reset all migrations
+tjo make model <name>    # Create model
+tjo make handler <name>  # Create handler
+tjo make migration <name># Create migration
+tjo make mail <name>     # Create email template
+tjo make auth            # Setup authentication
+tjo make session         # Create session tables
+tjo mcp                  # Start MCP server
+```
 
 ## AI-Native Development (MCP)
 
-Tjo is the first AI-native Go framework. Use natural language with AI assistants to build your application.
+Tjo includes an MCP server for AI assistants like Claude Code and Cursor.
 
 ### Setup
 
-Add to your Claude Code / Cursor MCP config:
+Add to your MCP config:
 
 ```json
 {
@@ -46,14 +139,14 @@ Add to your Claude Code / Cursor MCP config:
 | Tool | Description |
 |------|-------------|
 | `tjo_create_project` | Create a new Tjo project |
-| `tjo_create_model` | Create a new database model |
-| `tjo_create_handler` | Create a new HTTP handler |
-| `tjo_create_migration` | Create a new database migration |
-| `tjo_create_middleware` | Create a new middleware |
+| `tjo_create_model` | Create a database model |
+| `tjo_create_handler` | Create an HTTP handler |
+| `tjo_create_migration` | Create a database migration |
+| `tjo_create_middleware` | Create middleware |
 | `tjo_create_mail` | Create email template |
 | `tjo_run_migrations` | Run pending migrations |
 | `tjo_rollback` | Rollback migrations |
-| `tjo_setup_auth` | Setup auth with 2FA support |
+| `tjo_setup_auth` | Setup auth with 2FA |
 | `tjo_create_session_table` | Create session table |
 | `tjo_setup_docker` | Generate Docker config |
 | `tjo_module_info` | Get module setup instructions |
@@ -65,102 +158,11 @@ Just ask your AI assistant:
 - "Create a User model with name and email"
 - "Add a migration to create a posts table"
 - "Create a handler for managing products"
-- "Run the database migrations"
 - "Setup authentication for my app"
-- "How do I add WebSocket support?"
-- "Generate Docker configuration"
-
-## Installation
-
-Clone the repository and build the CLI tool:
-
-```bash
-git clone https://github.com/jimmitjoo/tjo
-cd tjo
-make build
-```
-
-This will create the `tjo` executable in `dist/tjo`. You can move this file to your PATH for global access.
-
-## Quick Start
-
-### Create a New Project
-
-```bash
-tjo new my_project
-cd my_project
-make start
-```
-
-### Project Structure
-
-```
-my_project/
-├── .env                 # Environment configuration
-├── Makefile            # Build and development commands
-├── handlers/           # HTTP handlers
-├── migrations/         # Database migrations
-├── views/              # Template files
-├── email/              # Email templates
-├── data/               # Models and database logic
-├── public/             # Static assets
-├── middleware/         # Custom middleware
-└── logs/               # Application logs
-```
-
-## Development
-
-### Available Make Commands
-
-```bash
-make key           # Generate new encryption key
-make auth          # Create authentication system with user model
-make mail          # Create new email template
-make model         # Create new model in data directory
-make migration     # Create new database migration
-make handler       # Create new HTTP handler
-make session       # Create session tables in database
-make api-controller    # Create new API controller
-make controller    # Create new resource controller
-make middleware    # Create new middleware
-make docker        # Generate Docker configuration
-make deploy        # Generate deployment configuration
-```
-
-### Testing
-
-Tjo includes a beautiful test runner with colored output:
-
-```bash
-# Run all tests with colors
-make test
-
-# Run tests for specific package
-./run-tests -p ./cache/...
-
-# Generate coverage report
-make cover
-
-# Run tests without Docker dependencies
-./run-tests -s
-```
-
-### Database Migrations
-
-```bash
-# Run migrations up
-tjo migrate up
-
-# Roll back migrations
-tjo migrate down
-
-# Create new migration
-make migration name=create_users_table
-```
 
 ## Opt-in Modules
 
-Tjo uses a modular architecture. Import only what you need:
+Import only what you need:
 
 ```go
 import (
@@ -173,13 +175,11 @@ import (
 
 func main() {
     app := tjo.Tjo{}
-
-    // Initialize with only the modules you need
     app.New(rootPath,
-        sms.NewModule(),                    // SMS support
-        email.NewModule(),                  // Email support
-        websocket.NewModule(),              // WebSocket support
-        otel.NewModule(                     // OpenTelemetry tracing
+        sms.NewModule(),
+        email.NewModule(),
+        websocket.NewModule(),
+        otel.NewModule(
             otel.WithServiceName("my-app"),
             otel.WithOTLPExporter("localhost:4317", true),
         ),
@@ -187,36 +187,7 @@ func main() {
 }
 ```
 
-### Using Modules
-
-```go
-// Send SMS
-if sms := app.GetModule("sms"); sms != nil {
-    sms.(*sms.Module).Send("+1234567890", "Hello!", false)
-}
-
-// Send Email
-if email := app.GetModule("email"); email != nil {
-    email.(*email.Module).Send(email.Message{
-        To:      "user@example.com",
-        Subject: "Welcome!",
-    })
-}
-
-// WebSocket broadcast
-if ws := app.GetModule("websocket"); ws != nil {
-    ws.(*websocket.Module).Broadcast([]byte("Hello everyone!"))
-}
-
-// Mount WebSocket handler
-if ws := app.GetModule("websocket"); ws != nil {
-    app.HTTP.Router.Get("/ws", ws.(*websocket.Module).Handler())
-}
-```
-
 ### Module Configuration
-
-Modules read from environment variables by default, or use functional options:
 
 ```go
 // SMS with Twilio
@@ -235,116 +206,9 @@ websocket.NewModule(
 )
 ```
 
-## Core Components
-
-### Web Server Configuration
-
-```go
-app := tjo.Tjo{}
-app.New(rootPath)
-app.AppName = "MyApp"
-app.Debug = true
-```
-
-### Database Connection
-
-Supports multiple databases through environment configuration:
-
-- PostgreSQL
-- MySQL/MariaDB  
-- SQLite
-
-### Caching
-
-Choose between Redis or Badger cache:
-
-```go
-// Redis cache
-app.Cache = app.CreateRedisCache()
-
-// Badger cache
-app.Cache = app.CreateBadgerCache()
-```
-
-### Background Jobs
-
-```go
-// Register a job processor
-app.JobManager.RegisterProcessor("send-email", emailProcessor)
-
-// Queue a job
-app.JobManager.QueueJob("send-email", data)
-```
-
-### WebSocket Support
-
-```go
-// Initialize WebSocket hub
-hub := websocket.NewHub()
-go hub.Run()
-```
-
-### Security Features
-
-- CSRF protection middleware
-- Rate limiting and throttling
-- Input validation and sanitization
-- SQL injection prevention
-- XSS protection
-- Session fixation protection
-- Secure password hashing
-- Two-Factor Authentication (TOTP)
-
-### OpenTelemetry (Distributed Tracing)
-
-Enable distributed tracing for production observability:
-
-```env
-OTEL_ENABLED=true
-OTEL_SERVICE_NAME=my-app
-OTEL_ENDPOINT=localhost:4317
-OTEL_INSECURE=true
-```
-
-**Features:**
-- Automatic HTTP request tracing
-- Database query tracing
-- Log correlation with trace IDs
-- Support for OTLP, Zipkin exporters
-
-**Custom Spans:**
-```go
-import "github.com/jimmitjoo/tjo/otel"
-
-func (h *Handler) ProcessOrder(w http.ResponseWriter, r *http.Request) {
-    ctx, span := otel.Start(r.Context(), "process_order")
-    defer span.End()
-
-    otel.SetAttributes(ctx, otel.String("order.id", orderID))
-
-    if err != nil {
-        otel.RecordError(ctx, err)
-    }
-}
-```
-
-**Database Tracing:**
-```go
-tracedDB := otel.WrapDB(db, "postgres", "mydb")
-rows, _ := tracedDB.Query(ctx, "SELECT * FROM users")
-```
-
-**Local Development with Jaeger:**
-```bash
-docker run -d --name jaeger \
-  -p 16686:16686 -p 4317:4317 \
-  jaegertracing/all-in-one:latest
-# View traces at http://localhost:16686
-```
-
 ## Configuration
 
-Configuration is managed through `.env` file:
+Configuration via `.env` file:
 
 ```env
 # Application
@@ -354,7 +218,11 @@ PORT=4000
 
 # Database
 DATABASE_TYPE=postgres
-DATABASE_DSN=your_connection_string
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=myapp
+DATABASE_USER=postgres
+DATABASE_PASS=password
 
 # Cache
 CACHE=redis
@@ -364,64 +232,45 @@ REDIS_HOST=localhost:6379
 SESSION_TYPE=redis
 SESSION_LIFETIME=24
 
-# Mail
-MAIL_PROVIDER=smtp
-SMTP_HOST=localhost
-SMTP_PORT=1025
-
 # OpenTelemetry (optional)
 OTEL_ENABLED=false
 OTEL_SERVICE_NAME=my-app
 OTEL_ENDPOINT=localhost:4317
 ```
 
-## API Development
+## Security
 
-Tjo includes API utilities for building RESTful services:
+- CSRF protection middleware
+- Rate limiting and throttling
+- Input validation and sanitization
+- SQL injection prevention
+- XSS protection
+- Secure password hashing (bcrypt)
+- Two-Factor Authentication (TOTP)
 
-- Version management
-- Standardized JSON responses
-- API middleware
-- Error handling
+## Testing
 
-```go
-// API versioning
-api.Version("v1", func(r chi.Router) {
-    r.Get("/users", handlers.GetUsers)
-})
-
-// JSON responses
-api.JSON(w, http.StatusOK, data)
+```bash
+make test              # Run all tests
+./run-tests -p ./pkg   # Test specific package
+./run-tests -c         # With coverage
+./run-tests -s         # Skip Docker tests
+make cover             # Coverage report
 ```
-
-## Testing Philosophy
-
-- Comprehensive test coverage (aim for >80% on critical paths)
-- Table-driven tests for better coverage
-- Security-focused testing
-- Docker-optional test execution
-- Colorful test output for better readability
-
-## Contributing
-
-Bug reports and pull requests are welcome on GitHub at the [Tjo repository](https://github.com/jimmitjoo/tjo/). This project is intended to be a safe, welcoming space for collaboration. Contributors are expected to adhere to the [Contributor Covenant](https://www.contributor-covenant.org/).
-
-## License
-
-The Tjo framework is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
 
 ## Documentation
 
-For detailed documentation and examples, see:
+- [docs/modules.md](docs/modules.md) - Module guide
+- [docs/opentelemetry.md](docs/opentelemetry.md) - OpenTelemetry guide
+- [docs/query-builder.md](docs/query-builder.md) - Query builder guide
+- [docs/configuration.md](docs/configuration.md) - Configuration reference
+- [TESTING.md](TESTING.md) - Testing guide
+- [CLAUDE.md](CLAUDE.md) - AI assistant guide
 
-- [docs/modules.md](docs/modules.md) - SMS, Email, WebSocket, OTel modules guide
-- [docs/extending.md](docs/extending.md) - Creating custom implementations
-- [docs/opentelemetry.md](docs/opentelemetry.md) - OpenTelemetry integration guide
-- [docs/query-builder.md](docs/query-builder.md) - Database query builder guide
-- [docs/configuration.md](docs/configuration.md) - Full configuration reference
-- [TESTING.md](TESTING.md) - Complete testing guide
-- [CLAUDE.md](CLAUDE.md) - AI assistant integration guide
+## Contributing
 
-## Support
+Pull requests welcome at [github.com/jimmitjoo/tjo](https://github.com/jimmitjoo/tjo/).
 
-For issues, questions, or suggestions, please open an issue on the [GitHub repository](https://github.com/jimmitjoo/tjo/issues).
+## License
+
+MIT License
