@@ -28,14 +28,35 @@ var validIdentifier = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-
 // validOrderDirection matches valid ORDER BY directions
 var validOrderDirection = regexp.MustCompile(`^(ASC|DESC)$`)
 
+// validAggregate matches aggregate function expressions like COUNT(*), SUM(column), etc.
+var validAggregate = regexp.MustCompile(`(?i)^(COUNT|SUM|AVG|MIN|MAX|GROUP_CONCAT)\s*\([^)]+\)(\s+AS\s+[a-zA-Z_][a-zA-Z0-9_]*)?$`)
+
+// validAliasPattern matches column AS alias syntax
+var validAliasPattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?\s+(?i)AS\s+[a-zA-Z_][a-zA-Z0-9_]*$`)
+
 // isValidIdentifier checks if a string is a valid SQL identifier
 func isValidIdentifier(s string) bool {
+	if len(s) < 1 {
+		return false
+	}
+
 	// Allow quoted identifiers (backticks or double quotes)
 	if (strings.HasPrefix(s, "`") && strings.HasSuffix(s, "`")) ||
 		(strings.HasPrefix(s, "\"") && strings.HasSuffix(s, "\"")) {
+		if len(s) < 3 {
+			return false // Need at least one char between quotes
+		}
 		inner := s[1 : len(s)-1]
-		// Quoted identifiers can contain almost anything except the quote char
-		return len(inner) > 0 && !strings.ContainsAny(inner, "`\"")
+		// Quoted identifiers must not contain SQL injection attempts
+		// Block: quotes, semicolons, comments, and common SQL keywords in suspicious positions
+		if strings.ContainsAny(inner, "`\";--/*") {
+			return false
+		}
+		// Block newlines which could be used to break out of queries
+		if strings.ContainsAny(inner, "\n\r") {
+			return false
+		}
+		return len(inner) > 0
 	}
 	return validIdentifier.MatchString(s)
 }
@@ -174,14 +195,12 @@ func (qb *QueryBuilder) Select(columns ...string) *QueryBuilder {
 // isValidSelectExpression checks if a string is a valid SELECT expression
 // (like COUNT(*), SUM(column), column AS alias, etc.)
 func isValidSelectExpression(s string) bool {
-	// Allow common aggregate functions
-	aggregateFuncs := regexp.MustCompile(`^(COUNT|SUM|AVG|MIN|MAX|GROUP_CONCAT)\s*\([^)]+\)(\s+AS\s+[a-zA-Z_][a-zA-Z0-9_]*)?$`)
-	if aggregateFuncs.MatchString(strings.ToUpper(s)) {
+	// Allow common aggregate functions (using pre-compiled regex for performance)
+	if validAggregate.MatchString(s) {
 		return true
 	}
-	// Allow column AS alias syntax
-	aliasPattern := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?\s+AS\s+[a-zA-Z_][a-zA-Z0-9_]*$`)
-	return aliasPattern.MatchString(s)
+	// Allow column AS alias syntax (using pre-compiled regex for performance)
+	return validAliasPattern.MatchString(s)
 }
 
 // Where adds a WHERE condition
