@@ -124,8 +124,7 @@ func (g *Gemquick) New(rootPath string, modules ...Module) error {
 	if g.Config.Database.IsEnabled() {
 		db, err := g.OpenDB(g.Config.Database.Type, g.Config.Database.DSN(rootPath))
 		if err != nil {
-			errorLog.Println(err)
-			os.Exit(1)
+			return fmt.Errorf("failed to connect to database: %w", err)
 		}
 
 		dbConfig := Database{
@@ -162,12 +161,16 @@ func (g *Gemquick) New(rootPath string, modules ...Module) error {
 
 	// connect to badger
 	if g.Config.App.Cache == "badger" || g.Config.Session.Type == "badger" {
-		g.Data.badgerCache = g.createClientBadgerCache()
+		badgerCache, err := g.createClientBadgerCache()
+		if err != nil {
+			return fmt.Errorf("failed to create badger cache: %w", err)
+		}
+		g.Data.badgerCache = badgerCache
 		g.Data.Cache = g.Data.badgerCache
 		g.Data.badgerConn = g.Data.badgerCache.Conn
 
 		// start badger garbage collector
-		_, err := g.Background.Scheduler.AddFunc("@daily", func() {
+		_, err = g.Background.Scheduler.AddFunc("@daily", func() {
 			_ = g.Data.badgerCache.Conn.RunValueLogGC(0.7)
 		})
 		if err != nil {
@@ -269,7 +272,8 @@ func (g *Gemquick) Init(p initPaths) error {
 // ListenAndServe starts the web server with graceful shutdown support.
 // It handles SIGINT and SIGTERM signals to gracefully stop the server,
 // waiting for in-flight requests to complete before shutting down.
-func (g *Gemquick) ListenAndServe() {
+// Returns an error if the server fails to start or encounters a fatal error.
+func (g *Gemquick) ListenAndServe() error {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", g.Config.Server.Port),
 		ErrorLog:     g.Logging.Error,
@@ -315,14 +319,16 @@ func (g *Gemquick) ListenAndServe() {
 	}()
 
 	// Wait for shutdown signal or server error
+	var serverFailed error
 	select {
 	case err := <-serverErr:
+		serverFailed = fmt.Errorf("server error: %w", err)
 		if g.Logging.Logger != nil {
-			g.Logging.Logger.Fatal("Server error", map[string]interface{}{
+			g.Logging.Logger.Error("Server error", map[string]interface{}{
 				"error": err.Error(),
 			})
 		} else {
-			g.Logging.Error.Fatalf("Server error: %v", err)
+			g.Logging.Error.Printf("Server error: %v", err)
 		}
 	case sig := <-quit:
 		if g.Logging.Logger != nil {
@@ -345,23 +351,7 @@ func (g *Gemquick) ListenAndServe() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Stop job manager
-	if err := g.Background.Jobs.Stop(); err != nil {
-		if g.Logging.Logger != nil {
-			g.Logging.Logger.Error("Failed to stop job manager", map[string]interface{}{
-				"error": err.Error(),
-			})
-		} else {
-			g.Logging.Error.Printf("Failed to stop job manager: %v", err)
-		}
-	}
-
-	// Stop scheduler if running
-	if g.Background.Scheduler != nil {
-		g.Background.Scheduler.Stop()
-	}
-
-	// Shutdown HTTP server (waits for in-flight requests)
+	// Shutdown HTTP server first (waits for in-flight requests)
 	if err := srv.Shutdown(ctx); err != nil {
 		if g.Logging.Logger != nil {
 			g.Logging.Logger.Error("Server forced to shutdown", map[string]interface{}{
@@ -372,38 +362,14 @@ func (g *Gemquick) ListenAndServe() {
 		}
 	}
 
-	// Close database connection
-	if g.Data.DB.Pool != nil {
-		if err := g.Data.DB.Pool.Close(); err != nil {
-			g.Logging.Error.Printf("Error closing database: %v", err)
-		}
-	}
-
-	// Close Redis connection
-	if g.Data.redisPool != nil {
-		if err := g.Data.redisPool.Close(); err != nil {
-			g.Logging.Error.Printf("Error closing Redis: %v", err)
-		}
-	}
-
-	// Close Badger connection
-	if g.Data.badgerConn != nil {
-		if err := g.Data.badgerConn.Close(); err != nil {
-			g.Logging.Error.Printf("Error closing Badger: %v", err)
-		}
-	}
-
-	// Shutdown OpenTelemetry (flushes pending spans)
-	if g.Logging.OTel != nil {
-		if err := g.Logging.OTel.Shutdown(ctx); err != nil {
-			g.Logging.Error.Printf("Error shutting down OpenTelemetry: %v", err)
-		}
-	}
-
-	// Shutdown all modules (in reverse order)
-	if g.Modules != nil && g.Modules.Count() > 0 {
-		if err := g.Modules.ShutdownAll(ctx); err != nil {
-			g.Logging.Error.Printf("Error shutting down modules: %v", err)
+	// Shutdown all other resources
+	if err := g.Shutdown(ctx); err != nil {
+		if g.Logging.Logger != nil {
+			g.Logging.Logger.Error("Error during shutdown", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			g.Logging.Error.Printf("Error during shutdown: %v", err)
 		}
 	}
 
@@ -412,6 +378,8 @@ func (g *Gemquick) ListenAndServe() {
 	} else {
 		g.Logging.Info.Println("Server shutdown complete")
 	}
+
+	return serverFailed
 }
 
 func (g *Gemquick) checkDotEnv(path string) error {
@@ -589,11 +557,15 @@ func (g *Gemquick) createClientRedisCache() *cache.RedisCache {
 	return &cacheClient
 }
 
-func (g *Gemquick) createClientBadgerCache() *cache.BadgerCache {
-	cacheClient := cache.BadgerCache{
-		Conn: g.createBadgerConn(),
+func (g *Gemquick) createClientBadgerCache() (*cache.BadgerCache, error) {
+	conn, err := g.createBadgerConn()
+	if err != nil {
+		return nil, err
 	}
-	return &cacheClient
+	cacheClient := cache.BadgerCache{
+		Conn: conn,
+	}
+	return &cacheClient, nil
 }
 
 func (g *Gemquick) createRedisPool() *redis.Pool {
@@ -628,13 +600,13 @@ func (g *Gemquick) createRedisPool() *redis.Pool {
 	}
 }
 
-func (g *Gemquick) createBadgerConn() *badger.DB {
+func (g *Gemquick) createBadgerConn() (*badger.DB, error) {
 	db, err := badger.Open(badger.DefaultOptions(fmt.Sprintf("%s/tmp/badger", g.RootPath)))
 	if err != nil {
-		g.Logging.Error.Fatal(err)
+		return nil, fmt.Errorf("failed to open badger database: %w", err)
 	}
 
-	return db
+	return db, nil
 }
 
 // BuildDSN returns the database connection string.
@@ -670,14 +642,14 @@ func (g *Gemquick) createFileSystems() {
 }
 
 // Shutdown gracefully shuts down the application and all its components.
-// It stops modules in reverse order, then stops background services, and closes connections.
+// It stops background services, modules (in reverse order), and closes connections.
 func (g *Gemquick) Shutdown(ctx context.Context) error {
 	var errs []error
 
-	// Shutdown modules in reverse order
-	if g.Modules != nil {
-		if err := g.Modules.ShutdownAll(ctx); err != nil {
-			errs = append(errs, err)
+	// Stop job manager first (allows pending jobs to complete)
+	if g.Background.Jobs != nil {
+		if err := g.Background.Jobs.Stop(); err != nil {
+			errs = append(errs, fmt.Errorf("job manager stop: %w", err))
 		}
 	}
 
@@ -686,7 +658,14 @@ func (g *Gemquick) Shutdown(ctx context.Context) error {
 		g.Background.Scheduler.Stop()
 	}
 
-	// Shutdown OpenTelemetry
+	// Shutdown modules in reverse order
+	if g.Modules != nil {
+		if err := g.Modules.ShutdownAll(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	// Shutdown OpenTelemetry (flushes pending spans)
 	if g.Logging.OTel != nil {
 		if err := g.Logging.OTel.Shutdown(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("otel shutdown: %w", err))
