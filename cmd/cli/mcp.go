@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jimmitjoo/gemquick/core"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -39,7 +40,7 @@ func errorResult(msg string) *mcp.CallToolResult {
 func doMCP() error {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "gemquick",
-		Version: "1.0.0",
+		Version: core.Version,
 	}, nil)
 
 	// Tool 1: Create new project
