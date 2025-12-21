@@ -181,6 +181,28 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if 2FA is enabled
+	if user.Has2FAEnabled() {
+		// Store user ID for 2FA verification
+		h.App.Session.Put(r.Context(), "pending_2fa_user_id", user.ID)
+
+		// Handle remember me - store for after 2FA verification
+		if r.Form.Get("remember") == "remember" {
+			randomString := h.randomString(12)
+			hasher := sha256.New()
+			_, err := hasher.Write([]byte(randomString))
+			if err != nil {
+				h.App.ErrorStatus(w, http.StatusInternalServerError)
+				return
+			}
+			sha := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+			h.App.Session.Put(r.Context(), "pending_remember_token", sha)
+		}
+
+		http.Redirect(w, r, "/2fa/challenge", http.StatusSeeOther)
+		return
+	}
+
 	// did the user check remember me?
 	if r.Form.Get("remember") == "remember" {
 		randomString := h.randomString(12)

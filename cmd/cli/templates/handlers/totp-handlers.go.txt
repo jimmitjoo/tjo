@@ -1,0 +1,272 @@
+package handlers
+
+import (
+	"bytes"
+	"encoding/base64"
+	"fmt"
+	"image/png"
+	"myapp/data"
+	"net/http"
+
+	"github.com/CloudyKit/jet/v6"
+	"github.com/pquerna/otp/totp"
+)
+
+// TwoFactorSetup shows the 2FA setup page with QR code
+func (h *Handlers) TwoFactorSetup(w http.ResponseWriter, r *http.Request) {
+	userID := h.App.Session.GetInt(r.Context(), "userID")
+	if userID == 0 {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := h.Models.Users.Find(userID)
+	if err != nil {
+		h.App.ErrorLog.Println("error finding user:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	// Check if 2FA is already enabled
+	if user.Has2FAEnabled() {
+		h.App.Session.Put(r.Context(), "error", "Two-factor authentication is already enabled")
+		http.Redirect(w, r, "/user/settings", http.StatusSeeOther)
+		return
+	}
+
+	// Generate a new TOTP key
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      h.App.AppName,
+		AccountName: user.Email,
+	})
+	if err != nil {
+		h.App.ErrorLog.Println("error generating TOTP key:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	// Store the secret temporarily in session for verification
+	h.App.Session.Put(r.Context(), "totp_setup_secret", key.Secret())
+
+	// Generate QR code image
+	var buf bytes.Buffer
+	img, err := key.Image(200, 200)
+	if err != nil {
+		h.App.ErrorLog.Println("error generating QR code image:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	if err := png.Encode(&buf, img); err != nil {
+		h.App.ErrorLog.Println("error encoding QR code:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	// Convert to base64 for embedding in HTML
+	qrCode := base64.StdEncoding.EncodeToString(buf.Bytes())
+
+	vars := make(jet.VarMap)
+	vars.Set("qrCode", qrCode)
+	vars.Set("secret", key.Secret())
+
+	err = h.App.Render.Page(w, r, "2fa-setup", vars, nil)
+	if err != nil {
+		h.App.ErrorLog.Println("error rendering 2fa-setup:", err)
+	}
+}
+
+// TwoFactorVerifySetup verifies the TOTP code during setup and enables 2FA
+func (h *Handlers) TwoFactorVerifySetup(w http.ResponseWriter, r *http.Request) {
+	userID := h.App.Session.GetInt(r.Context(), "userID")
+	if userID == 0 {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		h.App.ErrorLog.Println("error parsing form:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	code := r.Form.Get("code")
+	secret := h.App.Session.GetString(r.Context(), "totp_setup_secret")
+
+	if secret == "" {
+		h.App.Session.Put(r.Context(), "error", "Setup session expired. Please try again.")
+		http.Redirect(w, r, "/user/2fa/setup", http.StatusSeeOther)
+		return
+	}
+
+	// Verify the code
+	valid := totp.Validate(code, secret)
+	if !valid {
+		h.App.Session.Put(r.Context(), "error", "Invalid verification code. Please try again.")
+		http.Redirect(w, r, "/user/2fa/setup", http.StatusSeeOther)
+		return
+	}
+
+	// Enable 2FA for the user
+	if err := h.Models.Users.EnableTOTP(userID, secret); err != nil {
+		h.App.ErrorLog.Println("error enabling 2FA:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	// Clear the setup secret from session
+	h.App.Session.Remove(r.Context(), "totp_setup_secret")
+
+	h.App.Session.Put(r.Context(), "flash", "Two-factor authentication has been enabled successfully.")
+	http.Redirect(w, r, "/user/settings", http.StatusSeeOther)
+}
+
+// TwoFactorDisable shows the 2FA disable confirmation page
+func (h *Handlers) TwoFactorDisable(w http.ResponseWriter, r *http.Request) {
+	userID := h.App.Session.GetInt(r.Context(), "userID")
+	if userID == 0 {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := h.Models.Users.Find(userID)
+	if err != nil {
+		h.App.ErrorLog.Println("error finding user:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	if !user.Has2FAEnabled() {
+		h.App.Session.Put(r.Context(), "error", "Two-factor authentication is not enabled")
+		http.Redirect(w, r, "/user/settings", http.StatusSeeOther)
+		return
+	}
+
+	err = h.App.Render.Page(w, r, "2fa-disable", nil, nil)
+	if err != nil {
+		h.App.ErrorLog.Println("error rendering 2fa-disable:", err)
+	}
+}
+
+// TwoFactorDisablePost disables 2FA after verification
+func (h *Handlers) TwoFactorDisablePost(w http.ResponseWriter, r *http.Request) {
+	userID := h.App.Session.GetInt(r.Context(), "userID")
+	if userID == 0 {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		h.App.ErrorLog.Println("error parsing form:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	user, err := h.Models.Users.Find(userID)
+	if err != nil {
+		h.App.ErrorLog.Println("error finding user:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	code := r.Form.Get("code")
+
+	// Verify the code before disabling
+	valid := totp.Validate(code, user.TOTPSecret)
+	if !valid {
+		h.App.Session.Put(r.Context(), "error", "Invalid verification code.")
+		http.Redirect(w, r, "/user/2fa/disable", http.StatusSeeOther)
+		return
+	}
+
+	// Disable 2FA
+	if err := h.Models.Users.DisableTOTP(userID); err != nil {
+		h.App.ErrorLog.Println("error disabling 2FA:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	h.App.Session.Put(r.Context(), "flash", "Two-factor authentication has been disabled.")
+	http.Redirect(w, r, "/user/settings", http.StatusSeeOther)
+}
+
+// TwoFactorChallenge shows the 2FA verification page during login
+func (h *Handlers) TwoFactorChallenge(w http.ResponseWriter, r *http.Request) {
+	// Check if user is pending 2FA verification
+	pendingUserID := h.App.Session.GetInt(r.Context(), "pending_2fa_user_id")
+	if pendingUserID == 0 {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	err := h.App.Render.Page(w, r, "2fa-challenge", nil, nil)
+	if err != nil {
+		h.App.ErrorLog.Println("error rendering 2fa-challenge:", err)
+	}
+}
+
+// TwoFactorVerify verifies the 2FA code during login
+func (h *Handlers) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
+	pendingUserID := h.App.Session.GetInt(r.Context(), "pending_2fa_user_id")
+	if pendingUserID == 0 {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		h.App.ErrorLog.Println("error parsing form:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	user, err := h.Models.Users.Find(pendingUserID)
+	if err != nil {
+		h.App.ErrorLog.Println("error finding user:", err)
+		h.App.Error500(w, r)
+		return
+	}
+
+	code := r.Form.Get("code")
+
+	// Verify the code
+	valid := totp.Validate(code, user.TOTPSecret)
+	if !valid {
+		h.App.Session.Put(r.Context(), "error", "Invalid verification code. Please try again.")
+		http.Redirect(w, r, "/2fa/challenge", http.StatusSeeOther)
+		return
+	}
+
+	// Clear pending state and complete login
+	h.App.Session.Remove(r.Context(), "pending_2fa_user_id")
+
+	// Handle remember me if it was set
+	if h.App.Session.Exists(r.Context(), "pending_remember_token") {
+		sha := h.App.Session.GetString(r.Context(), "pending_remember_token")
+		h.App.Session.Remove(r.Context(), "pending_remember_token")
+
+		rm := data.RememberToken{}
+		if err := rm.InsertToken(user.ID, sha); err == nil {
+			h.setRememberCookie(w, r, user.ID, sha)
+			h.App.Session.Put(r.Context(), "remember_token", sha)
+		}
+	}
+
+	// Complete the login
+	h.App.Session.Put(r.Context(), "userID", user.ID)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// setRememberCookie is a helper to set the remember me cookie
+func (h *Handlers) setRememberCookie(w http.ResponseWriter, r *http.Request, userID int, sha string) {
+	cookie := http.Cookie{
+		Name:     fmt.Sprintf("_%s_remember", h.App.AppName),
+		Value:    fmt.Sprintf("%d|%s", userID, sha),
+		Path:     "/",
+		MaxAge:   31536000,
+		HttpOnly: true,
+		Domain:   h.App.Session.Cookie.Domain,
+		Secure:   h.App.Session.Cookie.Secure,
+		SameSite: http.SameSiteStrictMode,
+	}
+	http.SetCookie(w, &cookie)
+}
