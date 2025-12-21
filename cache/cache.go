@@ -160,3 +160,48 @@ func MustGet[T any](c Cache, key string) T {
 	}
 	return value
 }
+
+// TypedCache provides a type-safe wrapper around the Cache interface.
+// Example:
+//
+//	userCache := NewTypedCache[User](redisCache)
+//	userCache.Set("user:123", user, 3600)
+//	user, err := userCache.Get("user:123")
+type TypedCache[T any] struct {
+	cache Cache
+}
+
+// NewTypedCache creates a new type-safe cache wrapper.
+func NewTypedCache[T any](c Cache) *TypedCache[T] {
+	return &TypedCache[T]{cache: c}
+}
+
+// Has checks if a key exists in the cache.
+func (tc *TypedCache[T]) Has(key string) (bool, error) {
+	return tc.cache.Has(key)
+}
+
+// Get retrieves a typed value from the cache.
+func (tc *TypedCache[T]) Get(key string) (T, error) {
+	return GetTyped[T](tc.cache, key)
+}
+
+// Set stores a typed value in the cache with optional TTL in seconds.
+func (tc *TypedCache[T]) Set(key string, value T, ttl ...int) error {
+	return tc.cache.Set(key, value, ttl...)
+}
+
+// Forget removes a key from the cache.
+func (tc *TypedCache[T]) Forget(key string) error {
+	return tc.cache.Forget(key)
+}
+
+// EmptyByMatch removes all keys matching the pattern.
+func (tc *TypedCache[T]) EmptyByMatch(pattern string) error {
+	return tc.cache.EmptyByMatch(pattern)
+}
+
+// Flush removes all entries from the cache.
+func (tc *TypedCache[T]) Flush() error {
+	return tc.cache.Flush()
+}
