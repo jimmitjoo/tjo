@@ -41,7 +41,7 @@ This creates the `tjo` executable in `dist/tjo`. Add it to your PATH for global 
 ### Go Install
 
 ```bash
-go install github.com/jimmitjoo/tjo/cmd/cli@latest
+go install github.com/jimmitjoo/tjo/cmd/tjo@latest
 ```
 
 ## Quick Start

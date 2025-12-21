@@ -174,7 +174,7 @@ New to Tjo? Look for issues labeled [`good first issue`](https://github.com/jimm
 tjo/
 ├── api/           # REST API utilities
 ├── cache/         # Cache implementations (Redis, Badger)
-├── cmd/cli/       # CLI tool (tjo command)
+├── cmd/tjo/       # CLI tool (tjo command)
 ├── config/        # Configuration handling
 ├── database/      # Database utilities
 ├── email/         # Email providers
@@ -199,7 +199,7 @@ make build
 ./dist/tjo help
 
 # Or install globally
-go install ./cmd/cli
+go install ./cmd/tjo
 ```
 
 ### Testing with Docker

@@ -67,7 +67,7 @@ The main Tjo struct orchestrates all framework components:
 ### Package Structure
 - `api/` - REST API utilities (versioning, response helpers, middleware)
 - `cache/` - Cache implementations (Redis, Badger)
-- `cmd/cli/` - CLI tool for project scaffolding and migrations
+- `cmd/tjo/` - CLI tool for project scaffolding and migrations
 - `database/` - Database utilities (query builder, health checks, seeders)
 - `email/` - Email sending with multiple providers
 - `filesystems/` - File storage abstractions (S3, MinIO)
@@ -100,7 +100,7 @@ The framework includes a migration system (`migrations.go`) that:
 - Security-focused tests for input validation, XSS, CSRF protection
 - Integration tests for database operations
 
-### CLI Tool (`cmd/cli/`)
+### CLI Tool (`cmd/tjo/`)
 The `tjo` command provides:
 - `new` - Create new Tjo project
 - `migrate` - Run database migrations

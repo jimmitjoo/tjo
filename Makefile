@@ -22,11 +22,11 @@ coverage:
 
 ## build_cli: builds the command line tool tjo and copies it to myapp
 build_cli:
-	@go build $(LDFLAGS) -o ../myapp/tjo ./cmd/cli
+	@go build $(LDFLAGS) -o ../myapp/tjo ./cmd/tjo
 
 ## build: builds the command line tool to dist directory
 build:
-	@go build $(LDFLAGS) -o ./dist/tjo ./cmd/cli
+	@go build $(LDFLAGS) -o ./dist/tjo ./cmd/tjo
 	@echo "Built tjo version $(VERSION)"
 
 ## release: creates a new release (usage: make release v=0.5.0)
@@ -37,7 +37,7 @@ release:
 	@# Update otel/go.mod
 	@sed -i 's|github.com/jimmitjoo/tjo v[0-9.]*|github.com/jimmitjoo/tjo v$(v)|g' otel/go.mod
 	@# Update template go.mod
-	@sed -i 's|github.com/jimmitjoo/tjo v[0-9.]*|github.com/jimmitjoo/tjo v$(v)|g' cmd/cli/templates/go.mod.txt
+	@sed -i 's|github.com/jimmitjoo/tjo v[0-9.]*|github.com/jimmitjoo/tjo v$(v)|g' cmd/tjo/templates/go.mod.txt
 	@# Run go mod tidy in otel to update go.sum
 	@cd otel && go mod tidy 2>/dev/null || true
 	@# Commit changes if any
