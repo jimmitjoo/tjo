@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"myapp/data"
+	"$APPURL$/data"
 	"time"
 
 	"github.com/CloudyKit/jet/v6"

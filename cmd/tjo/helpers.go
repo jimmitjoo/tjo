@@ -23,7 +23,24 @@ func setup(arg1, arg2 string) {
 		if err != nil {
 			exitGracefully(err)
 		}
+
+		// Set appUrl from go.mod for template replacement
+		appUrl = getModuleName()
 	}
+}
+
+func getModuleName() string {
+	data, err := os.ReadFile("go.mod")
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module "))
+		}
+	}
+	return ""
 }
 
 func getDSN() string {

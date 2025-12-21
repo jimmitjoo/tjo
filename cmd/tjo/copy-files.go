@@ -4,6 +4,7 @@ import (
 	"embed"
 	"errors"
 	"os"
+	"strings"
 )
 
 //go:embed templates
@@ -18,13 +19,17 @@ func copyFileFromTemplate(templatePath, targetPath string) error {
 	// read template file
 	data, err := templateFS.ReadFile(templatePath)
 	if err != nil {
-		exitGracefully(err)
+		return err
 	}
 
+	// replace placeholders
+	content := string(data)
+	content = strings.ReplaceAll(content, "$APPURL$", appUrl)
+
 	// write to targetPath
-	err = copyDataToFile(data, targetPath)
+	err = os.WriteFile(targetPath, []byte(content), 0644)
 	if err != nil {
-		exitGracefully(err)
+		return err
 	}
 
 	return nil
