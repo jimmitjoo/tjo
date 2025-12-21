@@ -60,10 +60,65 @@ func NewDataService() *DataService {
 
 // BackgroundService handles background jobs, scheduling, mail, and SMS
 type BackgroundService struct {
-	Jobs      *jobs.JobManager
-	Scheduler *cron.Cron
-	Mail      email.Mail
-	SMS       sms.SMSProvider
+	Jobs        *jobs.JobManager
+	Scheduler   *cron.Cron
+	Mail        email.Mail
+	SMS         sms.SMSProvider
+	cronEntries map[string]cron.EntryID
+	cronMu      sync.RWMutex
+}
+
+// ScheduleCron adds a named cron job that can be unscheduled later.
+// Returns the entry ID and any error from adding the job.
+func (b *BackgroundService) ScheduleCron(name, expr string, fn func()) (cron.EntryID, error) {
+	b.cronMu.Lock()
+	defer b.cronMu.Unlock()
+
+	if b.cronEntries == nil {
+		b.cronEntries = make(map[string]cron.EntryID)
+	}
+
+	id, err := b.Scheduler.AddFunc(expr, fn)
+	if err != nil {
+		return 0, err
+	}
+
+	b.cronEntries[name] = id
+	return id, nil
+}
+
+// UnscheduleCron removes a named cron job. Returns true if the job was found and removed.
+func (b *BackgroundService) UnscheduleCron(name string) bool {
+	b.cronMu.Lock()
+	defer b.cronMu.Unlock()
+
+	if id, ok := b.cronEntries[name]; ok {
+		b.Scheduler.Remove(id)
+		delete(b.cronEntries, name)
+		return true
+	}
+	return false
+}
+
+// GetCronEntry returns the entry ID for a named cron job.
+func (b *BackgroundService) GetCronEntry(name string) (cron.EntryID, bool) {
+	b.cronMu.RLock()
+	defer b.cronMu.RUnlock()
+
+	id, ok := b.cronEntries[name]
+	return id, ok
+}
+
+// ListCronJobs returns all named cron job names.
+func (b *BackgroundService) ListCronJobs() []string {
+	b.cronMu.RLock()
+	defer b.cronMu.RUnlock()
+
+	names := make([]string, 0, len(b.cronEntries))
+	for name := range b.cronEntries {
+		names = append(names, name)
+	}
+	return names
 }
 
 // FileSystemRegistry provides thread-safe access to registered file systems.
