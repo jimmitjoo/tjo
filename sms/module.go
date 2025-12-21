@@ -5,12 +5,12 @@ import (
 	"os"
 )
 
-// Module implements the gemquick.Module interface for SMS functionality.
+// Module implements the tjo.Module interface for SMS functionality.
 // Use this to opt-in to SMS support in your application.
 //
 // Example:
 //
-//	app := gemquick.Gemquick{}
+//	app := tjo.Tjo{}
 //	app.New(rootPath, sms.NewModule())
 //
 //	// Later, send SMS:

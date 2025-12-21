@@ -1,6 +1,6 @@
-# Extending GemQuick
+# Extending Tjo
 
-GemQuick is designed for extensibility through Go interfaces. This guide shows how to create custom implementations for each extension point.
+Tjo is designed for extensibility through Go interfaces. This guide shows how to create custom implementations for each extension point.
 
 ## Extension Points Overview
 
@@ -22,7 +22,7 @@ Implement the `cache.Cache` interface to add a new caching backend.
 ```go
 package mycache
 
-import "github.com/jimmitjoo/gemquick/cache"
+import "github.com/jimmitjoo/tjo/cache"
 
 type MyCache struct {
     // Your cache connection
@@ -55,7 +55,7 @@ func (c *MyCache) Flush() error {
 
 **Usage:**
 ```go
-app := gemquick.New()
+app := tjo.New()
 app.Data.Cache = &mycache.MyCache{}
 ```
 
@@ -69,7 +69,7 @@ Implement the `filesystems.FS` interface for custom file storage.
 package mystorage
 
 import (
-    "github.com/jimmitjoo/gemquick/filesystems"
+    "github.com/jimmitjoo/tjo/filesystems"
 )
 
 type MyStorage struct {
@@ -95,7 +95,7 @@ func (s *MyStorage) Delete(items []string) bool {
 
 **Usage:**
 ```go
-app := gemquick.New()
+app := tjo.New()
 app.Data.Files.Register("mystorage", &mystorage.MyStorage{})
 
 // Access later
@@ -122,7 +122,7 @@ func (p *MyProvider) Send(to string, message string, unicode bool) error {
 
 **Usage:**
 ```go
-app := gemquick.New()
+app := tjo.New()
 app.Background.SMS = &mysms.MyProvider{
     APIKey: os.Getenv("MY_SMS_API_KEY"),
 }
@@ -139,7 +139,7 @@ package myjobs
 
 import (
     "context"
-    "github.com/jimmitjoo/gemquick/jobs"
+    "github.com/jimmitjoo/tjo/jobs"
 )
 
 type EmailHandler struct {
@@ -158,7 +158,7 @@ func (h *EmailHandler) Handle(ctx context.Context, job *jobs.Job) error {
 
 **Usage:**
 ```go
-app := gemquick.New()
+app := tjo.New()
 app.Background.Jobs.RegisterHandler("send_email", &myjobs.EmailHandler{})
 
 // Or use a function:
@@ -202,7 +202,7 @@ func (s *UserSeeder) Run(db *sql.DB) error {
 
 **Usage:**
 ```go
-import "github.com/jimmitjoo/gemquick/database"
+import "github.com/jimmitjoo/tjo/database"
 
 registry := database.NewSeederRegistry()
 registry.Register("users", &seeders.UserSeeder{})
@@ -225,7 +225,7 @@ package mylimiter
 
 import (
     "time"
-    "github.com/jimmitjoo/gemquick/api"
+    "github.com/jimmitjoo/tjo/api"
 )
 
 type RedisLimiter struct {
@@ -258,7 +258,7 @@ apiHandler.RateLimiter = &mylimiter.RedisLimiter{}
 
 ## Built-in Implementations
 
-GemQuick includes these implementations out of the box:
+Tjo includes these implementations out of the box:
 
 | Interface | Implementations |
 |-----------|----------------|

@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-func (g *Gemquick) ReadJson(w http.ResponseWriter, r *http.Request, data interface{}) error {
+func (g *Tjo) ReadJson(w http.ResponseWriter, r *http.Request, data interface{}) error {
 	maxBytes := 1048576 // 1MB
 	r.Body = http.MaxBytesReader(w, r.Body, int64(maxBytes))
 	dec := json.NewDecoder(r.Body)
@@ -29,7 +29,7 @@ func (g *Gemquick) ReadJson(w http.ResponseWriter, r *http.Request, data interfa
 	return nil
 }
 
-func (g *Gemquick) WriteJson(w http.ResponseWriter, status int, data interface{}, headers ...http.Header) error {
+func (g *Tjo) WriteJson(w http.ResponseWriter, status int, data interface{}, headers ...http.Header) error {
 	out, err := json.MarshalIndent(data, "", "\t")
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func (g *Gemquick) WriteJson(w http.ResponseWriter, status int, data interface{}
 	return nil
 }
 
-func (g *Gemquick) WriteXML(w http.ResponseWriter, status int, data interface{}, headers ...http.Header) error {
+func (g *Tjo) WriteXML(w http.ResponseWriter, status int, data interface{}, headers ...http.Header) error {
 	out, err := xml.MarshalIndent(data, "", "\t")
 	if err != nil {
 		return err
@@ -59,7 +59,7 @@ func (g *Gemquick) WriteXML(w http.ResponseWriter, status int, data interface{},
 	return nil
 }
 
-func (g *Gemquick) DownloadFile(w http.ResponseWriter, r *http.Request, pathToFile, filename string) error {
+func (g *Tjo) DownloadFile(w http.ResponseWriter, r *http.Request, pathToFile, filename string) error {
 	// Validate that filename doesn't contain path traversal attempts
 	if strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
 		return errors.New("invalid filename")
@@ -99,23 +99,23 @@ func (g *Gemquick) DownloadFile(w http.ResponseWriter, r *http.Request, pathToFi
 	return nil
 }
 
-func (g *Gemquick) Error404(w http.ResponseWriter, r *http.Request) {
+func (g *Tjo) Error404(w http.ResponseWriter, r *http.Request) {
 	g.ErrorStatus(w, http.StatusNotFound)
 }
 
-func (g *Gemquick) Error500(w http.ResponseWriter, r *http.Request) {
+func (g *Tjo) Error500(w http.ResponseWriter, r *http.Request) {
 	g.ErrorStatus(w, http.StatusInternalServerError)
 }
 
-func (g *Gemquick) ErrorUnauthorized(w http.ResponseWriter, r *http.Request) {
+func (g *Tjo) ErrorUnauthorized(w http.ResponseWriter, r *http.Request) {
 	g.ErrorStatus(w, http.StatusUnauthorized)
 }
 
-func (g *Gemquick) ErrorForbidden(w http.ResponseWriter, r *http.Request) {
+func (g *Tjo) ErrorForbidden(w http.ResponseWriter, r *http.Request) {
 	g.ErrorStatus(w, http.StatusForbidden)
 }
 
-func (g *Gemquick) ErrorStatus(w http.ResponseWriter, status int) {
+func (g *Tjo) ErrorStatus(w http.ResponseWriter, status int) {
 	http.Error(w, http.StatusText(status), status)
 }
 

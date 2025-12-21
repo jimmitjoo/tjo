@@ -23,7 +23,7 @@ type TracedDB struct {
 func WrapDB(db *sql.DB, dbType, dbName string) *TracedDB {
 	return &TracedDB{
 		db:     db,
-		tracer: otel.Tracer("gemquick/database"),
+		tracer: otel.Tracer("tjo/database"),
 		dbName: dbName,
 		dbType: dbType,
 	}

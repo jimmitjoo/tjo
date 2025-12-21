@@ -78,7 +78,7 @@ func TestLoggerNewDefault(t *testing.T) {
 	
 	assert.NotNil(t, logger)
 	assert.Equal(t, InfoLevel, logger.level)
-	assert.Equal(t, "gemquick", logger.service)
+	assert.Equal(t, "tjo", logger.service)
 	assert.True(t, logger.enableJSON)
 }
 

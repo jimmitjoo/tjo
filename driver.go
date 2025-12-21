@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"database/sql"
@@ -9,7 +9,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func (g *Gemquick) OpenDB(dbType, dsn string) (*sql.DB, error) {
+func (g *Tjo) OpenDB(dbType, dsn string) (*sql.DB, error) {
 	if dbType == "postgres" || dbType == "postgresql" {
 		dbType = "pgx"
 	} else if dbType == "mysql" || dbType == "mariadb" {

@@ -17,6 +17,7 @@ github.com/jackc/chunkreader v1.0.0 h1:4s39bBR8ByfqH+DKm8rQA3E1LHZWB9XWcrz8fqaZb
 github.com/jackc/pgproto3 v1.1.0 h1:FYYE4yRw+AgI8wXIinMlNjBbp/UitDJwfj5LqqewP1A=
 github.com/jimmitjoo/gemquick v0.5.2/go.mod h1:Jrz1oIrfBChB5mr9yLcwvN9ApwNlzpgjSlclTLll5hY=
 github.com/jimmitjoo/gemquick v0.5.3/go.mod h1:Jrz1oIrfBChB5mr9yLcwvN9ApwNlzpgjSlclTLll5hY=
+github.com/jimmitjoo/gemquick v0.5.4/go.mod h1:Jrz1oIrfBChB5mr9yLcwvN9ApwNlzpgjSlclTLll5hY=
 github.com/kr/pretty v0.2.1/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
 github.com/moby/sys/capability v0.4.0/go.mod h1:4g9IK291rVkms3LKCDOoYlnV8xKwoDTpIrNEE35Wq0I=
 github.com/moby/sys/mountinfo v0.7.2/go.mod h1:1YOa8w8Ih7uW0wALDUgT1dTTSBrZ+HiBLGws92L2RU4=

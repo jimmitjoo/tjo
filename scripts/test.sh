@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Colorful test runner for Gemquick
+# Colorful test runner for Tjo
 # Usage: ./scripts/test.sh [options]
 # Options are passed directly to go test
 

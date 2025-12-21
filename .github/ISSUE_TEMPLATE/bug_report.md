@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug to help us improve GemQuick
+about: Report a bug to help us improve Tjo
 title: ''
 labels: bug
 assignees: ''
@@ -40,7 +40,7 @@ Paste any error messages or stack traces here
 
 ## Environment
 
-- **GemQuick version**: (e.g., v0.1.0 or commit hash)
+- **Tjo version**: (e.g., v0.1.0 or commit hash)
 - **Go version**: (output of `go version`)
 - **Operating System**: (e.g., macOS 14.0, Ubuntu 22.04, Windows 11)
 - **Database**: (e.g., PostgreSQL 15, MySQL 8.0, SQLite)

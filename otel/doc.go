@@ -1,9 +1,9 @@
-// Package otel provides OpenTelemetry integration for Gemquick applications.
+// Package otel provides OpenTelemetry integration for Tjo applications.
 //
 // # Overview
 //
 // This package enables distributed tracing, metrics collection, and log correlation
-// using the OpenTelemetry standard. It integrates seamlessly with Gemquick's existing
+// using the OpenTelemetry standard. It integrates seamlessly with Tjo's existing
 // logging and metrics infrastructure.
 //
 // # Quick Start

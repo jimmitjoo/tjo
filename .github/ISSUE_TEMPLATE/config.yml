@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Question or Discussion
-    url: https://github.com/jimmitjoo/gemquick/discussions
+    url: https://github.com/jimmitjoo/tjo/discussions
     about: Ask questions and discuss ideas in GitHub Discussions
   - name: Documentation
-    url: https://github.com/jimmitjoo/gemquick#readme
+    url: https://github.com/jimmitjoo/tjo#readme
     about: Check the README and documentation before opening an issue

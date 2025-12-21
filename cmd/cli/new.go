@@ -13,7 +13,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/go-git/go-git/v5"
-	"github.com/jimmitjoo/gemquick/core"
+	"github.com/jimmitjoo/tjo/core"
 )
 
 var appUrl string
@@ -50,7 +50,7 @@ func doNew(appName string, template string) error {
 	// Git clone the skeleton application
 	color.Green("\tCloning skeleton application...")
 	_, err := git.PlainClone("./"+appname, false, &git.CloneOptions{
-		URL:      "https://github.com/jimmitjoo/gemquick-bare.git",
+		URL:      "https://github.com/jimmitjoo/tjo-bare.git",
 		Progress: os.Stdout,
 		Depth:    1,
 	})

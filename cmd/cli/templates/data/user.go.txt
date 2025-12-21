@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/jimmitjoo/gemquick"
+	"github.com/jimmitjoo/tjo"
 	up "github.com/upper/db/v4"
 )
 
@@ -47,7 +47,7 @@ func (u *User) FullName() string {
 }
 
 // Validate validates user input
-func (u *User) Validate(validator *gemquick.Validation) {
+func (u *User) Validate(validator *tjo.Validation) {
 	validator.Check(u.FirstName != "", "first_name", "First name is required")
 	validator.Check(u.LastName != "", "last_name", "Last name is required")
 	validator.Check(u.Password != "", "password", "Password is required")

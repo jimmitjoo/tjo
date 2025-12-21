@@ -6,11 +6,11 @@ import (
 	"crypto/rand"
 	"os"
 
-	"github.com/jimmitjoo/gemquick/config"
+	"github.com/jimmitjoo/tjo/config"
 )
 
 // Version is the framework version (injected at build time via ldflags)
-// Use: go build -ldflags "-X github.com/jimmitjoo/gemquick/core.Version=x.y.z"
+// Use: go build -ldflags "-X github.com/jimmitjoo/tjo/core.Version=x.y.z"
 var Version = "dev"
 
 // randomStringSource is the character set for random strings

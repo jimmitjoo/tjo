@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jimmitjoo/gemquick/core"
+	"github.com/jimmitjoo/tjo/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -241,7 +241,7 @@ func TestEndToEndWorkflow(t *testing.T) {
 
 go 1.21
 
-require github.com/jimmitjoo/gemquick v1.0.0
+require github.com/jimmitjoo/tjo v1.0.0
 `
 		err = os.WriteFile("go.mod", []byte(goMod), 0644)
 		assert.NoError(t, err)

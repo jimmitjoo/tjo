@@ -14,7 +14,7 @@ import (
 
 func TestSQLiteIntegration(t *testing.T) {
 	// Create a temporary SQLite database file
-	tmpFile := "/tmp/test_gemquick.db"
+	tmpFile := "/tmp/test_tjo.db"
 	defer os.Remove(tmpFile)
 
 	t.Run("SQLite connection", func(t *testing.T) {
@@ -259,7 +259,7 @@ func TestSQLiteIntegration(t *testing.T) {
 }
 
 func TestSQLiteConnectionPooling(t *testing.T) {
-	tmpFile := "/tmp/test_pool_gemquick.db"
+	tmpFile := "/tmp/test_pool_tjo.db"
 	defer os.Remove(tmpFile)
 
 	db, err := sql.Open("sqlite3", tmpFile+"?cache=shared")

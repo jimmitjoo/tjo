@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 type initPaths struct {
 	rootPath    string

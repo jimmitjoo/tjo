@@ -2,7 +2,7 @@ package miniofilesystem
 
 import (
 	"context"
-	"github.com/jimmitjoo/gemquick/filesystems"
+	"github.com/jimmitjoo/tjo/filesystems"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"log"

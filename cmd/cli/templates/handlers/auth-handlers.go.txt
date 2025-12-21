@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/CloudyKit/jet/v6"
-	"github.com/jimmitjoo/gemquick/email"
-	"github.com/jimmitjoo/gemquick/urlsigner"
+	"github.com/jimmitjoo/tjo/email"
+	"github.com/jimmitjoo/tjo/urlsigner"
 )
 
 func (h *Handlers) UserRegister(w http.ResponseWriter, r *http.Request) {

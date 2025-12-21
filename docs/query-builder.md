@@ -1,11 +1,11 @@
 # Query Builder
 
-GemQuick includes a fluent, SQL-injection-safe query builder for building database queries without writing raw SQL.
+Tjo includes a fluent, SQL-injection-safe query builder for building database queries without writing raw SQL.
 
 ## Quick Start
 
 ```go
-import "github.com/jimmitjoo/gemquick/database"
+import "github.com/jimmitjoo/tjo/database"
 
 // Create a query builder
 qb := database.NewQueryBuilder(db)
@@ -593,7 +593,7 @@ import (
     "database/sql"
     "log"
 
-    "github.com/jimmitjoo/gemquick/database"
+    "github.com/jimmitjoo/tjo/database"
     _ "github.com/lib/pq"
 )
 

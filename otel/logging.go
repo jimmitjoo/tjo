@@ -3,7 +3,7 @@ package otel
 import (
 	"context"
 
-	"github.com/jimmitjoo/gemquick/logging"
+	"github.com/jimmitjoo/tjo/logging"
 	"go.opentelemetry.io/otel/trace"
 )
 

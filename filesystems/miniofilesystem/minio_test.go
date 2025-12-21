@@ -3,7 +3,7 @@ package miniofilesystem
 import (
 	"context"
 	"errors"
-	"github.com/jimmitjoo/gemquick/filesystems"
+	"github.com/jimmitjoo/tjo/filesystems"
 	"os"
 	"testing"
 	"time"

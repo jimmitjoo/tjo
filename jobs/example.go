@@ -160,7 +160,7 @@ func NotificationCleanupJobHandler(ctx context.Context, job *Job) error {
 	return nil
 }
 
-// Example of how to set up background jobs in your Gemquick application
+// Example of how to set up background jobs in your Tjo application
 func ExampleSetup(manager *JobManager) {
 	// Register job handlers
 	manager.RegisterHandlerFunc("send_email", EmailJobHandler)

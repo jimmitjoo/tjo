@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"regexp"
@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func (g *Gemquick) LoadTime(start time.Time) {
+func (g *Tjo) LoadTime(start time.Time) {
 	elapsed := time.Since(start)
 
 	pc, _, _, _ := runtime.Caller(1)

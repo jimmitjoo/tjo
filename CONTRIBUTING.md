@@ -1,6 +1,6 @@
-# Contributing to GemQuick
+# Contributing to Tjo
 
-Thank you for your interest in contributing to GemQuick! This guide will help you get started.
+Thank you for your interest in contributing to Tjo! This guide will help you get started.
 
 ## Code of Conduct
 
@@ -21,13 +21,13 @@ Be respectful and inclusive. We're all here to learn and build great software to
 
 2. Clone your fork:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/gemquick.git
-   cd gemquick
+   git clone https://github.com/YOUR_USERNAME/tjo.git
+   cd tjo
    ```
 
 3. Add upstream remote:
    ```bash
-   git remote add upstream https://github.com/jimmitjoo/gemquick.git
+   git remote add upstream https://github.com/jimmitjoo/tjo.git
    ```
 
 4. Install dependencies:
@@ -164,14 +164,14 @@ Keep commits focused - one logical change per commit.
 
 ## Good First Issues
 
-New to GemQuick? Look for issues labeled [`good first issue`](https://github.com/jimmitjoo/gemquick/labels/good%20first%20issue) - these are great starting points for new contributors.
+New to Tjo? Look for issues labeled [`good first issue`](https://github.com/jimmitjoo/tjo/labels/good%20first%20issue) - these are great starting points for new contributors.
 
 ## Development Tips
 
 ### Project Structure
 
 ```
-gemquick/
+tjo/
 ├── api/           # REST API utilities
 ├── cache/         # Cache implementations (Redis, Badger)
 ├── cmd/cli/       # CLI tool (gq command)
@@ -219,8 +219,8 @@ docker-compose -f docker-compose.test.yml down
 
 ## Questions?
 
-- Open a [GitHub Discussion](https://github.com/jimmitjoo/gemquick/discussions) for questions
-- Open an [Issue](https://github.com/jimmitjoo/gemquick/issues) for bugs or feature requests
+- Open a [GitHub Discussion](https://github.com/jimmitjoo/tjo/discussions) for questions
+- Open an [Issue](https://github.com/jimmitjoo/tjo/issues) for bugs or feature requests
 - Check existing issues before creating new ones
 
 ## License

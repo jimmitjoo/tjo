@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"crypto/aes"
@@ -14,7 +14,7 @@ const (
 	randomString = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_+"
 )
 
-func (g Gemquick) RandomString(length int) string {
+func (g Tjo) RandomString(length int) string {
 	s, r := make([]rune, length), []rune(randomString)
 	
 	for i := range s {
@@ -37,7 +37,7 @@ func (g Gemquick) RandomString(length int) string {
 	return string(s)
 }
 
-func (g Gemquick) CreateDirIfNotExists(path string) error {
+func (g Tjo) CreateDirIfNotExists(path string) error {
 	const mode = 0755
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		err := os.Mkdir(path, mode)
@@ -50,7 +50,7 @@ func (g Gemquick) CreateDirIfNotExists(path string) error {
 	return nil
 }
 
-func (g Gemquick) CreateFileIfNotExists(path string) error {
+func (g Tjo) CreateFileIfNotExists(path string) error {
 	var _, err = os.Stat(path)
 
 	if os.IsNotExist(err) {

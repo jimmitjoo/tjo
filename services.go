@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"database/sql"
@@ -10,14 +10,14 @@ import (
 	"github.com/dgraph-io/badger/v3"
 	"github.com/go-chi/chi/v5"
 	"github.com/gomodule/redigo/redis"
-	"github.com/jimmitjoo/gemquick/cache"
-	"github.com/jimmitjoo/gemquick/email"
-	"github.com/jimmitjoo/gemquick/filesystems"
-	"github.com/jimmitjoo/gemquick/jobs"
-	"github.com/jimmitjoo/gemquick/logging"
-	"github.com/jimmitjoo/gemquick/otel"
-	"github.com/jimmitjoo/gemquick/render"
-	"github.com/jimmitjoo/gemquick/sms"
+	"github.com/jimmitjoo/tjo/cache"
+	"github.com/jimmitjoo/tjo/email"
+	"github.com/jimmitjoo/tjo/filesystems"
+	"github.com/jimmitjoo/tjo/jobs"
+	"github.com/jimmitjoo/tjo/logging"
+	"github.com/jimmitjoo/tjo/otel"
+	"github.com/jimmitjoo/tjo/render"
+	"github.com/jimmitjoo/tjo/sms"
 	"github.com/robfig/cron/v3"
 )
 

@@ -1,11 +1,11 @@
-package gemquick
+package tjo
 
 import (
 	"testing"
 )
 
-func TestGemquick_OpenDB(t *testing.T) {
-	g := &Gemquick{}
+func TestTjo_OpenDB(t *testing.T) {
+	g := &Tjo{}
 
 	tests := []struct {
 		name      string
@@ -63,7 +63,7 @@ func TestGemquick_OpenDB(t *testing.T) {
 }
 
 func TestDatabaseTypeConversion(t *testing.T) {
-	g := &Gemquick{}
+	g := &Tjo{}
 
 	// Test that postgres/postgresql gets converted to pgx
 	testCases := []struct {

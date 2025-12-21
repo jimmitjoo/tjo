@@ -1,9 +1,9 @@
-module github.com/jimmitjoo/gemquick/otel
+module github.com/jimmitjoo/tjo/otel
 
 go 1.24.0
 
 require (
-	github.com/jimmitjoo/gemquick v0.5.4
+	github.com/jimmitjoo/tjo v0.5.4
 	go.opentelemetry.io/otel v1.39.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.39.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.39.0
@@ -32,3 +32,6 @@ require (
 	google.golang.org/grpc v1.77.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
+
+// Local development - remove before publishing
+replace github.com/jimmitjoo/tjo => ..

@@ -6,12 +6,12 @@ import (
 	"strconv"
 )
 
-// Module implements the gemquick.Module interface for OpenTelemetry functionality.
+// Module implements the tjo.Module interface for OpenTelemetry functionality.
 // Use this to opt-in to distributed tracing in your application.
 //
 // Example:
 //
-//	app := gemquick.Gemquick{}
+//	app := tjo.Tjo{}
 //	app.New(rootPath, otel.NewModule(
 //	    otel.WithServiceName("my-app"),
 //	    otel.WithOTLPExporter("localhost:4317"),

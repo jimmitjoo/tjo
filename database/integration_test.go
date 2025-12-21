@@ -14,13 +14,13 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// MockGemquick simulates the Gemquick struct for testing
-type MockGemquick struct {
+// MockTjo simulates the Tjo struct for testing
+type MockTjo struct {
 	RootPath string
 }
 
 // OpenDB mirrors the OpenDB function from driver.go for testing
-func (g *MockGemquick) OpenDB(dbType, dsn string) (*sql.DB, error) {
+func (g *MockTjo) OpenDB(dbType, dsn string) (*sql.DB, error) {
 	if dbType == "postgres" || dbType == "postgresql" {
 		dbType = "pgx"
 	} else if dbType == "mysql" || dbType == "mariadb" {
@@ -42,8 +42,8 @@ func (g *MockGemquick) OpenDB(dbType, dsn string) (*sql.DB, error) {
 	return db, nil
 }
 
-// BuildDSN mirrors the BuildDSN function from gemquick.go for testing SQLite support
-func (g *MockGemquick) BuildDSN() string {
+// BuildDSN mirrors the BuildDSN function from tjo.go for testing SQLite support
+func (g *MockTjo) BuildDSN() string {
 	var dsn string
 	dbType := os.Getenv("DATABASE_TYPE")
 
@@ -68,9 +68,9 @@ func (g *MockGemquick) BuildDSN() string {
 	return dsn
 }
 
-func TestGemquickSQLiteIntegration(t *testing.T) {
+func TestTjoSQLiteIntegration(t *testing.T) {
 	// Create a temporary directory structure
-	tempDir := "/tmp/gemquick_test"
+	tempDir := "/tmp/tjo_test"
 	dataDir := tempDir + "/data"
 	
 	// Clean up after test
@@ -82,7 +82,7 @@ func TestGemquickSQLiteIntegration(t *testing.T) {
 	err := os.MkdirAll(dataDir, 0755)
 	require.NoError(t, err)
 
-	gemquick := &MockGemquick{
+	tjo := &MockTjo{
 		RootPath: tempDir,
 	}
 
@@ -96,12 +96,12 @@ func TestGemquickSQLiteIntegration(t *testing.T) {
 		}()
 
 		// Test DSN building
-		dsn := gemquick.BuildDSN()
+		dsn := tjo.BuildDSN()
 		expectedDSN := tempDir + "/data/integration_test.db"
 		assert.Equal(t, expectedDSN, dsn)
 
 		// Test database connection
-		db, err := gemquick.OpenDB("sqlite3", dsn)
+		db, err := tjo.OpenDB("sqlite3", dsn)
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -191,11 +191,11 @@ func TestGemquickSQLiteIntegration(t *testing.T) {
 		}()
 
 		// Test DSN building for in-memory database
-		dsn := gemquick.BuildDSN()
+		dsn := tjo.BuildDSN()
 		assert.Equal(t, ":memory:", dsn)
 
 		// Test database connection
-		db, err := gemquick.OpenDB("sqlite", dsn)
+		db, err := tjo.OpenDB("sqlite", dsn)
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -227,11 +227,11 @@ func TestGemquickSQLiteIntegration(t *testing.T) {
 		}()
 
 		// Test DSN building for absolute path
-		dsn := gemquick.BuildDSN()
+		dsn := tjo.BuildDSN()
 		assert.Equal(t, absolutePath, dsn)
 
 		// Test database connection
-		db, err := gemquick.OpenDB("sqlite3", dsn)
+		db, err := tjo.OpenDB("sqlite3", dsn)
 		require.NoError(t, err)
 		defer db.Close()
 

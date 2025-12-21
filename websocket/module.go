@@ -6,12 +6,12 @@ import (
 	"sync"
 )
 
-// Module implements the gemquick.Module interface for WebSocket functionality.
+// Module implements the tjo.Module interface for WebSocket functionality.
 // Use this to opt-in to WebSocket support in your application.
 //
 // Example:
 //
-//	app := gemquick.Gemquick{}
+//	app := tjo.Tjo{}
 //	app.New(rootPath, websocket.NewModule(
 //	    websocket.WithAllowedOrigins([]string{"https://example.com"}),
 //	    websocket.WithAuthenticateConnection(myAuthFunc),

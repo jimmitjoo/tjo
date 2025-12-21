@@ -1,6 +1,6 @@
 package main
 
-import "github.com/jimmitjoo/gemquick/core"
+import "github.com/jimmitjoo/tjo/core"
 
 func doMigrate(arg2, arg3 string) error {
 	dsn := getDSN()

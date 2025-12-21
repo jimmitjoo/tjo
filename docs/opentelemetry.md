@@ -1,6 +1,6 @@
 # OpenTelemetry Integration
 
-GemQuick includes built-in support for OpenTelemetry, enabling distributed tracing, metrics, and log correlation for production observability.
+Tjo includes built-in support for OpenTelemetry, enabling distributed tracing, metrics, and log correlation for production observability.
 
 ## Quick Start
 
@@ -50,7 +50,7 @@ Open http://localhost:16686 to see your traces in Jaeger UI.
 
 ## Automatic Tracing
 
-When enabled, GemQuick automatically traces:
+When enabled, Tjo automatically traces:
 
 - **HTTP Requests**: Every request gets a span with method, URL, status, duration
 - **Response Headers**: `X-Trace-ID` header added to all responses
@@ -62,7 +62,7 @@ When enabled, GemQuick automatically traces:
 ### Creating Spans
 
 ```go
-import "github.com/jimmitjoo/gemquick/otel"
+import "github.com/jimmitjoo/tjo/otel"
 
 func (h *Handler) ProcessOrder(w http.ResponseWriter, r *http.Request) {
     // Create a span for this operation
@@ -126,7 +126,7 @@ defer span.End()
 ### Wrapping the Database Connection
 
 ```go
-import "github.com/jimmitjoo/gemquick/otel"
+import "github.com/jimmitjoo/tjo/otel"
 
 // Wrap your database connection
 tracedDB := otel.WrapDB(db, "postgres", "myapp")
@@ -158,7 +158,7 @@ tx.Commit() // Span ends here
 ### Adding Trace Context to Logs
 
 ```go
-import "github.com/jimmitjoo/gemquick/otel"
+import "github.com/jimmitjoo/tjo/otel"
 
 func (h *Handler) SomeHandler(w http.ResponseWriter, r *http.Request) {
     // Create a logger with trace context
@@ -321,7 +321,7 @@ services:
 
 ## Semantic Conventions
 
-GemQuick follows OpenTelemetry semantic conventions for attributes:
+Tjo follows OpenTelemetry semantic conventions for attributes:
 
 ### HTTP Spans
 

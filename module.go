@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"context"
@@ -15,7 +15,7 @@ type Module interface {
 
 	// Initialize sets up the module with access to the framework.
 	// Called during app.New() after core services are ready.
-	Initialize(g *Gemquick) error
+	Initialize(g *Tjo) error
 
 	// Shutdown gracefully stops the module.
 	// Called during graceful shutdown with a context for timeout control.
@@ -82,7 +82,7 @@ func (r *ModuleRegistry) Names() []string {
 
 // InitializeAll calls Initialize on all registered modules in order.
 // Stops on first error and returns it.
-func (r *ModuleRegistry) InitializeAll(g *Gemquick) error {
+func (r *ModuleRegistry) InitializeAll(g *Tjo) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

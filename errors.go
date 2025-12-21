@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"errors"
@@ -76,10 +76,10 @@ func (c ErrorCode) HTTPStatus() int {
 	}
 }
 
-// GemquickError is the standard error type for the framework.
+// TjoError is the standard error type for the framework.
 // It provides structured error information including operation context,
 // error classification, and optional additional context.
-type GemquickError struct {
+type TjoError struct {
 	// Op is the operation that failed (e.g., "database.query", "auth.validate")
 	Op string
 	// Err is the underlying error
@@ -91,7 +91,7 @@ type GemquickError struct {
 }
 
 // Error implements the error interface
-func (e *GemquickError) Error() string {
+func (e *TjoError) Error() string {
 	if e.Op != "" {
 		return fmt.Sprintf("%s: %v", e.Op, e.Err)
 	}
@@ -99,12 +99,12 @@ func (e *GemquickError) Error() string {
 }
 
 // Unwrap returns the underlying error for errors.Is and errors.As
-func (e *GemquickError) Unwrap() error {
+func (e *TjoError) Unwrap() error {
 	return e.Err
 }
 
 // WithContext adds context to the error and returns it for chaining
-func (e *GemquickError) WithContext(key string, value interface{}) *GemquickError {
+func (e *TjoError) WithContext(key string, value interface{}) *TjoError {
 	if e.Context == nil {
 		e.Context = make(map[string]interface{})
 	}
@@ -114,38 +114,38 @@ func (e *GemquickError) WithContext(key string, value interface{}) *GemquickErro
 
 // WrapError wraps an error with operation context and classification.
 // Use this when catching errors from lower-level operations.
-func WrapError(op string, err error, code ErrorCode) *GemquickError {
+func WrapError(op string, err error, code ErrorCode) *TjoError {
 	if err == nil {
 		return nil
 	}
-	return &GemquickError{
+	return &TjoError{
 		Op:   op,
 		Err:  err,
 		Code: code,
 	}
 }
 
-// NewError creates a new GemquickError with a message
-func NewError(op string, message string, code ErrorCode) *GemquickError {
-	return &GemquickError{
+// NewError creates a new TjoError with a message
+func NewError(op string, message string, code ErrorCode) *TjoError {
+	return &TjoError{
 		Op:   op,
 		Err:  errors.New(message),
 		Code: code,
 	}
 }
 
-// IsCode checks if an error is a GemquickError with a specific code
+// IsCode checks if an error is a TjoError with a specific code
 func IsCode(err error, code ErrorCode) bool {
-	var gErr *GemquickError
+	var gErr *TjoError
 	if errors.As(err, &gErr) {
 		return gErr.Code == code
 	}
 	return false
 }
 
-// GetCode returns the ErrorCode from an error, or ErrInternal if not a GemquickError
+// GetCode returns the ErrorCode from an error, or ErrInternal if not a TjoError
 func GetCode(err error) ErrorCode {
-	var gErr *GemquickError
+	var gErr *TjoError
 	if errors.As(err, &gErr) {
 		return gErr.Code
 	}
@@ -173,14 +173,14 @@ var (
 
 // ValidationError represents a validation error with field-specific messages
 type ValidationError struct {
-	GemquickError
+	TjoError
 	Fields map[string]string
 }
 
 // NewValidationError creates a new validation error with field messages
 func NewValidationError(fields map[string]string) *ValidationError {
 	return &ValidationError{
-		GemquickError: GemquickError{
+		TjoError: TjoError{
 			Op:   "validation",
 			Err:  errors.New("validation failed"),
 			Code: ErrValidation,

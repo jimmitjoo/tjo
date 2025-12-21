@@ -1,4 +1,4 @@
-module github.com/jimmitjoo/gemquick/email
+module github.com/jimmitjoo/tjo/email
 
 go 1.24.0
 

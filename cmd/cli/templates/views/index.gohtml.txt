@@ -69,7 +69,7 @@
 <section class="hero">
     <div class="container">
         <h1>Welcome to $CONTROLLERNAME$</h1>
-        <p>Your modern web application built with Gemquick framework</p>
+        <p>Your modern web application built with Tjo framework</p>
         {{if .flash}}
             <div class="alert alert-success mt-3">{{.flash}}</div>
         {{end}}

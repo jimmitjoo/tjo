@@ -5,11 +5,11 @@ import (
 
 	"${APP_NAME}/data"
 
-	"github.com/jimmitjoo/gemquick"
+	"github.com/jimmitjoo/tjo"
 )
 
 type Handlers struct {
-	App    *gemquick.Gemquick
+	App    *tjo.Tjo
 	Models data.Models
 }
 

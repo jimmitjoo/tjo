@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"os"
@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/jimmitjoo/gemquick/config"
+	"github.com/jimmitjoo/tjo/config"
 )
 
-func TestGemquick_New(t *testing.T) {
+func TestTjo_New(t *testing.T) {
 	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "gemquick_test")
+	tempDir, err := os.MkdirTemp("", "tjo_test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ DEBUG=false
 PORT=4000
 SESSION_TYPE=cookie
 COOKIE_DOMAIN=localhost
-COOKIE_NAME=gemquick
+COOKIE_NAME=tjo
 COOKIE_LIFETIME=1440
 COOKIE_PERSIST=true
 COOKIE_SECURE=false
@@ -41,7 +41,7 @@ DSN=
 CACHE=
 REDIS_HOST=
 REDIS_PASSWORD=
-REDIS_PREFIX=gemquick
+REDIS_PREFIX=tjo
 `
 	envFile := filepath.Join(tempDir, ".env")
 	if err := os.WriteFile(envFile, []byte(envContent), 0644); err != nil {
@@ -49,7 +49,7 @@ REDIS_PREFIX=gemquick
 	}
 
 	// Test New function
-	g := &Gemquick{}
+	g := &Tjo{}
 	err = g.New(tempDir)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
@@ -69,14 +69,14 @@ REDIS_PREFIX=gemquick
 	}
 }
 
-func TestGemquick_Init(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "gemquick_init_test")
+func TestTjo_Init(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tjo_init_test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	g := &Gemquick{}
+	g := &Tjo{}
 	
 	paths := initPaths{
 		rootPath: tempDir,
@@ -97,14 +97,14 @@ func TestGemquick_Init(t *testing.T) {
 	}
 }
 
-func TestGemquick_CreateDirIfNotExists(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "gemquick_dir_test")
+func TestTjo_CreateDirIfNotExists(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tjo_dir_test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	g := Gemquick{}
+	g := Tjo{}
 	testDir := filepath.Join(tempDir, "newdir")
 	
 	// Test creating a new directory
@@ -125,14 +125,14 @@ func TestGemquick_CreateDirIfNotExists(t *testing.T) {
 	}
 }
 
-func TestGemquick_CreateFileIfNotExists(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "gemquick_file_test")
+func TestTjo_CreateFileIfNotExists(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tjo_file_test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	g := Gemquick{}
+	g := Tjo{}
 	testFile := filepath.Join(tempDir, "test.txt")
 	
 	// Test creating a new file
@@ -193,7 +193,7 @@ func TestServer_Configuration(t *testing.T) {
 }
 
 func TestBuildDSN(t *testing.T) {
-	g := &Gemquick{}
+	g := &Tjo{}
 	
 	tests := []struct {
 		name     string
@@ -250,8 +250,8 @@ func TestBuildDSN(t *testing.T) {
 	}
 }
 
-func TestGemquick_SessionManager(t *testing.T) {
-	g := &Gemquick{
+func TestTjo_SessionManager(t *testing.T) {
+	g := &Tjo{
 		HTTP: &HTTPService{
 			Session: scs.New(),
 		},
@@ -280,13 +280,13 @@ func TestGemquick_SessionManager(t *testing.T) {
 }
 
 func TestCheckDotEnv(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "gemquick_env_test")
+	tempDir, err := os.MkdirTemp("", "tjo_env_test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	g := &Gemquick{}
+	g := &Tjo{}
 
 	// Test when .env doesn't exist (should create it)
 	err = g.checkDotEnv(tempDir)

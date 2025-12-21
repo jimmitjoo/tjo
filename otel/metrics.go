@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jimmitjoo/gemquick/logging"
+	"github.com/jimmitjoo/tjo/logging"
 	"go.opentelemetry.io/otel/attribute"
 )
 
 // MetricsMiddleware returns a middleware that records HTTP metrics.
-// It integrates with Gemquick's existing metrics system.
+// It integrates with Tjo's existing metrics system.
 func MetricsMiddleware(metrics *logging.ApplicationMetrics) func(http.Handler) http.Handler {
 	if metrics == nil {
 		return func(next http.Handler) http.Handler {
@@ -95,7 +95,7 @@ func RecordDuration(histogram *logging.Histogram, start time.Time) {
 	histogram.Observe(time.Since(start).Seconds())
 }
 
-// SpanMetrics bridges OpenTelemetry spans with Gemquick metrics.
+// SpanMetrics bridges OpenTelemetry spans with Tjo metrics.
 // It automatically records span duration as a histogram observation.
 type SpanMetrics struct {
 	ctx       context.Context

@@ -348,7 +348,7 @@ func TestSetupRoutes(t *testing.T) {
 		{
 			path:       "/api",
 			wantStatus: http.StatusOK,
-			contains:   "Gemquick API",
+			contains:   "Tjo API",
 		},
 		{
 			path:       "/not-exists",

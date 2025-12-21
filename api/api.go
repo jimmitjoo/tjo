@@ -233,7 +233,7 @@ func (api *API) SetupRoutes() {
 	// API info
 	api.Router.Get("/api", func(w http.ResponseWriter, r *http.Request) {
 		JSON(w, http.StatusOK, map[string]interface{}{
-			"name":    "Gemquick API",
+			"name":    "Tjo API",
 			"version": api.Config.Version,
 			"docs":    "/api/docs",
 		})

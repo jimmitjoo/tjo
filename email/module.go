@@ -6,12 +6,12 @@ import (
 	"strconv"
 )
 
-// Module implements the gemquick.Module interface for email functionality.
+// Module implements the tjo.Module interface for email functionality.
 // Use this to opt-in to email support in your application.
 //
 // Example:
 //
-//	app := gemquick.Gemquick{}
+//	app := tjo.Tjo{}
 //	app.New(rootPath, email.NewModule())
 //
 //	// Later, send email:

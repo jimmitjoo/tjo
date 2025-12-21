@@ -36,10 +36,10 @@ go test -short ./...
 
 ### Building
 ```bash
-# Build the CLI tool to dist/gq
+# Build the CLI tool to dist/tjo
 make build
 
-# Build and copy to ../myapp/gq
+# Build and copy to ../myapp/tjo
 make build_cli
 
 # Clean build artifacts
@@ -51,8 +51,8 @@ No specific linting commands found. Consider using `go fmt ./...` and `go vet ./
 
 ## Architecture
 
-### Core Framework (`gemquick.go`)
-The main Gemquick struct orchestrates all framework components:
+### Core Framework (`tjo.go`)
+The main Tjo struct orchestrates all framework components:
 - **Web Server**: Chi router with middleware support
 - **Database**: Abstracted database interface supporting multiple drivers
 - **Session Management**: SCS session manager with Redis/Badger support  
@@ -82,7 +82,7 @@ The main Gemquick struct orchestrates all framework components:
 - `websocket/` - WebSocket support with hub pattern
 
 ### Key Patterns
-1. **Dependency Injection**: Core services injected through Gemquick struct
+1. **Dependency Injection**: Core services injected through Tjo struct
 2. **Interface-based Design**: Cache, database, filesystems use interfaces for flexibility
 3. **Middleware Chain**: Chi middleware for cross-cutting concerns
 4. **Table-driven Tests**: Extensive use of table tests for comprehensive coverage
@@ -92,7 +92,7 @@ The main Gemquick struct orchestrates all framework components:
 The framework includes a migration system (`migrations.go`) that:
 - Tracks migration history in database
 - Supports up/down migrations
-- Can be run via CLI: `gq migrate up/down`
+- Can be run via CLI: `tjo migrate up/down`
 
 ### Testing Philosophy
 - Comprehensive test coverage with colorful test runner
@@ -101,8 +101,8 @@ The framework includes a migration system (`migrations.go`) that:
 - Integration tests for database operations
 
 ### CLI Tool (`cmd/cli/`)
-The `gq` command provides:
-- `new` - Create new Gemquick project
+The `tjo` command provides:
+- `new` - Create new Tjo project
 - `migrate` - Run database migrations
 - `make auth/mail/model/handler` - Generate boilerplate code
 - `session` - Create session tables in database

@@ -11,7 +11,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/gertd/go-pluralize"
 	"github.com/iancoleman/strcase"
-	"github.com/jimmitjoo/gemquick/core"
+	"github.com/jimmitjoo/tjo/core"
 )
 
 func doMake(arg2, arg3 string) error {

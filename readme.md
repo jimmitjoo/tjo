@@ -1,8 +1,8 @@
-# Gemquick
+# Tjo
 
-![alt gemquick](https://raw.githubusercontent.com/jimmitjoo/gemquick-bare/main/public/images/gemquick-logo.png)
+![alt tjo](https://raw.githubusercontent.com/jimmitjoo/tjo-bare/main/public/images/tjo-logo.png)
 
-Gemquick is a modern, full-featured web application framework for Go that provides everything you need to build scalable web applications quickly and securely.
+Tjo is a modern, full-featured web application framework for Go that provides everything you need to build scalable web applications quickly and securely.
 
 ## Features
 
@@ -24,7 +24,7 @@ Gemquick is a modern, full-featured web application framework for Go that provid
 
 ## AI-Native Development (MCP)
 
-Gemquick is the first AI-native Go framework. Use natural language with AI assistants to build your application.
+Tjo is the first AI-native Go framework. Use natural language with AI assistants to build your application.
 
 ### Setup
 
@@ -33,8 +33,8 @@ Add to your Claude Code / Cursor MCP config:
 ```json
 {
   "mcpServers": {
-    "gemquick": {
-      "command": "gq",
+    "tjo": {
+      "command": "tjo",
       "args": ["mcp"]
     }
   }
@@ -45,18 +45,18 @@ Add to your Claude Code / Cursor MCP config:
 
 | Tool | Description |
 |------|-------------|
-| `gemquick_create_project` | Create a new GemQuick project |
-| `gemquick_create_model` | Create a new database model |
-| `gemquick_create_handler` | Create a new HTTP handler |
-| `gemquick_create_migration` | Create a new database migration |
-| `gemquick_create_middleware` | Create a new middleware |
-| `gemquick_create_mail` | Create email template |
-| `gemquick_run_migrations` | Run pending migrations |
-| `gemquick_rollback` | Rollback migrations |
-| `gemquick_setup_auth` | Setup auth with 2FA support |
-| `gemquick_create_session_table` | Create session table |
-| `gemquick_setup_docker` | Generate Docker config |
-| `gemquick_module_info` | Get module setup instructions |
+| `tjo_create_project` | Create a new Tjo project |
+| `tjo_create_model` | Create a new database model |
+| `tjo_create_handler` | Create a new HTTP handler |
+| `tjo_create_migration` | Create a new database migration |
+| `tjo_create_middleware` | Create a new middleware |
+| `tjo_create_mail` | Create email template |
+| `tjo_run_migrations` | Run pending migrations |
+| `tjo_rollback` | Rollback migrations |
+| `tjo_setup_auth` | Setup auth with 2FA support |
+| `tjo_create_session_table` | Create session table |
+| `tjo_setup_docker` | Generate Docker config |
+| `tjo_module_info` | Get module setup instructions |
 
 ### Usage
 
@@ -75,19 +75,19 @@ Just ask your AI assistant:
 Clone the repository and build the CLI tool:
 
 ```bash
-git clone https://github.com/jimmitjoo/gemquick
-cd gemquick
+git clone https://github.com/jimmitjoo/tjo
+cd tjo
 make build
 ```
 
-This will create the `gq` executable in `dist/gq`. You can move this file to your PATH for global access.
+This will create the `tjo` executable in `dist/tjo`. You can move this file to your PATH for global access.
 
 ## Quick Start
 
 ### Create a New Project
 
 ```bash
-gq new my_project
+tjo new my_project
 cd my_project
 make start
 ```
@@ -129,7 +129,7 @@ make deploy        # Generate deployment configuration
 
 ### Testing
 
-Gemquick includes a beautiful test runner with colored output:
+Tjo includes a beautiful test runner with colored output:
 
 ```bash
 # Run all tests with colors
@@ -149,10 +149,10 @@ make cover
 
 ```bash
 # Run migrations up
-gq migrate up
+tjo migrate up
 
 # Roll back migrations
-gq migrate down
+tjo migrate down
 
 # Create new migration
 make migration name=create_users_table
@@ -160,19 +160,19 @@ make migration name=create_users_table
 
 ## Opt-in Modules
 
-Gemquick uses a modular architecture. Import only what you need:
+Tjo uses a modular architecture. Import only what you need:
 
 ```go
 import (
-    "github.com/jimmitjoo/gemquick"
-    "github.com/jimmitjoo/gemquick/sms"
-    "github.com/jimmitjoo/gemquick/email"
-    "github.com/jimmitjoo/gemquick/websocket"
-    "github.com/jimmitjoo/gemquick/otel"
+    "github.com/jimmitjoo/tjo"
+    "github.com/jimmitjoo/tjo/sms"
+    "github.com/jimmitjoo/tjo/email"
+    "github.com/jimmitjoo/tjo/websocket"
+    "github.com/jimmitjoo/tjo/otel"
 )
 
 func main() {
-    app := gemquick.Gemquick{}
+    app := tjo.Tjo{}
 
     // Initialize with only the modules you need
     app.New(rootPath,
@@ -240,7 +240,7 @@ websocket.NewModule(
 ### Web Server Configuration
 
 ```go
-app := gemquick.Gemquick{}
+app := tjo.Tjo{}
 app.New(rootPath)
 app.AppName = "MyApp"
 app.Debug = true
@@ -314,7 +314,7 @@ OTEL_INSECURE=true
 
 **Custom Spans:**
 ```go
-import "github.com/jimmitjoo/gemquick/otel"
+import "github.com/jimmitjoo/tjo/otel"
 
 func (h *Handler) ProcessOrder(w http.ResponseWriter, r *http.Request) {
     ctx, span := otel.Start(r.Context(), "process_order")
@@ -377,7 +377,7 @@ OTEL_ENDPOINT=localhost:4317
 
 ## API Development
 
-Gemquick includes API utilities for building RESTful services:
+Tjo includes API utilities for building RESTful services:
 
 - Version management
 - Standardized JSON responses
@@ -404,11 +404,11 @@ api.JSON(w, http.StatusOK, data)
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at the [Gemquick repository](https://github.com/jimmitjoo/gemquick/). This project is intended to be a safe, welcoming space for collaboration. Contributors are expected to adhere to the [Contributor Covenant](https://www.contributor-covenant.org/).
+Bug reports and pull requests are welcome on GitHub at the [Tjo repository](https://github.com/jimmitjoo/tjo/). This project is intended to be a safe, welcoming space for collaboration. Contributors are expected to adhere to the [Contributor Covenant](https://www.contributor-covenant.org/).
 
 ## License
 
-The Gemquick framework is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
+The Tjo framework is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
 
 ## Documentation
 
@@ -424,4 +424,4 @@ For detailed documentation and examples, see:
 
 ## Support
 
-For issues, questions, or suggestions, please open an issue on the [GitHub repository](https://github.com/jimmitjoo/gemquick/issues).
+For issues, questions, or suggestions, please open an issue on the [GitHub repository](https://github.com/jimmitjoo/tjo/issues).

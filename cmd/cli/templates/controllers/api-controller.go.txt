@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jimmitjoo/gemquick/api"
+	"github.com/jimmitjoo/tjo/api"
 )
 
 // $CONTROLLERNAME$Controller handles $CONTROLLERNAME$ API operations

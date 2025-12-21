@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea or enhancement for GemQuick
+about: Suggest an idea or enhancement for Tjo
 title: ''
 labels: enhancement
 assignees: ''

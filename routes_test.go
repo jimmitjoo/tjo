@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"log"
@@ -9,11 +9,11 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
-	"github.com/jimmitjoo/gemquick/config"
+	"github.com/jimmitjoo/tjo/config"
 )
 
 func TestRoutes(t *testing.T) {
-	g := &Gemquick{
+	g := &Tjo{
 		HTTP: &HTTPService{
 			Router: chi.NewRouter(),
 		},
@@ -41,7 +41,7 @@ func TestRoutes(t *testing.T) {
 }
 
 func TestRoutesWithDebug(t *testing.T) {
-	g := &Gemquick{
+	g := &Tjo{
 		HTTP: &HTTPService{
 			Router: chi.NewRouter(),
 		},
@@ -56,7 +56,7 @@ func TestRoutesWithDebug(t *testing.T) {
 }
 
 func TestRoutesMiddleware(t *testing.T) {
-	g := &Gemquick{
+	g := &Tjo{
 		HTTP: &HTTPService{
 			Router:  chi.NewRouter(),
 			Session: scs.New(),
@@ -99,7 +99,7 @@ func TestRoutesMiddleware(t *testing.T) {
 }
 
 func TestStaticFileServing(t *testing.T) {
-	g := &Gemquick{
+	g := &Tjo{
 		HTTP: &HTTPService{
 			Router: chi.NewRouter(),
 		},

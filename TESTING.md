@@ -1,8 +1,8 @@
-# 🧪 Gemquick Testing Guide
+# 🧪 Tjo Testing Guide
 
 ## Running Tests
 
-Gemquick includes a beautiful, colorful test runner that makes it easy to see test results at a glance.
+Tjo includes a beautiful, colorful test runner that makes it easy to see test results at a glance.
 
 ### Quick Start
 
@@ -234,14 +234,14 @@ make cover  # Opens HTML report in browser
 ## Test Output Example
 
 ```
-🚀 Running Gemquick Test Suite
+🚀 Running Tjo Test Suite
 ────────────────────────────────────────────────────
   🧪 Running TestRandomString
   ✅ PASS: TestRandomString (0.00s)
   🧪 Running TestEncryption
   ✅ PASS: TestEncryption (0.01s)
 
-📦 github.com/jimmitjoo/gemquick
+📦 github.com/jimmitjoo/tjo
   ✅ PASS (0.883s) - Coverage: 85.4%
 
 ════════════════════════════════════════════════════

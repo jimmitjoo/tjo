@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ type Validation struct {
 	Errors map[string]string
 }
 
-func (g *Gemquick) Validator(data url.Values) *Validation {
+func (g *Tjo) Validator(data url.Values) *Validation {
 	return &Validation{Data: data, Errors: make(map[string]string)}
 }
 

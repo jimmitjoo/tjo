@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"errors"
@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jimmitjoo/gemquick/config"
+	"github.com/jimmitjoo/tjo/config"
 )
 
 // TestRandomStringCryptographicallySecure verifies that RandomString uses secure randomness
 func TestRandomStringCryptographicallySecure(t *testing.T) {
-	g := Gemquick{}
+	g := Tjo{}
 	
 	// Generate multiple strings and ensure they're unique
 	generated := make(map[string]bool)
@@ -314,7 +314,7 @@ func TestValidationSanitization(t *testing.T) {
 
 // TestCSRFProtection verifies CSRF middleware configuration
 func TestCSRFProtection(t *testing.T) {
-	g := &Gemquick{
+	g := &Tjo{
 		Config: &config.Config{
 			Cookie: config.CookieConfig{
 				Secure: true,
@@ -333,7 +333,7 @@ func TestCSRFProtection(t *testing.T) {
 
 // TestFilePermissions verifies secure file permissions
 func TestFilePermissions(t *testing.T) {
-	g := Gemquick{}
+	g := Tjo{}
 	
 	// Test CreateDirIfNotExists uses secure permissions
 	// The function uses 0755 which is appropriate for directories

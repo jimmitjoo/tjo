@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"log"
@@ -11,7 +11,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
-func (g *Gemquick) MigrateUp(dsn string) error {
+func (g *Tjo) MigrateUp(dsn string) error {
 	var pathBuilder strings.Builder
 	pathBuilder.WriteString("file://")
 	pathBuilder.WriteString(g.RootPath)
@@ -33,7 +33,7 @@ func (g *Gemquick) MigrateUp(dsn string) error {
 	return nil
 }
 
-func (g *Gemquick) MigrateDownAll(dsn string) error {
+func (g *Tjo) MigrateDownAll(dsn string) error {
 	var pathBuilder strings.Builder
 	pathBuilder.WriteString("file://")
 	pathBuilder.WriteString(g.RootPath)
@@ -54,7 +54,7 @@ func (g *Gemquick) MigrateDownAll(dsn string) error {
 	return nil
 }
 
-func (g *Gemquick) Steps(steps int, dsn string) error {
+func (g *Tjo) Steps(steps int, dsn string) error {
 	var pathBuilder strings.Builder
 	pathBuilder.WriteString("file://")
 	pathBuilder.WriteString(g.RootPath)
@@ -75,7 +75,7 @@ func (g *Gemquick) Steps(steps int, dsn string) error {
 	return nil
 }
 
-func (g *Gemquick) MigrateForce(dsn string) error {
+func (g *Tjo) MigrateForce(dsn string) error {
 	var pathBuilder strings.Builder
 	pathBuilder.WriteString("file://")
 	pathBuilder.WriteString(g.RootPath)

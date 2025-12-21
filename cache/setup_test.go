@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 	}
 
 	testRedisCache.Conn = &pool
-	testRedisCache.Prefix = "test_gemquick:"
+	testRedisCache.Prefix = "test_tjo:"
 
 	defer testRedisCache.Conn.Close()
 

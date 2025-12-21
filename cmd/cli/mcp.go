@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jimmitjoo/gemquick/core"
+	"github.com/jimmitjoo/tjo/core"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -43,7 +43,7 @@ func getModuleInfo(module string) string {
 		return `SMS Module - Send SMS via Twilio or Vonage
 
 Add to main.go imports:
-  "github.com/jimmitjoo/gemquick/sms"
+  "github.com/jimmitjoo/tjo/sms"
 
 Add to app.New():
   sms.NewModule()
@@ -64,7 +64,7 @@ Usage:
 		return `Email Module - Send emails via SMTP or API providers
 
 Add to main.go imports:
-  "github.com/jimmitjoo/gemquick/email"
+  "github.com/jimmitjoo/tjo/email"
 
 Add to app.New():
   email.NewModule()
@@ -92,7 +92,7 @@ Usage:
 		return `WebSocket Module - Real-time communication
 
 Add to main.go imports:
-  "github.com/jimmitjoo/gemquick/websocket"
+  "github.com/jimmitjoo/tjo/websocket"
 
 Add to app.New():
   websocket.NewModule()
@@ -113,7 +113,7 @@ Usage:
 		return `OpenTelemetry Module - Distributed tracing
 
 Add to main.go imports:
-  "github.com/jimmitjoo/gemquick/otel"
+  "github.com/jimmitjoo/tjo/otel"
 
 Add to app.New():
   otel.NewModule(
@@ -143,7 +143,7 @@ Local dev with Jaeger:
 
 func doMCP() error {
 	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "gemquick",
+		Name:    "tjo",
 		Version: core.Version,
 	}, nil)
 
@@ -153,8 +153,8 @@ func doMCP() error {
 		Template string `json:"template,omitempty" jsonschema_description:"Starter template (default/blog/api/saas)"`
 	}
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_create_project",
-		Description: "Create a new GemQuick project with full scaffolding. Available templates: default, blog, api, saas",
+		Name:        "tjo_create_project",
+		Description: "Create a new Tjo project with full scaffolding. Available templates: default, blog, api, saas",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args CreateProjectArgs) (*mcp.CallToolResult, any, error) {
 		template := args.Template
 		if template == "" {
@@ -168,7 +168,7 @@ func doMCP() error {
 
 	// Tool 2: Create model
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_create_model",
+		Name:        "tjo_create_model",
 		Description: "Create a new database model with fields",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args NameArg) (*mcp.CallToolResult, any, error) {
 		if err := doMake("model", args.Name); err != nil {
@@ -179,7 +179,7 @@ func doMCP() error {
 
 	// Tool 3: Create handler
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_create_handler",
+		Name:        "tjo_create_handler",
 		Description: "Create a new HTTP handler",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args NameArg) (*mcp.CallToolResult, any, error) {
 		if err := doMake("handler", args.Name); err != nil {
@@ -190,7 +190,7 @@ func doMCP() error {
 
 	// Tool 4: Create migration
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_create_migration",
+		Name:        "tjo_create_migration",
 		Description: "Create a new database migration",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args NameArg) (*mcp.CallToolResult, any, error) {
 		if err := doMake("migration", args.Name); err != nil {
@@ -201,7 +201,7 @@ func doMCP() error {
 
 	// Tool 5: Run migrations
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_run_migrations",
+		Name:        "tjo_run_migrations",
 		Description: "Run pending database migrations",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args StepsArg) (*mcp.CallToolResult, any, error) {
 		steps := ""
@@ -216,7 +216,7 @@ func doMCP() error {
 
 	// Tool 6: Rollback migrations
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_rollback",
+		Name:        "tjo_rollback",
 		Description: "Rollback database migrations",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args StepsArg) (*mcp.CallToolResult, any, error) {
 		steps := "1"
@@ -232,7 +232,7 @@ func doMCP() error {
 	// Tool 7: Setup authentication
 	type EmptyArgs struct{}
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_setup_auth",
+		Name:        "tjo_setup_auth",
 		Description: "Setup complete authentication system with login, register, password reset, and 2FA support. Creates migrations, models, handlers, middleware, views, and email templates.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args EmptyArgs) (*mcp.CallToolResult, any, error) {
 		if err := doAuth(); err != nil {
@@ -243,7 +243,7 @@ func doMCP() error {
 
 	// Tool 8: Create session table
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_create_session_table",
+		Name:        "tjo_create_session_table",
 		Description: "Create database table for session storage",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args EmptyArgs) (*mcp.CallToolResult, any, error) {
 		if err := doSession(); err != nil {
@@ -254,7 +254,7 @@ func doMCP() error {
 
 	// Tool 9: Create middleware
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_create_middleware",
+		Name:        "tjo_create_middleware",
 		Description: "Create a new custom middleware",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args NameArg) (*mcp.CallToolResult, any, error) {
 		if err := doMake("middleware", args.Name); err != nil {
@@ -265,7 +265,7 @@ func doMCP() error {
 
 	// Tool 10: Create mail template
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_create_mail",
+		Name:        "tjo_create_mail",
 		Description: "Create a new email template (HTML and plain text)",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args NameArg) (*mcp.CallToolResult, any, error) {
 		if err := doMail(args.Name); err != nil {
@@ -276,7 +276,7 @@ func doMCP() error {
 
 	// Tool 11: Setup Docker
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_setup_docker",
+		Name:        "tjo_setup_docker",
 		Description: "Generate Docker and docker-compose configuration files for the project",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args EmptyArgs) (*mcp.CallToolResult, any, error) {
 		if err := doMake("docker", ""); err != nil {
@@ -290,7 +290,7 @@ func doMCP() error {
 		Module string `json:"module" jsonschema_description:"Module name: sms, email, websocket, or otel"`
 	}
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "gemquick_module_info",
+		Name:        "tjo_module_info",
 		Description: "Get information on how to enable a specific module (sms, email, websocket, otel)",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args ModuleArgs) (*mcp.CallToolResult, any, error) {
 		info := getModuleInfo(args.Module)

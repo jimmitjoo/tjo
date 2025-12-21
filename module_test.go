@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"context"
@@ -18,7 +18,7 @@ type testModule struct {
 
 func (m *testModule) Name() string { return m.name }
 
-func (m *testModule) Initialize(g *Gemquick) error {
+func (m *testModule) Initialize(g *Tjo) error {
 	m.initCalled = true
 	return m.initError
 }
@@ -115,7 +115,7 @@ func TestModuleRegistry_InitializeAll(t *testing.T) {
 		_ = r.Register(m1)
 		_ = r.Register(m2)
 
-		g := &Gemquick{}
+		g := &Tjo{}
 		if err := r.InitializeAll(g); err != nil {
 			t.Errorf("InitializeAll() = %v, want nil", err)
 		}
@@ -135,7 +135,7 @@ func TestModuleRegistry_InitializeAll(t *testing.T) {
 		_ = r.Register(m1)
 		_ = r.Register(m2)
 
-		g := &Gemquick{}
+		g := &Tjo{}
 		err := r.InitializeAll(g)
 		if err == nil {
 			t.Error("InitializeAll() = nil, want error")
@@ -165,7 +165,7 @@ func TestModuleRegistry_ShutdownAll(t *testing.T) {
 		_ = r.Register(m3)
 
 		// Initialize first
-		g := &Gemquick{}
+		g := &Tjo{}
 		_ = r.InitializeAll(g)
 
 		// Track shutdown order by checking which are called

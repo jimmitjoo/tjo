@@ -114,7 +114,7 @@ func NewDefault() *Logger {
 	return New(Config{
 		Level:      InfoLevel,
 		Writer:     os.Stdout,
-		Service:    "gemquick",
+		Service:    "tjo",
 		EnableJSON: true,
 	})
 }

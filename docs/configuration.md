@@ -1,6 +1,6 @@
 # Configuration Reference
 
-GemQuick uses environment variables for configuration. All settings are loaded at startup and validated before the application starts.
+Tjo uses environment variables for configuration. All settings are loaded at startup and validated before the application starts.
 
 ## Quick Start
 
@@ -54,7 +54,7 @@ SECURE=true
 
 ## Database Settings
 
-GemQuick supports PostgreSQL, MySQL/MariaDB, and SQLite.
+Tjo supports PostgreSQL, MySQL/MariaDB, and SQLite.
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
@@ -140,7 +140,7 @@ REDIS_PREFIX=myapp
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `COOKIE_NAME` | Session cookie name | `gemquick_session` | No |
+| `COOKIE_NAME` | Session cookie name | `tjo_session` | No |
 | `COOKIE_LIFETIME` | Cookie lifetime in minutes | `1440` (24 hours) | No |
 | `COOKIE_PERSIST` | Persist cookie across browser sessions | `true` | No |
 | `COOKIE_SECURE` | Require HTTPS for cookies | `true` | No |
@@ -457,7 +457,7 @@ You can use different `.env` files for different environments:
 
 ## Validation
 
-GemQuick validates configuration at startup. Invalid configuration will prevent the application from starting:
+Tjo validates configuration at startup. Invalid configuration will prevent the application from starting:
 
 ```
 configuration errors: invalid DATABASE_TYPE: mongodb; OTEL_SERVICE_NAME is required when OTEL_ENABLED=true

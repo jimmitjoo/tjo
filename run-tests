@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Gemquick Test Runner
+# Tjo Test Runner
 # A beautiful and informative test runner with color support
 
 # Colors
@@ -21,7 +21,7 @@ BENCH=false
 SHORT=false
 
 show_help() {
-    echo -e "${BOLD}Gemquick Test Runner${NC}"
+    echo -e "${BOLD}Tjo Test Runner${NC}"
     echo ""
     echo "Usage: ./run-tests [options] [package]"
     echo ""
@@ -76,7 +76,7 @@ done
 
 # Header
 echo ""
-echo -e "${BLUE}${BOLD}🚀 Gemquick Test Suite${NC}"
+echo -e "${BLUE}${BOLD}🚀 Tjo Test Suite${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 # Build test command

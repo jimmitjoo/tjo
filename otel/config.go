@@ -1,5 +1,5 @@
 // Package otel provides OpenTelemetry integration for distributed tracing,
-// metrics, and logging correlation in Gemquick applications.
+// metrics, and logging correlation in Tjo applications.
 //
 // Usage:
 //

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jimmitjoo/gemquick/config"
-	"github.com/jimmitjoo/gemquick/core"
+	"github.com/jimmitjoo/tjo/config"
+	"github.com/jimmitjoo/tjo/core"
 	"github.com/stretchr/testify/assert"
 )
 

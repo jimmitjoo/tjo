@@ -1,14 +1,14 @@
-package gemquick
+package tjo
 
 import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/jimmitjoo/gemquick/logging"
+	"github.com/jimmitjoo/tjo/logging"
 )
 
-func (g *Gemquick) routes() http.Handler {
+func (g *Tjo) routes() http.Handler {
 	mux := chi.NewRouter()
 	mux.Use(middleware.RequestID)
 	mux.Use(middleware.RealIP)
@@ -46,7 +46,7 @@ func (g *Gemquick) routes() http.Handler {
 
 // AddMonitoringRoutes adds health and metrics endpoints.
 // Call this in your routes() function AFTER adding your middleware.
-func (g *Gemquick) AddMonitoringRoutes(mux *chi.Mux) {
+func (g *Tjo) AddMonitoringRoutes(mux *chi.Mux) {
 	if g.Logging == nil || g.Logging.Metrics == nil || g.Logging.Health == nil {
 		return
 	}

@@ -1,4 +1,4 @@
-package gemquick
+package tjo
 
 import (
 	"context"
@@ -15,17 +15,17 @@ import (
 	"github.com/dgraph-io/badger/v3"
 	"github.com/go-chi/chi/v5"
 	"github.com/gomodule/redigo/redis"
-	"github.com/jimmitjoo/gemquick/cache"
-	"github.com/jimmitjoo/gemquick/config"
-	"github.com/jimmitjoo/gemquick/email"
-	"github.com/jimmitjoo/gemquick/filesystems/miniofilesystem"
-	"github.com/jimmitjoo/gemquick/filesystems/s3filesystem"
-	"github.com/jimmitjoo/gemquick/jobs"
-	"github.com/jimmitjoo/gemquick/logging"
-	"github.com/jimmitjoo/gemquick/otel"
-	"github.com/jimmitjoo/gemquick/render"
-	"github.com/jimmitjoo/gemquick/session"
-	"github.com/jimmitjoo/gemquick/sms"
+	"github.com/jimmitjoo/tjo/cache"
+	"github.com/jimmitjoo/tjo/config"
+	"github.com/jimmitjoo/tjo/email"
+	"github.com/jimmitjoo/tjo/filesystems/miniofilesystem"
+	"github.com/jimmitjoo/tjo/filesystems/s3filesystem"
+	"github.com/jimmitjoo/tjo/jobs"
+	"github.com/jimmitjoo/tjo/logging"
+	"github.com/jimmitjoo/tjo/otel"
+	"github.com/jimmitjoo/tjo/render"
+	"github.com/jimmitjoo/tjo/session"
+	"github.com/jimmitjoo/tjo/sms"
 	"github.com/joho/godotenv"
 	"github.com/robfig/cron/v3"
 )
@@ -33,14 +33,14 @@ import (
 // version is injected at build time via ldflags
 var version = "dev"
 
-// Gemquick is the main framework struct that orchestrates all components.
+// Tjo is the main framework struct that orchestrates all components.
 // It uses composition to organize functionality into focused services:
 // - Logging: structured logging, metrics, and health monitoring
 // - HTTP: routing, sessions, and template rendering
 // - Data: database, caching, and file storage
 // - Background: job processing, scheduling, mail, and SMS
 // - Modules: optional components (SMS, Email, WebSocket, OTel, etc.)
-type Gemquick struct {
+type Tjo struct {
 	// Core configuration
 	AppName       string
 	Debug         bool
@@ -67,16 +67,16 @@ type Server struct {
 	URL        string
 }
 
-// New initializes the Gemquick framework with optional modules.
+// New initializes the Tjo framework with optional modules.
 // Modules are opt-in components for features like SMS, Email, WebSocket, etc.
 // Example:
 //
-//	app := gemquick.Gemquick{}
+//	app := tjo.Tjo{}
 //	app.New(rootPath,
 //	    sms.NewModule(),
 //	    email.NewModule(),
 //	)
-func (g *Gemquick) New(rootPath string, modules ...Module) error {
+func (g *Tjo) New(rootPath string, modules ...Module) error {
 	pathConfig := initPaths{
 		rootPath:    rootPath,
 		folderNames: []string{"handlers", "migrations", "views", "email", "data", "public", "tmp", "logs", "middleware"},
@@ -255,7 +255,7 @@ func (g *Gemquick) New(rootPath string, modules ...Module) error {
 	return nil
 }
 
-func (g *Gemquick) Init(p initPaths) error {
+func (g *Tjo) Init(p initPaths) error {
 	root := p.rootPath
 	for _, path := range p.folderNames {
 		// create folder if it doesnt exist
@@ -273,7 +273,7 @@ func (g *Gemquick) Init(p initPaths) error {
 // It handles SIGINT and SIGTERM signals to gracefully stop the server,
 // waiting for in-flight requests to complete before shutting down.
 // Returns an error if the server fails to start or encounters a fatal error.
-func (g *Gemquick) ListenAndServe() error {
+func (g *Tjo) ListenAndServe() error {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", g.Config.Server.Port),
 		ErrorLog:     g.Logging.Error,
@@ -382,7 +382,7 @@ func (g *Gemquick) ListenAndServe() error {
 	return serverFailed
 }
 
-func (g *Gemquick) checkDotEnv(path string) error {
+func (g *Tjo) checkDotEnv(path string) error {
 	err := g.CreateFileIfNotExists(fmt.Sprintf("%s/.env", path))
 
 	if err != nil {
@@ -392,7 +392,7 @@ func (g *Gemquick) checkDotEnv(path string) error {
 	return nil
 }
 
-func (g *Gemquick) startLoggers() (*log.Logger, *log.Logger) {
+func (g *Tjo) startLoggers() (*log.Logger, *log.Logger) {
 	var infoLog *log.Logger
 	var errorLog *log.Logger
 
@@ -402,7 +402,7 @@ func (g *Gemquick) startLoggers() (*log.Logger, *log.Logger) {
 	return infoLog, errorLog
 }
 
-func (g *Gemquick) setupStructuredLogging() {
+func (g *Tjo) setupStructuredLogging() {
 	// Determine log level from config
 	logLevel := logging.ParseLogLevel(g.Config.Logging.Level)
 
@@ -457,7 +457,7 @@ func (g *Gemquick) setupStructuredLogging() {
 }
 
 // setupOpenTelemetry initializes the OpenTelemetry provider for distributed tracing.
-func (g *Gemquick) setupOpenTelemetry() {
+func (g *Tjo) setupOpenTelemetry() {
 	cfg := otel.Config{
 		ServiceName:    g.Config.OTel.ServiceName,
 		ServiceVersion: g.Config.OTel.ServiceVersion,
@@ -513,7 +513,7 @@ func (g *Gemquick) setupOpenTelemetry() {
 	})
 }
 
-func (g *Gemquick) createRenderer() {
+func (g *Tjo) createRenderer() {
 	myRenderer := render.Render{
 		Renderer: g.Config.App.Renderer,
 		RootPath: g.RootPath,
@@ -525,7 +525,7 @@ func (g *Gemquick) createRenderer() {
 	g.HTTP.Render = &myRenderer
 }
 
-func (g *Gemquick) createMailer() email.Mail {
+func (g *Tjo) createMailer() email.Mail {
 	m := email.Mail{
 		Templates: g.RootPath + "/email",
 
@@ -549,7 +549,7 @@ func (g *Gemquick) createMailer() email.Mail {
 	return m
 }
 
-func (g *Gemquick) createClientRedisCache() *cache.RedisCache {
+func (g *Tjo) createClientRedisCache() *cache.RedisCache {
 	cacheClient := cache.RedisCache{
 		Conn:   g.createRedisPool(),
 		Prefix: g.Config.Redis.Prefix,
@@ -557,7 +557,7 @@ func (g *Gemquick) createClientRedisCache() *cache.RedisCache {
 	return &cacheClient
 }
 
-func (g *Gemquick) createClientBadgerCache() (*cache.BadgerCache, error) {
+func (g *Tjo) createClientBadgerCache() (*cache.BadgerCache, error) {
 	conn, err := g.createBadgerConn()
 	if err != nil {
 		return nil, err
@@ -568,7 +568,7 @@ func (g *Gemquick) createClientBadgerCache() (*cache.BadgerCache, error) {
 	return &cacheClient, nil
 }
 
-func (g *Gemquick) createRedisPool() *redis.Pool {
+func (g *Tjo) createRedisPool() *redis.Pool {
 	return &redis.Pool{
 		MaxIdle:     3,
 		MaxActive:   10000,
@@ -600,7 +600,7 @@ func (g *Gemquick) createRedisPool() *redis.Pool {
 	}
 }
 
-func (g *Gemquick) createBadgerConn() (*badger.DB, error) {
+func (g *Tjo) createBadgerConn() (*badger.DB, error) {
 	db, err := badger.Open(badger.DefaultOptions(fmt.Sprintf("%s/tmp/badger", g.RootPath)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open badger database: %w", err)
@@ -611,12 +611,12 @@ func (g *Gemquick) createBadgerConn() (*badger.DB, error) {
 
 // BuildDSN returns the database connection string.
 // Deprecated: Use g.Config.Database.DSN(g.RootPath) instead.
-func (g *Gemquick) BuildDSN() string {
+func (g *Tjo) BuildDSN() string {
 	return g.Config.Database.DSN(g.RootPath)
 }
 
 // createFileSystems initializes file storage systems and registers them with the type-safe registry.
-func (g *Gemquick) createFileSystems() {
+func (g *Tjo) createFileSystems() {
 	if g.Config.Storage.IsMinIOEnabled() {
 		minio := &miniofilesystem.Minio{
 			Endpoint:  g.Config.Storage.MinIOEndpoint,
@@ -643,7 +643,7 @@ func (g *Gemquick) createFileSystems() {
 
 // Shutdown gracefully shuts down the application and all its components.
 // It stops background services, modules (in reverse order), and closes connections.
-func (g *Gemquick) Shutdown(ctx context.Context) error {
+func (g *Tjo) Shutdown(ctx context.Context) error {
 	var errs []error
 
 	// Stop job manager first (allows pending jobs to complete)
@@ -717,7 +717,7 @@ func (g *Gemquick) Shutdown(ctx context.Context) error {
 //	    smsModule := m.(*sms.Module)
 //	    smsModule.Send("+1234567890", "Hello!", false)
 //	}
-func (g *Gemquick) GetModule(name string) Module {
+func (g *Tjo) GetModule(name string) Module {
 	if g.Modules == nil {
 		return nil
 	}
@@ -725,7 +725,7 @@ func (g *Gemquick) GetModule(name string) Module {
 }
 
 // HasModule checks if a module is registered.
-func (g *Gemquick) HasModule(name string) bool {
+func (g *Tjo) HasModule(name string) bool {
 	if g.Modules == nil {
 		return false
 	}

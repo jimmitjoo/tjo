@@ -1,4 +1,4 @@
-module github.com/jimmitjoo/gemquick/websocket
+module github.com/jimmitjoo/tjo/websocket
 
 go 1.24.0
 

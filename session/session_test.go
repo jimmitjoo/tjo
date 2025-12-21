@@ -13,7 +13,7 @@ func TestSession_InitSession(t *testing.T) {
 	g := &Session{
 		CookieLifetime: "100",
 		CookiePersist:  "true",
-		CookieName:     "gemquick",
+		CookieName:     "tjo",
 		CookieDomain:   "localhost",
 		SessionType:    "cookie",
 	}

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/jimmitjoo/gemquick/core"
+	"github.com/jimmitjoo/tjo/core"
 	"github.com/joho/godotenv"
 )
 
@@ -62,8 +62,8 @@ func showHelp() {
 	color.Yellow(`Available commands:
 
 	help                    - show this help
-	version                 - show Gemquick version
-	new <name>              - create a new Gemquick project
+	version                 - show Tjo version
+	new <name>              - create a new Tjo project
 	new <name> -t <template> - create project with starter template
 	                          templates: default, blog, api, saas
 	run                     - run the application

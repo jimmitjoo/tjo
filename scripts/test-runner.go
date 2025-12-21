@@ -30,7 +30,7 @@ type TestResult struct {
 
 func main() {
 	fmt.Println()
-	blue.Println("🚀 Running Gemquick Test Suite")
+	blue.Println("🚀 Running Tjo Test Suite")
 	fmt.Println(strings.Repeat("─", 60))
 	
 	startTime := time.Now()

@@ -1,20 +1,20 @@
-# GemQuick Modules
+# Tjo Modules
 
-GemQuick uses opt-in modules for SMS, Email, WebSocket, and OpenTelemetry. Import only what you need.
+Tjo uses opt-in modules for SMS, Email, WebSocket, and OpenTelemetry. Import only what you need.
 
 ## Quick Start
 
 ```go
 import (
-    "github.com/jimmitjoo/gemquick"
-    "github.com/jimmitjoo/gemquick/sms"
-    "github.com/jimmitjoo/gemquick/email"
-    "github.com/jimmitjoo/gemquick/websocket"
-    "github.com/jimmitjoo/gemquick/otel"
+    "github.com/jimmitjoo/tjo"
+    "github.com/jimmitjoo/tjo/sms"
+    "github.com/jimmitjoo/tjo/email"
+    "github.com/jimmitjoo/tjo/websocket"
+    "github.com/jimmitjoo/tjo/otel"
 )
 
 func main() {
-    app := gemquick.Gemquick{}
+    app := tjo.Tjo{}
     app.New(rootPath,
         sms.NewModule(),
         email.NewModule(),
@@ -72,7 +72,7 @@ app.New(rootPath, sms.NewModule(
 // Send SMS
 if m := app.GetModule("sms"); m != nil {
     smsModule := m.(*sms.Module)
-    err := smsModule.Send("+46701234567", "Hello from GemQuick!", false)
+    err := smsModule.Send("+46701234567", "Hello from Tjo!", false)
 }
 ```
 
@@ -316,7 +316,7 @@ app.New(rootPath, otel.NewModule(
 ### Creating Spans
 
 ```go
-import "github.com/jimmitjoo/gemquick/otel"
+import "github.com/jimmitjoo/tjo/otel"
 
 func (h *Handler) ProcessOrder(w http.ResponseWriter, r *http.Request) {
     // Start a span
@@ -373,7 +373,7 @@ package mymodule
 
 import (
     "context"
-    "github.com/jimmitjoo/gemquick"
+    "github.com/jimmitjoo/tjo"
 )
 
 type Module struct {
@@ -406,7 +406,7 @@ func (m *Module) Name() string {
 
 func (m *Module) Initialize(g interface{}) error {
     // Setup your module
-    // g is *gemquick.Gemquick but typed as interface{} for decoupling
+    // g is *tjo.Tjo but typed as interface{} for decoupling
     return nil
 }
 

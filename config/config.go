@@ -1,4 +1,4 @@
-// Package config provides structured configuration with validation for Gemquick applications.
+// Package config provides structured configuration with validation for Tjo applications.
 // It groups related configuration into logical sections and validates all values at startup.
 package config
 
@@ -187,7 +187,7 @@ func Load() (*Config, error) {
 	cfg.Session.Type = envDefault("SESSION_TYPE", "cookie")
 
 	// Cookie config
-	cfg.Cookie.Name = envDefault("COOKIE_NAME", "gemquick_session")
+	cfg.Cookie.Name = envDefault("COOKIE_NAME", "tjo_session")
 	cfg.Cookie.Lifetime = envInt("COOKIE_LIFETIME", 1440) // 24 hours default
 	cfg.Cookie.Persist = envBool("COOKIE_PERSISTS", true)
 	cfg.Cookie.Secure = envBool("COOKIE_SECURE", true)
@@ -346,7 +346,7 @@ func (c *Config) Validate() error {
 		if keyLen != 16 && keyLen != 24 && keyLen != 32 {
 			errs = append(errs, fmt.Sprintf(
 				"KEY must be 16, 24, or 32 characters for AES encryption (got %d). "+
-					"Use 'gq make key' to generate a valid key", keyLen))
+					"Use 'tjo make key' to generate a valid key", keyLen))
 		}
 	}
 

@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/jimmitjoo/gemquick/core"
+	"github.com/jimmitjoo/tjo/core"
 )
 
 // cfg holds the CLI configuration (minimal subset of framework)
@@ -39,7 +39,7 @@ func main() {
 			exitGracefully(err)
 		}
 	case "version":
-		color.Green("Gemquick version: %s", core.Version)
+		color.Green("Tjo version: %s", core.Version)
 	case "help":
 		showHelp()
 	case "make":

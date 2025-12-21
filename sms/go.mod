@@ -1,4 +1,4 @@
-module github.com/jimmitjoo/gemquick/sms
+module github.com/jimmitjoo/tjo/sms
 
 go 1.24.0
 
