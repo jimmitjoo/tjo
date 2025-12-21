@@ -149,6 +149,83 @@ gq migrate down
 make migration name=create_users_table
 ```
 
+## Opt-in Modules
+
+Gemquick uses a modular architecture. Import only what you need:
+
+```go
+import (
+    "github.com/jimmitjoo/gemquick"
+    "github.com/jimmitjoo/gemquick/sms"
+    "github.com/jimmitjoo/gemquick/email"
+    "github.com/jimmitjoo/gemquick/websocket"
+    "github.com/jimmitjoo/gemquick/otel"
+)
+
+func main() {
+    app := gemquick.Gemquick{}
+
+    // Initialize with only the modules you need
+    app.New(rootPath,
+        sms.NewModule(),                    // SMS support
+        email.NewModule(),                  // Email support
+        websocket.NewModule(),              // WebSocket support
+        otel.NewModule(                     // OpenTelemetry tracing
+            otel.WithServiceName("my-app"),
+            otel.WithOTLPExporter("localhost:4317", true),
+        ),
+    )
+}
+```
+
+### Using Modules
+
+```go
+// Send SMS
+if sms := app.GetModule("sms"); sms != nil {
+    sms.(*sms.Module).Send("+1234567890", "Hello!", false)
+}
+
+// Send Email
+if email := app.GetModule("email"); email != nil {
+    email.(*email.Module).Send(email.Message{
+        To:      "user@example.com",
+        Subject: "Welcome!",
+    })
+}
+
+// WebSocket broadcast
+if ws := app.GetModule("websocket"); ws != nil {
+    ws.(*websocket.Module).Broadcast([]byte("Hello everyone!"))
+}
+
+// Mount WebSocket handler
+if ws := app.GetModule("websocket"); ws != nil {
+    app.HTTP.Router.Get("/ws", ws.(*websocket.Module).Handler())
+}
+```
+
+### Module Configuration
+
+Modules read from environment variables by default, or use functional options:
+
+```go
+// SMS with Twilio
+sms.NewModule(sms.WithTwilio(accountSid, apiKey, apiSecret, fromNumber))
+
+// Email with SMTP
+email.NewModule(
+    email.WithSMTP("smtp.example.com", 587, "user", "pass", "tls"),
+    email.WithFrom("noreply@example.com", "My App"),
+)
+
+// WebSocket with auth
+websocket.NewModule(
+    websocket.WithAllowedOrigins([]string{"https://example.com"}),
+    websocket.WithAuthenticateConnection(myAuthFunc),
+)
+```
+
 ## Core Components
 
 ### Web Server Configuration
