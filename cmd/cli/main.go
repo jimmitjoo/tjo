@@ -5,10 +5,11 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/jimmitjoo/gemquick"
+	"github.com/jimmitjoo/gemquick/core"
 )
 
-var gem gemquick.Gemquick
+// cfg holds the CLI configuration (minimal subset of framework)
+var cfg *core.CLIConfig
 
 func main() {
 	var message string
@@ -38,7 +39,7 @@ func main() {
 			exitGracefully(err)
 		}
 	case "version":
-		color.Green("Gemquick version: %s", gem.Version)
+		color.Green("Gemquick version: %s", core.Version)
 	case "help":
 		showHelp()
 	case "make":

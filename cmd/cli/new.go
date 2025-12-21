@@ -12,6 +12,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/go-git/go-git/v5"
+	"github.com/jimmitjoo/gemquick/core"
 )
 
 var appUrl string
@@ -71,7 +72,7 @@ func doNew(appName string, template string) error {
 
 	env := string(data)
 	env = strings.ReplaceAll(env, "${APP_NAME}", appname)
-	env = strings.ReplaceAll(env, "${KEY}", gem.RandomString(32))
+	env = strings.ReplaceAll(env, "${KEY}", core.RandomString(32))
 
 	err = copyDataToFile([]byte(env), "./"+appname+"/.env")
 	if err != nil {

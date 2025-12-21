@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jimmitjoo/gemquick"
+	"github.com/jimmitjoo/gemquick/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +31,9 @@ func TestMainFunction(t *testing.T) {
 			name: "version command",
 			args: []string{"cli", "version"},
 			setupFunc: func() {
-				gem.Version = "1.0.0"
+				cfg = &core.CLIConfig{
+					Version: "1.0.0",
+				}
 			},
 			checkOutput: func(t *testing.T, output string) {
 				// Version would be printed via color.Green
@@ -196,14 +198,11 @@ func TestEndToEndWorkflow(t *testing.T) {
 	err = os.Chdir(tempDir)
 	require.NoError(t, err)
 
-	// Initialize gem
-	gem = gemquick.Gemquick{
-		Version: "1.0.0-test",
-		Data: &gemquick.DataService{
-			DB: gemquick.Database{
-				DataType: "postgres",
-			},
-		},
+	// Initialize cfg
+	cfg = &core.CLIConfig{
+		Version:  "1.0.0-test",
+		RootPath: tempDir,
+		DBType:   "postgres",
 	}
 
 	t.Run("complete workflow", func(t *testing.T) {

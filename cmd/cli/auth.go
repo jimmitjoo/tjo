@@ -12,35 +12,36 @@ import (
 )
 
 func doAuth() error {
+	rootPath := getRootPath()
 
 	// check if there is a database connection
-	if gem.Data.DB.DataType == "" {
+	if cfg == nil || cfg.DBType == "" {
 		return errors.New("you have to define a database type to be able to use authentication")
 	}
 
 	// migrations
-	dbType := gem.Data.DB.DataType
+	dbType := cfg.DBType
 	fileName := fmt.Sprintf("%d_create_auth_tables", time.Now().UnixMicro())
 	var pathBuilder strings.Builder
-	
+
 	// Build upFile path
-	pathBuilder.WriteString(gem.RootPath)
+	pathBuilder.WriteString(rootPath)
 	pathBuilder.WriteString("/migrations/")
 	pathBuilder.WriteString(fileName)
 	pathBuilder.WriteString(".up.sql")
 	upFile := pathBuilder.String()
-	
+
 	// Build downFile path
 	pathBuilder.Reset()
-	pathBuilder.WriteString(gem.RootPath)
+	pathBuilder.WriteString(rootPath)
 	pathBuilder.WriteString("/migrations/")
 	pathBuilder.WriteString(fileName)
 	pathBuilder.WriteString(".down.sql")
 	downFile := pathBuilder.String()
-	
+
 	// Build routesFile path
 	pathBuilder.Reset()
-	pathBuilder.WriteString(gem.RootPath)
+	pathBuilder.WriteString(rootPath)
 	pathBuilder.WriteString("/routes.go")
 	routesFile := pathBuilder.String()
 
@@ -61,84 +62,84 @@ func doAuth() error {
 	}
 
 	// create models
-	err = copyFileFromTemplate("templates/data/user.go.txt", gem.RootPath+"/data/user.go")
+	err = copyFileFromTemplate("templates/data/user.go.txt", rootPath+"/data/user.go")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/data/token.go.txt", gem.RootPath+"/data/token.go")
+	err = copyFileFromTemplate("templates/data/token.go.txt", rootPath+"/data/token.go")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/data/remember_token.go.txt", gem.RootPath+"/data/remember_token.go")
+	err = copyFileFromTemplate("templates/data/remember_token.go.txt", rootPath+"/data/remember_token.go")
 	if err != nil {
 		exitGracefully(err)
 	}
 
 	// create middleware
-	err = copyFileFromTemplate("templates/middleware/auth.go.txt", gem.RootPath+"/middleware/auth.go")
+	err = copyFileFromTemplate("templates/middleware/auth.go.txt", rootPath+"/middleware/auth.go")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/middleware/auth-token.go.txt", gem.RootPath+"/middleware/auth-token.go")
+	err = copyFileFromTemplate("templates/middleware/auth-token.go.txt", rootPath+"/middleware/auth-token.go")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/middleware/remember.go.txt", gem.RootPath+"/middleware/remember.go")
+	err = copyFileFromTemplate("templates/middleware/remember.go.txt", rootPath+"/middleware/remember.go")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/handlers/auth-handlers.go.txt", gem.RootPath+"/handlers/auth-handlers.go")
+	err = copyFileFromTemplate("templates/handlers/auth-handlers.go.txt", rootPath+"/handlers/auth-handlers.go")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/email/welcome.html.tmpl", gem.RootPath+"/email/welcome.html.tmpl")
+	err = copyFileFromTemplate("templates/email/welcome.html.tmpl", rootPath+"/email/welcome.html.tmpl")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/email/welcome.plain.tmpl", gem.RootPath+"/email/welcome.plain.tmpl")
+	err = copyFileFromTemplate("templates/email/welcome.plain.tmpl", rootPath+"/email/welcome.plain.tmpl")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/email/password-reset.html.tmpl", gem.RootPath+"/email/password-reset.html.tmpl")
+	err = copyFileFromTemplate("templates/email/password-reset.html.tmpl", rootPath+"/email/password-reset.html.tmpl")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/email/password-reset.plain.tmpl", gem.RootPath+"/email/password-reset.plain.tmpl")
+	err = copyFileFromTemplate("templates/email/password-reset.plain.tmpl", rootPath+"/email/password-reset.plain.tmpl")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/views/login.jet", gem.RootPath+"/views/login.jet")
+	err = copyFileFromTemplate("templates/views/login.jet", rootPath+"/views/login.jet")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/views/register.jet", gem.RootPath+"/views/register.jet")
+	err = copyFileFromTemplate("templates/views/register.jet", rootPath+"/views/register.jet")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/views/forgot.jet", gem.RootPath+"/views/forgot.jet")
+	err = copyFileFromTemplate("templates/views/forgot.jet", rootPath+"/views/forgot.jet")
 	if err != nil {
 		exitGracefully(err)
 	}
 
-	err = copyFileFromTemplate("templates/views/reset-password.jet", gem.RootPath+"/views/reset-password.jet")
+	err = copyFileFromTemplate("templates/views/reset-password.jet", rootPath+"/views/reset-password.jet")
 	if err != nil {
 		exitGracefully(err)
 	}
 
 	// read models.go
-	modelsContent, err := os.ReadFile(gem.RootPath + "/data/models.go")
+	modelsContent, err := os.ReadFile(rootPath + "/data/models.go")
 	if err != nil {
 		exitGracefully(err)
 	}
@@ -161,7 +162,7 @@ func doAuth() error {
 		// find the line with 'return models' in modelsContent
 		output := bytes.Replace(modelsContent, []byte("type Models struct {"), []byte("type Models struct {\n\t"+string(authModels)+"\n"), 1)
 		output = bytes.Replace(output, []byte("return Models{"), []byte("return Models{\n\t"+string(returnAuthModels)+"\n\t"), 1)
-		if err = os.WriteFile(gem.RootPath+"/data/models.go", output, 0644); err != nil {
+		if err = os.WriteFile(rootPath+"/data/models.go", output, 0644); err != nil {
 			exitGracefully(err)
 		}
 	}

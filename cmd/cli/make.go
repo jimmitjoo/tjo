@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/gertd/go-pluralize"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/gertd/go-pluralize"
 	"github.com/iancoleman/strcase"
+	"github.com/jimmitjoo/gemquick/core"
 )
 
 func doMake(arg2, arg3 string) error {
@@ -63,39 +64,14 @@ func doMake(arg2, arg3 string) error {
 }
 
 func handleKey() {
-	rnd := gem.RandomString(32)
+	rnd := core.RandomString(32)
 	color.Green("Your new encryption key is: %s", rnd)
 }
 
-func handleAuth() {
-	err := doAuth()
-	if err != nil {
-		exitGracefully(err)
-	}
-}
-
-func handleMail(name string) {
-	if name == "" {
-		exitGracefully(errors.New("you must give the mail a name"))
-	}
-
-	err := doMail(name)
-	if err != nil {
-		exitGracefully(err)
-	}
-}
-
-func handleHandler(name string) {
-	err := doHandler(name)
-	if err != nil {
-		exitGracefully(err)
-	}
-}
-
-// getRootPath returns the root path, falling back to current directory if gem.RootPath is empty
+// getRootPath returns the root path, falling back to current directory if cfg is nil
 func getRootPath() string {
-	if gem.RootPath != "" {
-		return gem.RootPath
+	if cfg != nil && cfg.RootPath != "" {
+		return cfg.RootPath
 	}
 	// Fallback to current directory for tests
 	wd, err := os.Getwd()
@@ -132,24 +108,17 @@ func doHandler(name string) error {
 	return nil
 }
 
-func handleMigration(name string) {
-	err := doMigration(name)
-	if err != nil {
-		exitGracefully(err)
-	}
-}
-
 func doMigration(name string) error {
 	if name == "" {
 		return errors.New("migration name is required")
 	}
 
 	// check if there is a database connection
-	if gem.Data.DB.DataType == "" {
+	if cfg == nil || cfg.DBType == "" {
 		return errors.New("you have to define a database type to create migrations")
 	}
 
-	dbType := gem.Data.DB.DataType
+	dbType := cfg.DBType
 	fileName := fmt.Sprintf("%d_%s.%s", time.Now().UnixMicro(), name, dbType)
 
 	rootPath := getRootPath()
@@ -195,13 +164,6 @@ func reformatMigration(migrationFile string, tableName string) error {
 	return nil
 }
 
-func handleModel(name string) {
-	err := doModel(name)
-	if err != nil {
-		exitGracefully(err)
-	}
-}
-
 func doModel(name string) error {
 	if name == "" {
 		return errors.New("model name is required")
@@ -243,9 +205,9 @@ func doModel(name string) error {
 	color.Green(modelCamelName+" created: %s", fileName)
 
 	// create a migration for the model
-	if gem.Data.DB.DataType != "" {
+	if cfg != nil && cfg.DBType != "" {
 
-		dbType := gem.Data.DB.DataType
+		dbType := cfg.DBType
 		migrationFileName := fmt.Sprintf("%d_%s.%s", time.Now().UnixMicro(), "create_"+tableName+"_table", dbType)
 
 		migrationUpFile := rootPath + "/migrations/" + migrationFileName + ".up.sql"
@@ -294,13 +256,6 @@ func doModel(name string) error {
 	}
 	
 	return nil
-}
-
-func handleSession() {
-	err := doSession()
-	if err != nil {
-		exitGracefully(err)
-	}
 }
 
 // doAPIController creates a new API controller
@@ -508,8 +463,8 @@ func doDocker() error {
 		content := string(data)
 		// Replace placeholders with actual app name
 		var appName string
-		if gem.AppName != "" {
-			appName = strings.ToLower(gem.AppName)
+		if cfg != nil && cfg.AppName != "" {
+			appName = strings.ToLower(cfg.AppName)
 		} else {
 			appName = "testapp"
 		}
@@ -560,8 +515,8 @@ func doDeploy() error {
 		content := string(data)
 		// Replace placeholders with actual app name
 		var appName string
-		if gem.AppName != "" {
-			appName = strings.ToLower(gem.AppName)
+		if cfg != nil && cfg.AppName != "" {
+			appName = strings.ToLower(cfg.AppName)
 		} else {
 			appName = "testapp"
 		}

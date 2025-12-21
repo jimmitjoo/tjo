@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jimmitjoo/gemquick"
 	"github.com/jimmitjoo/gemquick/config"
+	"github.com/jimmitjoo/gemquick/core"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -93,12 +93,15 @@ func TestGetDSN(t *testing.T) {
 			}
 
 			// Load config after setting environment variables
-			cfg, err := config.Load()
+			loadedCfg, err := config.Load()
 			if err != nil {
 				t.Fatalf("Failed to load config: %v", err)
 			}
-			gem.Config = cfg
-			gem.Data.DB.DataType = tt.dbType
+			cfg = &core.CLIConfig{
+				RootPath: ".",
+				DBType:   tt.dbType,
+				Config:   loadedCfg,
+			}
 
 			result := getDSN()
 			assert.Equal(t, tt.expected, result)
@@ -188,10 +191,10 @@ func TestUpdateSourceFiles_Error(t *testing.T) {
 }
 
 func init() {
-	// Initialize gem for tests
-	gem = gemquick.Gemquick{
-		Data: &gemquick.DataService{
-			DB: gemquick.Database{},
-		},
+	// Initialize cfg for tests
+	cfg = &core.CLIConfig{
+		RootPath: ".",
+		DBType:   "",
+		Config:   nil,
 	}
 }

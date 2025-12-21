@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/jimmitjoo/gemquick/config"
+	"github.com/jimmitjoo/gemquick/core"
 	"github.com/joho/godotenv"
 )
 
@@ -18,26 +18,16 @@ func setup(arg1, arg2 string) {
 			exitGracefully(err)
 		}
 
-		path, err := os.Getwd()
+		// Load CLI configuration using the core package
+		cfg, err = core.LoadCLIConfig()
 		if err != nil {
 			exitGracefully(err)
 		}
-
-		// Load configuration
-		cfg, err := config.Load()
-		if err != nil {
-			exitGracefully(err)
-		}
-
-		gem.RootPath = path
-		gem.Version = "0.0.1"
-		gem.Config = cfg
-		gem.Data.DB.DataType = cfg.Database.Type
 	}
 }
 
 func getDSN() string {
-	dbType := gem.Data.DB.DataType
+	dbType := cfg.DBType
 	if dbType == "pgx" {
 		dbType = "postgres"
 	}
@@ -64,7 +54,8 @@ func getDSN() string {
 		return dsn
 	}
 
-	return "mysql://" + gem.BuildDSN()
+	// Build MySQL DSN from config
+	return "mysql://" + cfg.Config.Database.DSN(cfg.RootPath)
 }
 
 func showHelp() {

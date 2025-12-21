@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jimmitjoo/gemquick/config"
+	"github.com/jimmitjoo/gemquick/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -101,6 +103,18 @@ DROP TABLE IF EXISTS test_table;`
 			for k, v := range tt.setupEnv {
 				os.Setenv(k, v)
 				defer os.Unsetenv(k)
+			}
+
+			// Initialize cfg for the test
+			dbType := tt.setupEnv["DATABASE_TYPE"]
+			if dbType == "" {
+				dbType = "postgres"
+			}
+			loadedCfg, _ := config.Load()
+			cfg = &core.CLIConfig{
+				RootPath: tempDir,
+				DBType:   dbType,
+				Config:   loadedCfg,
 			}
 
 			// Note: doMigrate will fail without actual database connection

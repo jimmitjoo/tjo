@@ -7,13 +7,14 @@ import (
 )
 
 func doSession() error {
+	rootPath := getRootPath()
 
 	// check if there is a database connection
-	if gem.Data.DB.DataType == "" {
+	if cfg == nil || cfg.DBType == "" {
 		return errors.New("you have to define a database type to be able to use other session types than cookies")
 	}
 
-	dbType := gem.Data.DB.DataType
+	dbType := cfg.DBType
 	if dbType == "pgx" || dbType == "postgresql" {
 		dbType = "postgres"
 	} else if dbType == "mariadb" {
@@ -25,8 +26,8 @@ func doSession() error {
 		exitGracefully(errors.New(fileName + " already exists."))
 	}
 
-	upFile := gem.RootPath + "/migrations/" + fileName + "." + dbType + ".up.sql"
-	downFile := gem.RootPath + "/migrations/" + fileName + "." + dbType + ".down.sql"
+	upFile := rootPath + "/migrations/" + fileName + "." + dbType + ".up.sql"
+	downFile := rootPath + "/migrations/" + fileName + "." + dbType + ".down.sql"
 
 	err := copyFileFromTemplate("templates/migrations/"+dbType+"_session.sql", upFile)
 	if err != nil {

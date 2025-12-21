@@ -3,19 +3,20 @@ package main
 import "strings"
 
 func doMail(arg3 string) error {
+	rootPath := getRootPath()
 	var pathBuilder strings.Builder
 	lowerArg := strings.ToLower(arg3)
-	
+
 	// Build htmlMail path
-	pathBuilder.WriteString(gem.RootPath)
+	pathBuilder.WriteString(rootPath)
 	pathBuilder.WriteString("/email/")
 	pathBuilder.WriteString(lowerArg)
 	pathBuilder.WriteString(".html.tmpl")
 	htmlMail := pathBuilder.String()
-	
+
 	// Build plainTextMail path
 	pathBuilder.Reset()
-	pathBuilder.WriteString(gem.RootPath)
+	pathBuilder.WriteString(rootPath)
 	pathBuilder.WriteString("/email/")
 	pathBuilder.WriteString(lowerArg)
 	pathBuilder.WriteString(".plain.tmpl")

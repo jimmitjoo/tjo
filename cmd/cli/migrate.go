@@ -1,34 +1,37 @@
 package main
 
+import "github.com/jimmitjoo/gemquick/core"
+
 func doMigrate(arg2, arg3 string) error {
 	dsn := getDSN()
+	rootPath := getRootPath()
 
 	switch arg2 {
 	case "up":
-		err := gem.MigrateUp(dsn)
+		err := core.MigrateUp(rootPath, dsn)
 		if err != nil {
 			return err
 		}
 	case "down":
 		if arg3 == "all" {
-			err := gem.MigrateDownAll(dsn)
+			err := core.MigrateDownAll(rootPath, dsn)
 			if err != nil {
 				return err
 			}
 			return nil
 		} else {
-			err := gem.Steps(-1, dsn)
+			err := core.MigrateSteps(-1, rootPath, dsn)
 			if err != nil {
 				return err
 			}
 			return nil
 		}
 	case "reset":
-		err := gem.MigrateDownAll(dsn)
+		err := core.MigrateDownAll(rootPath, dsn)
 		if err != nil {
 			return err
 		}
-		err = gem.MigrateUp(dsn)
+		err = core.MigrateUp(rootPath, dsn)
 		if err != nil {
 			return err
 		}
