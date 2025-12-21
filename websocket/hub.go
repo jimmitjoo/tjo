@@ -161,15 +161,27 @@ func (h *Hub) unregisterClient(client *Client) {
 
 func (h *Hub) broadcastToAll(message []byte) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
+	var deadClients []*Client
 	for client := range h.clients {
 		select {
 		case client.send <- message:
 		default:
-			delete(h.clients, client)
-			close(client.send)
+			// Collect dead clients - don't modify map while holding read lock
+			deadClients = append(deadClients, client)
 		}
+	}
+	h.mu.RUnlock()
+
+	// Clean up dead clients with write lock
+	if len(deadClients) > 0 {
+		h.mu.Lock()
+		for _, client := range deadClients {
+			if _, ok := h.clients[client]; ok {
+				delete(h.clients, client)
+				close(client.send)
+			}
+		}
+		h.mu.Unlock()
 	}
 }
 
@@ -183,8 +195,7 @@ func (h *Hub) broadcastToRoom(roomMsg *RoomMessage) {
 	}
 
 	room.mu.RLock()
-	defer room.mu.RUnlock()
-
+	var deadClients []*Client
 	for client := range room.clients {
 		if client == roomMsg.Exclude {
 			continue
@@ -192,8 +203,19 @@ func (h *Hub) broadcastToRoom(roomMsg *RoomMessage) {
 		select {
 		case client.send <- roomMsg.Message:
 		default:
+			// Collect dead clients - don't modify map while holding read lock
+			deadClients = append(deadClients, client)
+		}
+	}
+	room.mu.RUnlock()
+
+	// Clean up dead clients with write lock
+	if len(deadClients) > 0 {
+		room.mu.Lock()
+		for _, client := range deadClients {
 			delete(room.clients, client)
 		}
+		room.mu.Unlock()
 	}
 }
 
@@ -232,11 +254,11 @@ func (h *Hub) LeaveRoom(client *Client, roomName string) {
 }
 
 func (h *Hub) leaveRoom(client *Client, roomName string) {
-	h.mu.RLock()
+	// Use write lock from start to prevent TOCTOU race
+	h.mu.Lock()
 	room, exists := h.rooms[roomName]
-	h.mu.RUnlock()
-
 	if !exists {
+		h.mu.Unlock()
 		return
 	}
 
@@ -249,11 +271,11 @@ func (h *Hub) leaveRoom(client *Client, roomName string) {
 	delete(client.rooms, roomName)
 	client.mu.Unlock()
 
+	// Safe to delete room now - we still hold h.mu.Lock
 	if isEmpty {
-		h.mu.Lock()
 		delete(h.rooms, roomName)
-		h.mu.Unlock()
 	}
+	h.mu.Unlock()
 
 	if h.config.OnLeaveRoom != nil {
 		h.config.OnLeaveRoom(client, roomName)
@@ -340,7 +362,21 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientID := generateClientID()
-	userID := r.Header.Get("User-ID")
+	var userID string
+
+	// Use authentication callback if configured
+	if h.config.AuthenticateConnection != nil {
+		userID, err = h.config.AuthenticateConnection(r)
+		if err != nil {
+			log.Printf("WebSocket authentication failed for client %s: %v", clientID, err)
+			conn.WriteMessage(websocket.CloseMessage,
+				websocket.FormatCloseMessage(4001, "authentication failed"))
+			conn.Close()
+			return
+		}
+	}
+
+	// If no auth callback or user not authenticated, use client ID
 	if userID == "" {
 		userID = clientID
 	}
@@ -454,28 +490,46 @@ func (c *Client) handleMessage(msg *Message) {
 	case "join_room":
 		if roomName, ok := msg.Data.(string); ok {
 			c.hub.JoinRoom(c, roomName)
+		} else {
+			log.Printf("Client %s: join_room requires string room name", c.id)
 		}
 	case "leave_room":
 		if roomName, ok := msg.Data.(string); ok {
 			c.hub.LeaveRoom(c, roomName)
+		} else {
+			log.Printf("Client %s: leave_room requires string room name", c.id)
 		}
 	case "room_message":
-		if msg.Room != "" {
-			messageBytes, _ := json.Marshal(msg)
-			c.hub.BroadcastToRoom(msg.Room, messageBytes, c)
+		if msg.Room == "" {
+			log.Printf("Client %s: room_message requires room field", c.id)
+			return
 		}
+		messageBytes, err := json.Marshal(msg)
+		if err != nil {
+			log.Printf("Client %s: failed to marshal room message: %v", c.id, err)
+			return
+		}
+		c.hub.BroadcastToRoom(msg.Room, messageBytes, c)
 	case "broadcast":
-		messageBytes, _ := json.Marshal(msg)
+		messageBytes, err := json.Marshal(msg)
+		if err != nil {
+			log.Printf("Client %s: failed to marshal broadcast message: %v", c.id, err)
+			return
+		}
 		c.hub.BroadcastToAll(messageBytes)
+	default:
+		log.Printf("Client %s: unknown message type: %s", c.id, msg.Type)
 	}
 }
 
-func (c *Client) Send(message []byte) {
+func (c *Client) Send(message []byte) error {
 	select {
 	case c.send <- message:
+		return nil
 	default:
-		close(c.send)
-		delete(c.hub.clients, c)
+		// Channel full - let the writePump/unregister handle cleanup
+		// Do NOT modify hub.clients here - causes race condition
+		return fmt.Errorf("send buffer full for client %s", c.id)
 	}
 }
 
@@ -492,8 +546,7 @@ func (c *Client) SendMessage(msgType string, data interface{}) error {
 		return err
 	}
 
-	c.Send(messageBytes)
-	return nil
+	return c.Send(messageBytes)
 }
 
 func (c *Client) GetID() string {

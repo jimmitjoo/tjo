@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"net/http"
 	"time"
 )
 
@@ -13,11 +14,18 @@ type Config struct {
 	RoomMessageBuffer int
 	ClientBuffer      int
 	AllowedOrigins    []string // List of allowed origins for WebSocket connections
-	OnConnect         func(*Client)
-	OnDisconnect      func(*Client)
-	OnMessage         func(*Client, *Message)
-	OnJoinRoom        func(*Client, string)
-	OnLeaveRoom       func(*Client, string)
+
+	// AuthenticateConnection validates the WebSocket connection and returns a verified user ID.
+	// If nil, connections are treated as anonymous with auto-generated IDs.
+	// IMPORTANT: Never trust client-provided headers for user identity - always validate
+	// using session cookies, JWT tokens, or other secure authentication mechanisms.
+	AuthenticateConnection func(r *http.Request) (userID string, err error)
+
+	OnConnect    func(*Client)
+	OnDisconnect func(*Client)
+	OnMessage    func(*Client, *Message)
+	OnJoinRoom   func(*Client, string)
+	OnLeaveRoom  func(*Client, string)
 }
 
 func DefaultConfig() *Config {
@@ -97,6 +105,37 @@ func WithOnLeaveRoom(handler func(*Client, string)) Option {
 func WithAllowedOrigins(origins []string) Option {
 	return func(c *Config) {
 		c.AllowedOrigins = origins
+	}
+}
+
+// WithAuthenticateConnection sets the authentication callback for WebSocket connections.
+// The callback should validate the request (e.g., check JWT token, session cookie) and
+// return a verified user ID. If authentication fails, return an error.
+//
+// Example with JWT:
+//
+//	WithAuthenticateConnection(func(r *http.Request) (string, error) {
+//	    token := r.Header.Get("Authorization")
+//	    claims, err := auth.ValidateJWT(strings.TrimPrefix(token, "Bearer "))
+//	    if err != nil {
+//	        return "", err
+//	    }
+//	    return claims.UserID, nil
+//	})
+//
+// Example with session:
+//
+//	WithAuthenticateConnection(func(r *http.Request) (string, error) {
+//	    session := sessionManager.Get(r.Context())
+//	    userID := session.GetString("user_id")
+//	    if userID == "" {
+//	        return "", errors.New("not authenticated")
+//	    }
+//	    return userID, nil
+//	})
+func WithAuthenticateConnection(fn func(r *http.Request) (string, error)) Option {
+	return func(c *Config) {
+		c.AuthenticateConnection = fn
 	}
 }
 
