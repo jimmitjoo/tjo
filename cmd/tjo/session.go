@@ -28,7 +28,7 @@ func doSession() error {
 
 	fileName := fmt.Sprintf("%d_create_sessions_table", time.Now().UnixMicro())
 	if fileExists(fileName) {
-		exitGracefully(errors.New(fileName + " already exists."))
+		return errors.New(fileName + " already exists.")
 	}
 
 	upFile := rootPath + "/migrations/" + fileName + "." + dbType + ".up.sql"
@@ -36,17 +36,17 @@ func doSession() error {
 
 	err = copyFileFromTemplate("templates/migrations/"+dbType+"_session.sql", upFile)
 	if err != nil {
-		exitGracefully(err)
+		return err
 	}
 
 	err = copyDataToFile([]byte("DROP TABLE IF EXISTS sessions;"), downFile)
 	if err != nil {
-		exitGracefully(err)
+		return err
 	}
 
 	err = doMigrate("up", "")
 	if err != nil {
-		exitGracefully(err)
+		return err
 	}
 
 	return nil
