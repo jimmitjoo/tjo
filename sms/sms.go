@@ -17,6 +17,9 @@ import (
 	"github.com/vonage/vonage-go-sdk"
 )
 
+// ErrNoProvider is returned when attempting to send SMS without a configured provider
+var ErrNoProvider = errors.New("no SMS provider configured")
+
 // SMSProvider defines the interface for SMS providers
 type SMSProvider interface {
 	Send(to string, message string, unicode bool) error
