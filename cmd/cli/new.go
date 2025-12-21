@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/go-git/go-git/v5"
@@ -174,6 +175,11 @@ func doNew(appName string, template string) error {
 func applyStarterTemplate(template, appname string) error {
 	templateDir := "templates/starters/" + template
 
+	// First, check if there's a models.inject.txt file and inject models
+	if err := injectModels(templateDir); err != nil {
+		color.Yellow("\t  Warning: Could not inject models: %v", err)
+	}
+
 	return fs.WalkDir(templateFS, templateDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -184,6 +190,11 @@ func applyStarterTemplate(template, appname string) error {
 			return nil
 		}
 
+		// Skip special injection files
+		if strings.HasSuffix(path, "models.inject.txt") {
+			return nil
+		}
+
 		// Calculate relative path from template dir
 		relPath := strings.TrimPrefix(path, templateDir+"/")
 		targetPath := relPath
@@ -191,6 +202,43 @@ func applyStarterTemplate(template, appname string) error {
 		// Convert .go.txt back to .go
 		if strings.HasSuffix(targetPath, ".go.txt") {
 			targetPath = strings.TrimSuffix(targetPath, ".txt")
+		}
+
+		// Handle migration files - filter by db type and add timestamp prefix
+		if strings.Contains(relPath, "migrations/") && strings.HasSuffix(targetPath, ".sql") {
+			migrationName := filepath.Base(targetPath)
+
+			// Check if this migration matches the configured database type
+			// Migration files are named like: create_posts_table.postgres.up.sql
+			parts := strings.Split(migrationName, ".")
+			if len(parts) >= 4 {
+				// parts: [create_posts_table, postgres, up, sql]
+				dbType := parts[len(parts)-3] // postgres or mysql
+
+				// Get configured database type from .env (if available)
+				configuredDBType := os.Getenv("DATABASE_TYPE")
+				if configuredDBType == "" {
+					configuredDBType = "postgres" // default
+				}
+
+				// Skip if database type doesn't match
+				isPostgres := (configuredDBType == "postgres" || configuredDBType == "postgresql" || configuredDBType == "pgx")
+				isMySQL := (configuredDBType == "mysql" || configuredDBType == "mariadb")
+
+				if dbType == "postgres" && !isPostgres {
+					return nil // skip this file
+				}
+				if dbType == "mysql" && !isMySQL {
+					return nil // skip this file
+				}
+
+				// Remove db type from filename: create_posts_table.postgres.up.sql -> create_posts_table.up.sql
+				newParts := append(parts[:len(parts)-3], parts[len(parts)-2:]...)
+				migrationName = strings.Join(newParts, ".")
+			}
+
+			// Add timestamp prefix
+			targetPath = fmt.Sprintf("migrations/%d_%s", time.Now().UnixMicro(), migrationName)
 		}
 
 		if d.IsDir() {
@@ -220,4 +268,67 @@ func applyStarterTemplate(template, appname string) error {
 		// Write file (overwrite if exists)
 		return os.WriteFile(targetPath, []byte(content), 0644)
 	})
+}
+
+// injectModels reads models.inject.txt and adds models to models.go
+func injectModels(templateDir string) error {
+	injectFile := templateDir + "/models.inject.txt"
+
+	data, err := templateFS.ReadFile(injectFile)
+	if err != nil {
+		// No inject file, that's OK
+		return nil
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) == 0 {
+		return nil
+	}
+
+	// Read models.go
+	modelsPath := "data/models.go"
+	modelsContent, err := os.ReadFile(modelsPath)
+	if err != nil {
+		return fmt.Errorf("could not read models.go: %w", err)
+	}
+
+	// Inject each model
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Fields(line)
+		if len(parts) != 2 {
+			continue
+		}
+
+		modelPlural := parts[0]  // e.g., "Posts"
+		modelSingular := parts[1] // e.g., "Post"
+
+		// Check if already exists
+		if strings.Contains(string(modelsContent), modelPlural+" "+modelSingular) {
+			continue
+		}
+
+		// Add to Models struct
+		modelsContent = []byte(strings.Replace(
+			string(modelsContent),
+			"type Models struct {",
+			"type Models struct {\n\t"+modelPlural+" "+modelSingular,
+			1,
+		))
+
+		// Add to return statement
+		modelsContent = []byte(strings.Replace(
+			string(modelsContent),
+			"return Models{",
+			"return Models{\n\t\t"+modelPlural+": "+modelSingular+"{},",
+			1,
+		))
+	}
+
+	// Write back
+	return os.WriteFile(modelsPath, modelsContent, 0644)
 }
