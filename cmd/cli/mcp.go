@@ -9,12 +9,12 @@ import (
 
 // NameArg is the argument struct for tools that require a name
 type NameArg struct {
-	Name string `json:"name" jsonschema:"The name for the entity to create"`
+	Name string `json:"name" jsonschema_description:"The name for the entity to create"`
 }
 
 // StepsArg is the argument struct for migration tools
 type StepsArg struct {
-	Steps int `json:"steps,omitempty" jsonschema:"Number of steps (default: all for up, 1 for down)"`
+	Steps int `json:"steps,omitempty" jsonschema_description:"Number of steps (default: all for up, 1 for down)"`
 }
 
 // Helper to create text result
@@ -44,8 +44,8 @@ func doMCP() error {
 
 	// Tool 1: Create new project
 	type CreateProjectArgs struct {
-		Name     string `json:"name" jsonschema:"description=Name of the project"`
-		Template string `json:"template,omitempty" jsonschema:"description=Starter template (default/blog/api/saas)"`
+		Name     string `json:"name" jsonschema_description:"Name of the project"`
+		Template string `json:"template,omitempty" jsonschema_description:"Starter template (default/blog/api/saas)"`
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "gemquick_create_project",
