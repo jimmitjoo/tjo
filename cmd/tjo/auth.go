@@ -14,13 +14,13 @@ import (
 func doAuth() error {
 	rootPath := getRootPath()
 
-	// check if there is a database connection
-	if cfg == nil || cfg.DBType == "" {
-		return errors.New("you have to define a database type to be able to use authentication")
+	// Prompt for database if not configured
+	dbType, err := promptForDatabase()
+	if err != nil {
+		return err
 	}
 
 	// migrations
-	dbType := cfg.DBType
 	fileName := fmt.Sprintf("%d_create_auth_tables", time.Now().UnixMicro())
 	var pathBuilder strings.Builder
 
@@ -45,7 +45,7 @@ func doAuth() error {
 	pathBuilder.WriteString("/routes.go")
 	routesFile := pathBuilder.String()
 
-	err := copyFileFromTemplate("templates/migrations/auth_tables."+dbType+".up.sql", upFile)
+	err = copyFileFromTemplate("templates/migrations/auth_tables."+dbType+".up.sql", upFile)
 	if err != nil {
 		exitGracefully(err)
 	}

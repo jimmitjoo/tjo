@@ -9,12 +9,11 @@ import (
 func doSession() error {
 	rootPath := getRootPath()
 
-	// check if there is a database connection
-	if cfg == nil || cfg.DBType == "" {
-		return errors.New("you have to define a database type to be able to use other session types than cookies")
+	// Prompt for database if not configured
+	dbType, err := promptForDatabase()
+	if err != nil {
+		return err
 	}
-
-	dbType := cfg.DBType
 	if dbType == "pgx" || dbType == "postgresql" {
 		dbType = "postgres"
 	} else if dbType == "mariadb" {
@@ -29,7 +28,7 @@ func doSession() error {
 	upFile := rootPath + "/migrations/" + fileName + "." + dbType + ".up.sql"
 	downFile := rootPath + "/migrations/" + fileName + "." + dbType + ".down.sql"
 
-	err := copyFileFromTemplate("templates/migrations/"+dbType+"_session.sql", upFile)
+	err = copyFileFromTemplate("templates/migrations/"+dbType+"_session.sql", upFile)
 	if err != nil {
 		exitGracefully(err)
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -13,6 +14,102 @@ import (
 	"github.com/iancoleman/strcase"
 	"github.com/jimmitjoo/tjo/core"
 )
+
+// promptForDatabase asks the user to select a database if none is configured
+func promptForDatabase() (string, error) {
+	if cfg != nil && cfg.DBType != "" {
+		return cfg.DBType, nil
+	}
+
+	color.Yellow("No database configured. Please select one:")
+	fmt.Println("  1) postgres")
+	fmt.Println("  2) mysql")
+	fmt.Println("  3) mariadb")
+	fmt.Println("  4) sqlite")
+	fmt.Print("\nEnter choice [1-4]: ")
+
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+
+	input = strings.TrimSpace(input)
+
+	var dbType string
+	switch input {
+	case "1", "postgres":
+		dbType = "postgres"
+	case "2", "mysql":
+		dbType = "mysql"
+	case "3", "mariadb":
+		dbType = "mariadb"
+	case "4", "sqlite":
+		dbType = "sqlite"
+	default:
+		return "", errors.New("invalid selection")
+	}
+
+	// Update .env file
+	if err := updateEnvDatabase(dbType); err != nil {
+		color.Yellow("Warning: Could not update .env file: %v", err)
+	} else {
+		color.Green("Updated .env with DATABASE_TYPE=%s", dbType)
+	}
+
+	// Update cfg so subsequent operations use the new db type
+	if cfg != nil {
+		cfg.DBType = dbType
+	}
+
+	return dbType, nil
+}
+
+// updateEnvDatabase updates the DATABASE_TYPE in the .env file
+func updateEnvDatabase(dbType string) error {
+	rootPath := getRootPath()
+	envFile := rootPath + "/.env"
+
+	content, err := os.ReadFile(envFile)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(content), "\n")
+	updated := false
+
+	dbConfigs := map[string]struct {
+		host    string
+		port    string
+		sslMode string
+	}{
+		"postgres": {"localhost", "5432", "disable"},
+		"mysql":    {"localhost", "3306", ""},
+		"mariadb":  {"localhost", "3306", ""},
+		"sqlite":   {"", "", ""},
+	}
+
+	config := dbConfigs[dbType]
+
+	for i, line := range lines {
+		if strings.HasPrefix(line, "DATABASE_TYPE=") {
+			lines[i] = "DATABASE_TYPE=" + dbType
+			updated = true
+		} else if strings.HasPrefix(line, "DATABASE_HOST=") && config.host != "" {
+			lines[i] = "DATABASE_HOST=" + config.host
+		} else if strings.HasPrefix(line, "DATABASE_PORT=") && config.port != "" {
+			lines[i] = "DATABASE_PORT=" + config.port
+		} else if strings.HasPrefix(line, "DATABASE_SSL_MODE=") && config.sslMode != "" {
+			lines[i] = "DATABASE_SSL_MODE=" + config.sslMode
+		}
+	}
+
+	if !updated {
+		return errors.New(".env file does not contain DATABASE_TYPE")
+	}
+
+	return os.WriteFile(envFile, []byte(strings.Join(lines, "\n")), 0644)
+}
 
 func doMake(arg2, arg3 string) error {
 
@@ -113,19 +210,18 @@ func doMigration(name string) error {
 		return errors.New("migration name is required")
 	}
 
-	// check if there is a database connection
-	if cfg == nil || cfg.DBType == "" {
-		return errors.New("you have to define a database type to create migrations")
+	// Prompt for database if not configured
+	dbType, err := promptForDatabase()
+	if err != nil {
+		return err
 	}
-
-	dbType := cfg.DBType
 	fileName := fmt.Sprintf("%d_%s.%s", time.Now().UnixMicro(), name, dbType)
 
 	rootPath := getRootPath()
 	migrationUpFile := rootPath + "/migrations/" + fileName + ".up.sql"
 	migrationDownFile := rootPath + "/migrations/" + fileName + ".down.sql"
 
-	err := copyFileFromTemplate("templates/migrations/migration."+dbType+".up.sql", migrationUpFile)
+	err = copyFileFromTemplate("templates/migrations/migration."+dbType+".up.sql", migrationUpFile)
 	if err != nil {
 		return err
 	}
@@ -204,57 +300,59 @@ func doModel(name string) error {
 
 	color.Green(modelCamelName+" created: %s", fileName)
 
-	// create a migration for the model
-	if cfg != nil && cfg.DBType != "" {
-
-		dbType := cfg.DBType
-		migrationFileName := fmt.Sprintf("%d_%s.%s", time.Now().UnixMicro(), "create_"+tableName+"_table", dbType)
-
-		migrationUpFile := rootPath + "/migrations/" + migrationFileName + ".up.sql"
-		migrationDownFile := rootPath + "/migrations/" + migrationFileName + ".down.sql"
-
-		err = copyFileFromTemplate("templates/migrations/migration."+dbType+".up.sql", migrationUpFile)
-		if err != nil {
-			return err
-		}
-
-		err = copyFileFromTemplate("templates/migrations/migration."+dbType+".down.sql", migrationDownFile)
-		if err != nil {
-			return err
-		}
-
-		err = reformatMigration(migrationUpFile, tableName)
-		if err != nil {
-			return err
-		}
-		
-		err = reformatMigration(migrationDownFile, tableName)
-		if err != nil {
-			return err
-		}
-
-		color.Green("Migrations for model %s created: %s", modelCamelName, migrationFileName)
-
-		// add model to models.go
-		modelsContent, err := os.ReadFile(rootPath + "/data/models.go")
-		if err != nil {
-			return err
-		}
-
-		// replace stubfile with the new model
-		if bytes.Contains(modelsContent, []byte(modelCamelName)) {
-			return errors.New(modelCamelName + " already exists in models.go")
-		} else {
-			modelsContent = bytes.Replace(modelsContent, []byte("type Models struct {"), []byte("type Models struct {\n\t"+modelCamelNamePlural+" "+modelCamelName+"\n"), 1)
-			modelsContent = bytes.Replace(modelsContent, []byte("return Models{"), []byte("return Models{\n\t\t"+modelCamelNamePlural+": "+modelCamelName+"{},\n"), 1)
-			if err = os.WriteFile(rootPath+"/data/models.go", modelsContent, 0644); err != nil {
-				return err
-			}
-
-			color.Green(modelCamelName + " added to models.go")
-		}
+	// create a migration for the model - prompt for database if not configured
+	dbType, err := promptForDatabase()
+	if err != nil {
+		color.Yellow("Skipping migration creation: %v", err)
+		return nil
 	}
-	
+
+	migrationFileName := fmt.Sprintf("%d_%s.%s", time.Now().UnixMicro(), "create_"+tableName+"_table", dbType)
+
+	migrationUpFile := rootPath + "/migrations/" + migrationFileName + ".up.sql"
+	migrationDownFile := rootPath + "/migrations/" + migrationFileName + ".down.sql"
+
+	err = copyFileFromTemplate("templates/migrations/migration."+dbType+".up.sql", migrationUpFile)
+	if err != nil {
+		return err
+	}
+
+	err = copyFileFromTemplate("templates/migrations/migration."+dbType+".down.sql", migrationDownFile)
+	if err != nil {
+		return err
+	}
+
+	err = reformatMigration(migrationUpFile, tableName)
+	if err != nil {
+		return err
+	}
+
+	err = reformatMigration(migrationDownFile, tableName)
+	if err != nil {
+		return err
+	}
+
+	color.Green("Migrations for model %s created: %s", modelCamelName, migrationFileName)
+
+	// add model to models.go
+	modelsContent, err := os.ReadFile(rootPath + "/data/models.go")
+	if err != nil {
+		return err
+	}
+
+	// replace stubfile with the new model
+	if bytes.Contains(modelsContent, []byte(modelCamelName)) {
+		return errors.New(modelCamelName + " already exists in models.go")
+	}
+
+	modelsContent = bytes.Replace(modelsContent, []byte("type Models struct {"), []byte("type Models struct {\n\t"+modelCamelNamePlural+" "+modelCamelName+"\n"), 1)
+	modelsContent = bytes.Replace(modelsContent, []byte("return Models{"), []byte("return Models{\n\t\t"+modelCamelNamePlural+": "+modelCamelName+"{},\n"), 1)
+	if err = os.WriteFile(rootPath+"/data/models.go", modelsContent, 0644); err != nil {
+		return err
+	}
+
+	color.Green(modelCamelName + " added to models.go")
+
 	return nil
 }
 
