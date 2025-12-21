@@ -57,7 +57,7 @@ func TestDoNew(t *testing.T) {
 
 			// The doNew function requires embedded templates which aren't available in tests
 			// So we expect it to error but we can test the logic flow
-			err := doNew(tt.appName, "default")
+			err := doNew(tt.appName, "default", "")
 
 			// In test environment, doNew will likely error due to missing templates
 			// But we're testing that it doesn't panic and handles the app name correctly

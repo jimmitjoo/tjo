@@ -34,7 +34,8 @@ func main() {
 			exitGracefully(errors.New("new requires a project name"))
 		}
 		template := parseTemplateFlag()
-		err := doNew(arg2, template)
+		dbType := parseDBFlag()
+		err := doNew(arg2, template, dbType)
 		if err != nil {
 			exitGracefully(err)
 		}
@@ -129,4 +130,22 @@ func parseTemplateFlag() string {
 		}
 	}
 	return "default"
+}
+
+func parseDBFlag() string {
+	for i, arg := range os.Args {
+		if arg == "--db" || arg == "-d" {
+			if i+1 < len(os.Args) {
+				return os.Args[i+1]
+			}
+		}
+		// Support --db=value format
+		if len(arg) > 5 && arg[:5] == "--db=" {
+			return arg[5:]
+		}
+		if len(arg) > 3 && arg[:3] == "-d=" {
+			return arg[3:]
+		}
+	}
+	return ""
 }

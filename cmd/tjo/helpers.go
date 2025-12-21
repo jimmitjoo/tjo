@@ -61,23 +61,29 @@ func getDSN() string {
 func showHelp() {
 	color.Yellow(`Available commands:
 
-	help                    - show this help
-	version                 - show Tjo version
-	new <name>              - create a new Tjo project
-	new <name> -t <template> - create project with starter template
-	                          templates: default, blog, api, saas
-	run                     - run the application
-	run --watch (-w)        - run with hot-reload (uses air)
-	mcp                     - start MCP server for AI assistants
-	migrate                 - runs all migrations up
-	migrate down            - runs the last migration down
-	migrate reset           - drops all tables and migrates them back up
-	make auth               - creates things for autentications
-	make handler <name>     - creates a new stub handler in the handlers directory
-	make migration <name>   - creates two new migrations, up and down
-	make model <name>       - creates a new model in the data directory
-	make session            - creates a table in the database to store sessions
-	make mail <name>        - creates a new email in the email directory
+	help                     - show this help
+	version                  - show Tjo version
+	new <name>               - create a new Tjo project
+	  -t, --template <name>  - use starter template (default, blog, api, saas)
+	  -d, --db <type>        - configure database (postgres, mysql, mariadb, sqlite)
+	run                      - run the application
+	run --watch (-w)         - run with hot-reload (uses air)
+	mcp                      - start MCP server for AI assistants
+	migrate                  - runs all migrations up
+	migrate down             - runs the last migration down
+	migrate reset            - drops all tables and migrates them back up
+	make auth                - creates authentication system
+	make handler <name>      - creates a new handler
+	make migration <name>    - creates up/down migrations
+	make model <name>        - creates a new model
+	make session             - creates session table
+	make mail <name>         - creates email template
+
+Examples:
+	tjo new myapp
+	tjo new myapp -d postgres
+	tjo new myapp -t blog -d mysql
+	tjo new myapp --template=saas --db=postgres
 
 	`)
 }

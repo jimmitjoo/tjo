@@ -151,19 +151,24 @@ func doMCP() error {
 	type CreateProjectArgs struct {
 		Name     string `json:"name" jsonschema_description:"Name of the project"`
 		Template string `json:"template,omitempty" jsonschema_description:"Starter template (default/blog/api/saas)"`
+		Database string `json:"database,omitempty" jsonschema_description:"Database type (postgres/mysql/mariadb/sqlite)"`
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "tjo_create_project",
-		Description: "Create a new Tjo project with full scaffolding. Available templates: default, blog, api, saas",
+		Description: "Create a new Tjo project with full scaffolding. Templates: default, blog, api, saas. Databases: postgres, mysql, mariadb, sqlite",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args CreateProjectArgs) (*mcp.CallToolResult, any, error) {
 		template := args.Template
 		if template == "" {
 			template = "default"
 		}
-		if err := doNew(args.Name, template); err != nil {
+		if err := doNew(args.Name, template, args.Database); err != nil {
 			return errorResult(err.Error()), nil, nil
 		}
-		return textResult("Created project: " + args.Name + " (template: " + template + ")"), nil, nil
+		msg := "Created project: " + args.Name + " (template: " + template + ")"
+		if args.Database != "" {
+			msg += " with " + args.Database + " database"
+		}
+		return textResult(msg), nil, nil
 	})
 
 	// Tool 2: Create model

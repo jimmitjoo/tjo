@@ -26,7 +26,20 @@ var validTemplates = map[string]bool{
 	"saas":    true,
 }
 
-func doNew(appName string, template string) error {
+// Available databases
+var validDatabases = map[string]struct {
+	dbType  string
+	host    string
+	port    string
+	sslMode string
+}{
+	"postgres":  {"postgres", "localhost", "5432", "disable"},
+	"mysql":     {"mysql", "localhost", "3306", ""},
+	"mariadb":   {"mariadb", "localhost", "3306", ""},
+	"sqlite":    {"sqlite", "", "", ""},
+}
+
+func doNew(appName string, template string, dbType string) error {
 	appname := strings.ToLower(appName)
 	appUrl = appname
 
@@ -35,16 +48,29 @@ func doNew(appName string, template string) error {
 		return fmt.Errorf("unknown template: %s. Available templates: default, blog, api, saas", template)
 	}
 
+	// Validate database if specified
+	if dbType != "" {
+		if _, ok := validDatabases[dbType]; !ok {
+			return fmt.Errorf("unknown database: %s. Available: postgres, mysql, mariadb, sqlite", dbType)
+		}
+	}
+
 	// Sanitize the new application name
 	if strings.Contains(appname, "/") {
 		exploded := strings.SplitAfter(appname, "/")
 		appname = exploded[len(exploded)-1]
 	}
 
-	if template != "default" {
+	// Print creation message
+	switch {
+	case template != "default" && dbType != "":
+		color.Green("Creating new application: %s (template: %s, database: %s)", appname, template, dbType)
+	case template != "default":
 		color.Green("Creating new application: %s (template: %s)", appname, template)
-	} else {
-		color.Green("Creating new application: " + appname)
+	case dbType != "":
+		color.Green("Creating new application: %s (database: %s)", appname, dbType)
+	default:
+		color.Green("Creating new application: %s", appname)
 	}
 
 	// Git clone the skeleton application
@@ -74,6 +100,17 @@ func doNew(appName string, template string) error {
 	env := string(data)
 	env = strings.ReplaceAll(env, "${APP_NAME}", appname)
 	env = strings.ReplaceAll(env, "${KEY}", core.RandomString(32))
+
+	// Set database configuration if specified
+	if dbType != "" {
+		dbConfig := validDatabases[dbType]
+		env = strings.ReplaceAll(env, "DATABASE_TYPE=", "DATABASE_TYPE="+dbConfig.dbType)
+		env = strings.ReplaceAll(env, "DATABASE_HOST=", "DATABASE_HOST="+dbConfig.host)
+		env = strings.ReplaceAll(env, "DATABASE_PORT=", "DATABASE_PORT="+dbConfig.port)
+		env = strings.ReplaceAll(env, "DATABASE_NAME=", "DATABASE_NAME="+appname)
+		env = strings.ReplaceAll(env, "DATABASE_USER=", "DATABASE_USER="+dbConfig.dbType)
+		env = strings.ReplaceAll(env, "DATABASE_SSL_MODE=", "DATABASE_SSL_MODE="+dbConfig.sslMode)
+	}
 
 	err = copyDataToFile([]byte(env), "./"+appname+"/.env")
 	if err != nil {
@@ -160,6 +197,10 @@ func doNew(appName string, template string) error {
 	// Apply starter template if not default
 	if template != "default" {
 		color.Green("\tApplying %s template...", template)
+		// Set DATABASE_TYPE env var for migration file selection
+		if dbType != "" {
+			os.Setenv("DATABASE_TYPE", validDatabases[dbType].dbType)
+		}
 		err = applyStarterTemplate(template, appname)
 		if err != nil {
 			return err
