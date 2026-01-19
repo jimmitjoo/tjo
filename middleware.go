@@ -17,7 +17,7 @@ func (g *Tjo) NoSurf(next http.Handler) http.Handler {
 	csrfHandler := nosurf.New(next)
 
 	// Exempt API from CSRF protection:
-	csrfHandler.ExemptGlob("/api/*")
+	csrfHandler.ExemptRegexp("^/api/")
 
 	csrfHandler.SetBaseCookie(http.Cookie{
 		HttpOnly: true,
