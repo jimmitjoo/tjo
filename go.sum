@@ -325,6 +325,12 @@ github.com/jaytaylor/html2text v0.0.0-20190408195923-01ec452cbe43/go.mod h1:CVKl
 github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 h1:BQSFePA1RWJOlocH6Fxy8MmwDt+yVQYULKfN0RoTN8A=
 github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99/go.mod h1:1lJo3i6rXxKeerYnT8Nvf0QmHCRC1n8sfWVwXF2Frvo=
 github.com/jhillyerd/enmime v0.8.0/go.mod h1:MBHs3ugk03NGjMM6PuRynlKf+HA5eSillZ+TRCm73AE=
+github.com/jimmitjoo/tjo/email v0.6.1 h1:L021Z5APYpZB38mL+bQv3iy8PzpPWaf1J7y3SzdK3TU=
+github.com/jimmitjoo/tjo/email v0.6.1/go.mod h1:RUNPHw6qqJSO8Sfes15tRCs5nwSmtIbjIeaiMQV+H7o=
+github.com/jimmitjoo/tjo/otel v0.6.1 h1:RfGXfvXYbXozaFXWuTHNNAnD89xl7Qilvh3uiYNAL4E=
+github.com/jimmitjoo/tjo/otel v0.6.1/go.mod h1:G1RRz0EFmPYrssBRWLBn3rHnUZMcek9Hb9ALD1x4/U8=
+github.com/jimmitjoo/tjo/sms v0.6.1 h1:OD0FztblzKaLTqbnktJelmNBRDJNYf58n7sMFFU4yIU=
+github.com/jimmitjoo/tjo/sms v0.6.1/go.mod h1:Iuv0J2+UsHIoFQfB808JXpI0mCM/k15xYHm7m1IXysM=
 github.com/jmespath/go-jmespath v0.4.0 h1:BEgLn5cpjn8UN1mAw4NjwDrS35OdebyEtFe+9YPoQUg=
 github.com/jmespath/go-jmespath v0.4.0/go.mod h1:T8mJZnbsbmF+m6zOOFylbeCJqk5+pHWvzYPziyZiYoo=
 github.com/jmespath/go-jmespath/internal/testify v1.5.1 h1:shLQSRRSCCPj3f2gpwzGwWFoC7ycTf1rcQZHOlsJ6N8=

@@ -25,9 +25,9 @@ require (
 	github.com/iancoleman/strcase v0.2.0
 	github.com/jackc/pgconn v1.14.3
 	github.com/jackc/pgx/v4 v4.18.2
-	github.com/jimmitjoo/tjo/email v0.0.0-00010101000000-000000000000
-	github.com/jimmitjoo/tjo/otel v0.0.0-00010101000000-000000000000
-	github.com/jimmitjoo/tjo/sms v0.0.0-00010101000000-000000000000
+	github.com/jimmitjoo/tjo/email v0.6.1
+	github.com/jimmitjoo/tjo/otel v0.6.1
+	github.com/jimmitjoo/tjo/sms v0.6.1
 	github.com/joho/godotenv v1.5.1
 	github.com/justinas/nosurf v1.1.1
 	github.com/mattn/go-sqlite3 v1.14.32
