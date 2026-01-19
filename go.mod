@@ -150,11 +150,3 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-// Local development - remove these replace directives before publishing
-replace (
-	github.com/jimmitjoo/tjo/email => ./email
-	github.com/jimmitjoo/tjo/otel => ./otel
-	github.com/jimmitjoo/tjo/sms => ./sms
-	github.com/jimmitjoo/tjo/websocket => ./websocket
-)
