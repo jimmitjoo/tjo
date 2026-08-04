@@ -14,7 +14,6 @@ import (
 
 	"github.com/twilio/twilio-go"
 	twilioApi "github.com/twilio/twilio-go/rest/api/v2010"
-	"github.com/vonage/vonage-go-sdk"
 )
 
 // ErrNoProvider is returned when attempting to send SMS without a configured provider
@@ -38,35 +37,28 @@ type Vonage struct {
 	httpClient HTTPClient // For testing
 }
 
-// Send sends an SMS via Vonage
+// Send sends an SMS via Vonage.
+//
+// This used to call vonage-go-sdk in production and take the plain HTTP path
+// below only when a client was injected for tests -- so the code that shipped
+// was the code nothing exercised, and the code with coverage never ran for
+// users.
+//
+// The SDK is gone. It pulled in golang-jwt/jwt v3, which carries CVE-2025-30204
+// at CVSS 8.7 with no fix in the v3 line, and vonage-go-sdk v0.14.0 is the
+// latest release, so there was nothing to upgrade to. We authenticate with
+// key and secret rather than JWT, so the vulnerable parser was almost certainly
+// unreachable at runtime -- but "we believe it is unreachable" is not something
+// to encode as a permanent exception in the CI gate.
+//
+// The HTTP path is also strictly better: it surfaces Vonage's error-text field,
+// which the SDK branch discarded in favour of a bare status code.
 func (v *Vonage) Send(to string, msg string, unicode bool) error {
-	// Use injected client for testing if available
-	if v.httpClient != nil {
-		return v.sendWithHTTPClient(to, msg, unicode)
-	}
-	
-	// Production implementation using Vonage SDK
-	auth := vonage.CreateAuthFromKeySecret(v.APIKey, v.APISecret)
-	client := vonage.NewSMSClient(auth)
-
-	smsOpts := vonage.SMSOpts{}
-	if unicode {
-		smsOpts.Type = "unicode"
-	}
-
-	response, _, err := client.Send(v.FromNumber, to, msg, smsOpts)
-	if err != nil {
-		return err
-	}
-	
-	if len(response.Messages) > 0 && response.Messages[0].Status != "0" {
-		return fmt.Errorf("SMS send failed with status: %s", response.Messages[0].Status)
-	}
-
-	return nil
+	return v.sendWithHTTPClient(to, msg, unicode)
 }
 
-// sendWithHTTPClient is used for testing with mocked HTTP client
+// sendWithHTTPClient posts to Vonage's SMS endpoint. httpClient is the seam
+// tests inject through; it falls back to http.DefaultClient.
 func (v *Vonage) sendWithHTTPClient(to string, msg string, unicode bool) error {
 	data := url.Values{}
 	data.Set("api_key", v.APIKey)
@@ -85,8 +77,15 @@ func (v *Vonage) sendWithHTTPClient(to string, msg string, unicode bool) error {
 	}
 	
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	
-	resp, err := v.httpClient.Do(req)
+
+	// defaultHTTPClient rather than http.DefaultClient: the latter has no
+	// timeout, and an SMS send that hangs forever holds the caller with it.
+	client := v.httpClient
+	if client == nil {
+		client = defaultHTTPClient()
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -127,7 +126,14 @@ type Twilio struct {
 	httpClient HTTPClient // For testing
 }
 
-// Send sends an SMS via Twilio
+// Send sends an SMS via Twilio.
+//
+// Note the asymmetry with Vonage above: this still routes production through
+// twilio-go while sendWithHTTPClient below is only reached from tests, so the
+// shipped path and the covered path are still different code. twilio-go carries
+// no advisory, so it was left alone in v0.8.0 -- but the split is the same one
+// that hid the Vonage SDK's dependency on golang-jwt/jwt v3 from every test in
+// this package.
 func (t *Twilio) Send(to string, msg string, unicode bool) error {
 	// Use injected client for testing if available
 	if t.httpClient != nil {
