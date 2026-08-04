@@ -11,7 +11,6 @@ require (
 	github.com/alexedwards/scs/redisstore v0.0.0-20230305114126-a07530f96ced
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/alicebob/miniredis/v2 v2.30.0
-	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/aws/aws-sdk-go-v2 v1.43.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.33
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.22.39

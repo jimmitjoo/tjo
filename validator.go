@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/asaskevich/govalidator"
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -57,7 +57,7 @@ func (v *Validation) IsEmail(field, value string) {
 		v.AddError(field, "Email address too long")
 		return
 	}
-	if !govalidator.IsEmail(value) {
+	if !isEmail(value) {
 		v.AddError(field, "Invalid email address")
 	}
 }
@@ -83,7 +83,7 @@ func (v *Validation) IsFloat(field, value string) {
 }
 
 func (v *Validation) IsString(field, value string) {
-	if !govalidator.IsPrintableASCII(value) {
+	if !isPrintableASCII(value) {
 		v.AddError(field, "This field must contain only printable characters")
 	}
 }
@@ -117,14 +117,14 @@ func (v *Validation) MinLength(field, value string, minLength int) {
 
 // IsAlphanumeric validates that a field contains only letters and numbers
 func (v *Validation) IsAlphanumeric(field, value string) {
-	if !govalidator.IsAlphanumeric(value) {
+	if !isAlphanumeric(value) {
 		v.AddError(field, "This field must contain only letters and numbers")
 	}
 }
 
 // IsURL validates that a field contains a valid URL
 func (v *Validation) IsURL(field, value string) {
-	if !govalidator.IsURL(value) {
+	if !isURL(value) {
 		v.AddError(field, "This field must be a valid URL")
 	}
 }
@@ -149,4 +149,76 @@ func (v *Validation) SanitizeRichText(value string) string {
 // characters like < > & as visible text rather than HTML entities.
 func (v *Validation) EscapeHTML(value string) string {
 	return html.EscapeString(value)
+}
+
+// The four checks below replace github.com/asaskevich/govalidator, which this
+// package used for exactly these four calls and nothing else.
+//
+// The unversioned module path it was pinned to has been frozen at a 2023
+// pseudo-version since development moved to /v12, so it could never receive a
+// fix. Swapping it for go-playground/validator would have traded one
+// third-party validation framework for a larger one; four small functions is
+// less surface than either, and three of them are a stdlib call.
+
+// isEmail reports whether value is a single, plain address.
+//
+// net/mail.ParseAddress accepts things that are valid RFC 5322 but wrong here:
+// display names ("Bob <bob@x.com>"), and group syntax. Requiring the parsed
+// address to equal the input rejects both.
+func isEmail(value string) bool {
+	addr, err := mail.ParseAddress(value)
+	if err != nil {
+		return false
+	}
+	if addr.Address != value || addr.Name != "" {
+		return false
+	}
+	at := strings.LastIndex(value, "@")
+	return at > 0 && strings.Contains(value[at+1:], ".")
+}
+
+// isURL reports whether value is an absolute http or https URL with a host.
+//
+// Deliberately narrower than govalidator.IsURL, which accepted schemeless
+// input like "example.com" and any scheme at all -- including javascript:,
+// which is the one a validated URL most often ends up in an href next to.
+func isURL(value string) bool {
+	u, err := url.Parse(value)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	return u.Host != ""
+}
+
+// isPrintableASCII reports whether value is entirely printable 7-bit ASCII.
+// Space is printable; control characters and anything above 0x7e are not.
+func isPrintableASCII(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if value[i] < 0x20 || value[i] > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
+// isAlphanumeric reports whether value is entirely ASCII letters and digits.
+// Empty is not alphanumeric, matching what the previous implementation did.
+func isAlphanumeric(value string) bool {
+	if value == "" {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		switch {
+		case c >= '0' && c <= '9':
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		default:
+			return false
+		}
+	}
+	return true
 }
