@@ -89,7 +89,10 @@ func (b *BadgerCache) EmptyByMatch(str string) error {
 		defer it.Close()
 		for it.Rewind(); it.Valid(); it.Next() {
 			item := it.Item()
-			k := item.Key()
+			// KeyCopy, not Key: badger reuses the buffer behind Key() on the
+			// next iteration, so the accumulated slice would hold aliases to
+			// overwritten memory by the time it is used.
+			k := item.KeyCopy(nil)
 			match, err := path.Match(str, string(k))
 			if err != nil {
 				return err

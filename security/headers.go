@@ -11,35 +11,35 @@ import (
 type SecurityConfig struct {
 	// Content Security Policy
 	ContentSecurityPolicy string
-	
+
 	// HSTS settings
 	HSTSMaxAge            int
 	HSTSIncludeSubdomains bool
 	HSTSPreload           bool
-	
+
 	// Frame options
 	FrameOptions string // DENY, SAMEORIGIN, or ALLOW-FROM uri
-	
+
 	// Content type options
 	ContentTypeNosniff bool
-	
+
 	// XSS Protection
-	XSSProtection        bool
-	XSSProtectionMode    string // block, report=uri
-	
+	XSSProtection     bool
+	XSSProtectionMode string // block, report=uri
+
 	// Referrer Policy
 	ReferrerPolicy string
-	
+
 	// Permissions Policy
 	PermissionsPolicy string
-	
+
 	// CORS settings
-	AllowedOrigins []string
-	AllowedMethods []string
-	AllowedHeaders []string
+	AllowedOrigins     []string
+	AllowedMethods     []string
+	AllowedHeaders     []string
 	AllowedCredentials bool
-	MaxAge         int
-	
+	MaxAge             int
+
 	// Custom headers
 	CustomHeaders map[string]string
 }
@@ -50,19 +50,19 @@ func DefaultSecurityConfig() SecurityConfig {
 		ContentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'",
 		HSTSMaxAge:            31536000, // 1 year
 		HSTSIncludeSubdomains: true,
-		HSTSPreload:          false,
-		FrameOptions:         "DENY",
-		ContentTypeNosniff:   true,
-		XSSProtection:        true,
-		XSSProtectionMode:    "block",
-		ReferrerPolicy:       "strict-origin-when-cross-origin",
-		PermissionsPolicy:    "camera=(), microphone=(), geolocation=()",
-		AllowedOrigins:       []string{}, // Empty by default - must be explicitly configured
-		AllowedMethods:       []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:       []string{"Accept", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
-		AllowedCredentials:   false, // Safer default
-		MaxAge:              86400, // 24 hours
-		CustomHeaders:       make(map[string]string),
+		HSTSPreload:           false,
+		FrameOptions:          "DENY",
+		ContentTypeNosniff:    true,
+		XSSProtection:         true,
+		XSSProtectionMode:     "block",
+		ReferrerPolicy:        "strict-origin-when-cross-origin",
+		PermissionsPolicy:     "camera=(), microphone=(), geolocation=()",
+		AllowedOrigins:        []string{}, // Empty by default - must be explicitly configured
+		AllowedMethods:        []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:        []string{"Accept", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
+		AllowedCredentials:    false, // Safer default
+		MaxAge:                86400, // 24 hours
+		CustomHeaders:         make(map[string]string),
 	}
 }
 
@@ -154,7 +154,7 @@ func CORSMiddleware(config SecurityConfig) func(next http.Handler) http.Handler 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			
+
 			// Check if origin is allowed
 			originAllowed := false
 			if origin != "" && isOriginAllowed(origin, config.AllowedOrigins) {
@@ -199,12 +199,12 @@ func isOriginAllowed(origin string, allowed []string) bool {
 	if origin == "" {
 		return false
 	}
-	
+
 	for _, allowedOrigin := range allowed {
 		if allowedOrigin == origin {
 			return true
 		}
-		
+
 		// Handle wildcard patterns more securely
 		if strings.Contains(allowedOrigin, "*") {
 			if isSecureWildcardMatch(origin, allowedOrigin) {
@@ -221,34 +221,34 @@ func isSecureWildcardMatch(origin, pattern string) bool {
 	if !strings.HasPrefix(pattern, "*.") {
 		return false
 	}
-	
+
 	// Extract the domain part (e.g., "example.com" from "*.example.com")
 	domain := strings.TrimPrefix(pattern, "*.")
 	if domain == "" {
 		return false
 	}
-	
+
 	// Origin must end with the domain and have a subdomain
 	if !strings.HasSuffix(origin, "."+domain) {
 		return false
 	}
-	
+
 	// Ensure there's actually a subdomain (not just the domain itself)
 	prefix := strings.TrimSuffix(origin, "."+domain)
 	if prefix == "" || prefix == "." {
 		return false
 	}
-	
+
 	// Validate that it's a proper subdomain (no additional dots in the prefix for security)
 	if strings.Contains(prefix, ".") {
 		return false
 	}
-	
+
 	// Additional security: ensure the origin looks like a valid URL
 	if !strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://") {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -277,12 +277,8 @@ func TimeoutMiddleware(timeout time.Duration) func(next http.Handler) http.Handl
 func IPWhitelistMiddleware(allowedIPs []string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// getClientIP has already stripped the port.
 			clientIP := getClientIP(r)
-			
-			// Remove port from IP if present
-			if colonIndex := strings.LastIndex(clientIP, ":"); colonIndex != -1 {
-				clientIP = clientIP[:colonIndex]
-			}
 
 			for _, allowedIP := range allowedIPs {
 				if clientIP == allowedIP || allowedIP == "*" {
@@ -300,12 +296,8 @@ func IPWhitelistMiddleware(allowedIPs []string) func(next http.Handler) http.Han
 func IPBlacklistMiddleware(blockedIPs []string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// getClientIP has already stripped the port.
 			clientIP := getClientIP(r)
-			
-			// Remove port from IP if present
-			if colonIndex := strings.LastIndex(clientIP, ":"); colonIndex != -1 {
-				clientIP = clientIP[:colonIndex]
-			}
 
 			for _, blockedIP := range blockedIPs {
 				if clientIP == blockedIP {
@@ -326,7 +318,7 @@ func ContentTypeMiddleware(allowedTypes map[string][]string) func(next http.Hand
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
 				contentType := r.Header.Get("Content-Type")
-				
+
 				// Check if path has content type restrictions
 				if allowedForPath, exists := allowedTypes[r.URL.Path]; exists {
 					isAllowed := false
@@ -336,7 +328,7 @@ func ContentTypeMiddleware(allowedTypes map[string][]string) func(next http.Hand
 							break
 						}
 					}
-					
+
 					if !isAllowed {
 						w.Header().Set("Content-Type", "application/json")
 						http.Error(w, "Unsupported content type", http.StatusUnsupportedMediaType)
@@ -355,12 +347,12 @@ func SecureMiddleware(config SecurityConfig) func(next http.Handler) http.Handle
 	return func(next http.Handler) http.Handler {
 		// Chain multiple security middlewares
 		handler := next
-		
+
 		// Apply middlewares in reverse order (last applied = first executed)
 		handler = SecurityHeadersMiddleware(config)(handler)
 		handler = CORSMiddleware(config)(handler)
-		handler = RequestSizeMiddleware(10*1024*1024)(handler) // 10MB default
-		handler = TimeoutMiddleware(30*time.Second)(handler)   // 30s default
+		handler = RequestSizeMiddleware(10 * 1024 * 1024)(handler) // 10MB default
+		handler = TimeoutMiddleware(30 * time.Second)(handler)     // 30s default
 
 		return handler
 	}

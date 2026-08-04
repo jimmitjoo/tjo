@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/jimmitjoo/tjo/config"
@@ -404,5 +405,51 @@ CACHE=
 
 	if g.Modules.Get("probe") == nil {
 		t.Error("module is not in the registry after New()")
+	}
+}
+
+// TestSchedulerActuallyRuns covers issue #11. The cron scheduler was created
+// and handed a daily badger GC job, and ScheduleCron returned entry IDs for
+// user jobs -- but Start() was never called, so nothing ever fired. Badger
+// therefore never reclaimed value-log space and every user cron silently
+// no-opped while reporting success.
+func TestSchedulerActuallyRuns(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tjo_cron_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	for _, dir := range []string{"handlers", "migrations", "views", "email", "data", "public", "tmp", "logs", "middleware"} {
+		if err := os.MkdirAll(filepath.Join(tempDir, dir), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	envContent := "\nAPP_NAME=CronApp\nDEBUG=false\nPORT=4000\nSESSION_TYPE=cookie\nCOOKIE_NAME=tjo\nCOOKIE_LIFETIME=1440\nDATABASE_TYPE=\nCACHE=\n"
+	if err := os.WriteFile(filepath.Join(tempDir, ".env"), []byte(envContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	g := &Tjo{}
+	if err := g.New(tempDir); err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer g.Background.Scheduler.Stop()
+
+	fired := make(chan struct{}, 1)
+	if _, err := g.Background.ScheduleCron("probe", "@every 1s", func() {
+		select {
+		case fired <- struct{}{}:
+		default:
+		}
+	}); err != nil {
+		t.Fatalf("ScheduleCron failed: %v", err)
+	}
+
+	select {
+	case <-fired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scheduled cron never fired; the scheduler was never started")
 	}
 }

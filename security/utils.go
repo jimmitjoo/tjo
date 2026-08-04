@@ -9,11 +9,16 @@ import (
 // getClientIP extracts client IP from request (secure version)
 func getClientIP(r *http.Request) string {
 	// For security, only use RemoteAddr unless trusted proxies are configured
-	// This prevents IP spoofing attacks via headers
-	if idx := strings.LastIndex(r.RemoteAddr, ":"); idx != -1 {
-		return r.RemoteAddr[:idx]
+	// This prevents IP spoofing attacks via headers.
+	//
+	// net.SplitHostPort rather than LastIndex(":"): an IPv6 literal is full of
+	// colons, and chopping at the last one turned "[2001:db8::1]:4444" into
+	// "[2001:db8:", which matched no blacklist entry.
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
-	return r.RemoteAddr
+	return host
 }
 
 // getClientIPWithTrustedProxies extracts client IP with proxy validation

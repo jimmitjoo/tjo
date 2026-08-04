@@ -141,7 +141,12 @@ func (g *Tjo) New(rootPath string, modules ...Module) error {
 		g.Data.DB = dbConfig
 	}
 
+	// Start it: this was created, given a daily badger GC job below, and
+	// exposed through BackgroundService.ScheduleCron -- but never started, so
+	// badger never reclaimed value-log space and every user cron silently
+	// no-opped while returning an entry ID.
 	scheduler := cron.New()
+	scheduler.Start()
 	g.Background.Scheduler = scheduler
 
 	// initialize job manager
