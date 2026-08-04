@@ -15,7 +15,16 @@ type Module interface {
 
 	// Initialize sets up the module with access to the framework.
 	// Called during app.New() after core services are ready.
-	Initialize(g *Tjo) error
+	//
+	// app is the *Tjo instance. The parameter is any rather than *Tjo because
+	// the shipped modules (email, sms, otel, websocket) are separate Go
+	// modules that tjo imports, so they cannot import tjo back to name the
+	// concrete type. A module that needs something from the framework should
+	// declare the narrow interface it wants and assert against it:
+	//
+	//	type mailer interface{ SendEmail(to, subject, body string) error }
+	//	if m, ok := app.(mailer); ok { ... }
+	Initialize(app any) error
 
 	// Shutdown gracefully stops the module.
 	// Called during graceful shutdown with a context for timeout control.

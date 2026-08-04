@@ -359,3 +359,50 @@ CACHE=
 		t.Error("health status carries no version")
 	}
 }
+
+// TestNewAcceptsModules is the test whose absence let issue #6 ship: nothing in
+// the repo ever passed a module to New(), so nobody noticed that no module
+// could satisfy the Module interface and that the example in New's own doc
+// comment did not compile.
+func TestNewAcceptsModules(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tjo_module_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	for _, dir := range []string{"handlers", "migrations", "views", "email", "data", "public", "tmp", "logs", "middleware"} {
+		if err := os.MkdirAll(filepath.Join(tempDir, dir), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	envContent := `
+APP_NAME=ModuleApp
+DEBUG=false
+PORT=4000
+SESSION_TYPE=cookie
+COOKIE_NAME=tjo
+COOKIE_LIFETIME=1440
+DATABASE_TYPE=
+CACHE=
+`
+	if err := os.WriteFile(filepath.Join(tempDir, ".env"), []byte(envContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mod := &testModule{name: "probe"}
+
+	g := &Tjo{}
+	if err := g.New(tempDir, mod); err != nil {
+		t.Fatalf("New() with a module failed: %v", err)
+	}
+
+	if !mod.initCalled {
+		t.Error("module was registered but Initialize was never called")
+	}
+
+	if g.Modules.Get("probe") == nil {
+		t.Error("module is not in the registry after New()")
+	}
+}

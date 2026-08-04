@@ -46,6 +46,15 @@ func (m *Module) Name() string {
 
 // Initialize creates the Hub and starts its run loop.
 // This is called automatically during app.New().
+// Structural check against tjo.Module. This package cannot import tjo (tjo
+// imports it), so the shape is spelled out rather than asserted against the
+// named interface. See issue #6 for what drifting apart cost last time.
+var _ interface {
+	Name() string
+	Initialize(app any) error
+	Shutdown(ctx context.Context) error
+} = (*Module)(nil)
+
 func (m *Module) Initialize(g interface{}) error {
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	m.Hub = NewHub(m.config)

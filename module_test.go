@@ -5,20 +5,35 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/jimmitjoo/tjo/email"
+	"github.com/jimmitjoo/tjo/otel"
+	"github.com/jimmitjoo/tjo/sms"
+)
+
+// The shipped modules must actually satisfy Module. They did not: the
+// interface asked for Initialize(*Tjo) while every module implemented
+// Initialize(interface{}), so app.New(email.NewModule()) -- the example in
+// New's own doc comment -- did not compile. Nothing caught it because nothing
+// in the repo ever passed a module to New. See issue #6.
+var (
+	_ Module = (*email.Module)(nil)
+	_ Module = (*sms.Module)(nil)
+	_ Module = (*otel.Module)(nil)
 )
 
 // testModule is a mock module for testing
 type testModule struct {
-	name          string
-	initError     error
-	shutdownError error
-	initCalled    bool
+	name           string
+	initError      error
+	shutdownError  error
+	initCalled     bool
 	shutdownCalled bool
 }
 
 func (m *testModule) Name() string { return m.name }
 
-func (m *testModule) Initialize(g *Tjo) error {
+func (m *testModule) Initialize(app any) error {
 	m.initCalled = true
 	return m.initError
 }
