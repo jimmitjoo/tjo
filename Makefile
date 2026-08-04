@@ -45,6 +45,14 @@ release:
 	@echo ""
 	@echo "Updating version references..."
 	@# go mod edit rather than sed: portable, and it understands the format.
+	@#
+	@# Only the root's requires are bumped. otel depends back on the root (for
+	@# the logging package), and that requirement is deliberately left alone:
+	@# under minimal version selection it is a floor, not a pin, so an app that
+	@# requires root v$(v) compiles otel against v$(v) regardless. Bumping it
+	@# would mean writing a requirement on a tag that does not exist yet, which
+	@# breaks go.sum until the tag is pushed. Published otel v0.6.1 still
+	@# requires root v0.5.4 for exactly this reason, and it resolves correctly.
 	@for m in $(SUBMODULES); do \
 		go mod edit -require=github.com/jimmitjoo/tjo/$$m@v$(v) go.mod 2>/dev/null || true; \
 	done
@@ -66,15 +74,21 @@ release:
 	@echo "  git push origin main"
 	@echo "  git push origin v$(v) $(foreach m,$(SUBMODULES),$(m)/v$(v))"
 	@echo ""
-	@echo "Then verify a consumer sees it, which go.work would otherwise mask:"
-	@echo "  GOWORK=off go build ./..."
+	@echo "Then, once the tags are live:"
+	@echo "  make release-check"
 
-## release-check: verifies the module resolves the way a user sees it
+## release-check: verifies every module the way a user sees it
+##
+## CI runs the tests inside the workspace, so it resolves the submodules to the
+## local directories. That is not what a consumer gets. This builds and tests
+## each one with GOWORK=off, against the published versions of everything else.
 release-check:
-	@echo "Building without the workspace (as an external consumer would)..."
-	@GOWORK=off go build ./... && echo "  root module OK"
+	@echo "Building and testing without the workspace (as a consumer resolves it)..."
+	@GOWORK=off go build ./... && echo "  root      build OK"
+	@GOWORK=off go test -short ./... >/dev/null 2>&1 && echo "  root      test OK" || echo "  root      TEST FAILED"
 	@for m in $(SUBMODULES); do \
-		(cd $$m && GOWORK=off go build ./... >/dev/null 2>&1 && echo "  $$m OK") || echo "  $$m FAILED"; \
+		(cd $$m && GOWORK=off go build ./... >/dev/null 2>&1 && echo "  $$m	build OK") || echo "  $$m	BUILD FAILED"; \
+		(cd $$m && GOWORK=off go test -short ./... >/dev/null 2>&1 && echo "  $$m	test OK") || echo "  $$m	TEST FAILED"; \
 	done
 
 clean:
