@@ -762,7 +762,7 @@ func TestDeployGeneration(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("creates deployment files successfully", func(t *testing.T) {
-		err := doDeploy()
+		err := doMakeDeployScripts()
 		require.NoError(t, err)
 
 		expectedFiles := []string{

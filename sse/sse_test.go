@@ -235,7 +235,11 @@ func Example() {
 	srv := httptest.NewServer(http.HandlerFunc(handler))
 	defer srv.Close()
 
-	resp, _ := http.Get(srv.URL)
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)

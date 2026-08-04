@@ -72,6 +72,20 @@ func main() {
 			exitGracefully(err)
 		}
 
+	case "deploy":
+		root, wderr := os.Getwd()
+		if wderr != nil {
+			exitGracefully(wderr)
+		}
+		if arg2 == "init" {
+			err = doDeployInit(root)
+		} else {
+			err = doDeploy(root)
+		}
+		if err != nil {
+			exitGracefully(err)
+		}
+
 	default:
 		showHelp()
 	}
