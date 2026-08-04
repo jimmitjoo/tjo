@@ -65,7 +65,7 @@ func TestDoNew(t *testing.T) {
 				// Expected in test environment - templates not embedded
 				t.Logf("Expected error in test environment: %v", err)
 			}
-			
+
 			// Even if doNew fails, it might create the base directory
 			// Check if it at least attempted to create the directory
 			if _, statErr := os.Stat(tt.appName); statErr == nil {
@@ -90,7 +90,7 @@ func TestDoNewDirectoryCreation(t *testing.T) {
 	require.NoError(t, err)
 
 	appName := "testproject"
-	
+
 	// Simulate what doNew should do - create directories
 	directories := []string{
 		appName,
@@ -259,7 +259,7 @@ func TestCopyFileFromTemplate(t *testing.T) {
 			// Simulate copyFileFromTemplate behavior
 			// Note: The actual function uses embedded templates
 			// For testing, we'll create a simplified version
-			
+
 			if tt.expectError {
 				// Simulate error for non-existent template
 				_, err := os.Stat(filepath.Join(templateDir, tt.templatePath))
@@ -412,7 +412,7 @@ func TestCreateAppDirectories(t *testing.T) {
 	require.NoError(t, err)
 
 	appName := "testapp"
-	
+
 	// Create app directory structure
 	directories := []string{
 		appName,
@@ -466,10 +466,10 @@ func TestValidateAppName(t *testing.T) {
 				valid = false
 			} else {
 				for _, r := range tt.appName {
-					if !((r >= 'a' && r <= 'z') || 
-					     (r >= 'A' && r <= 'Z') || 
-					     (r >= '0' && r <= '9') || 
-					     r == '-' || r == '_') {
+					if !((r >= 'a' && r <= 'z') ||
+						(r >= 'A' && r <= 'Z') ||
+						(r >= '0' && r <= '9') ||
+						r == '-' || r == '_') {
 						valid = false
 						break
 					}
@@ -477,6 +477,31 @@ func TestValidateAppName(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.expectValid, valid)
+		})
+	}
+}
+
+// TestSkeletonRef pins which skeleton version a given CLI build clones.
+// tjo new used to clone the default branch unpinned, so a released binary
+// generated projects from whatever had been pushed that day -- and that is how
+// the skeleton and the CLI's own templates drifted apart. See issue #30.
+func TestSkeletonRef(t *testing.T) {
+	tests := []struct {
+		version string
+		want    string
+	}{
+		{"v0.7.0", "v0.7.0"},
+		{"0.7.0", "v0.7.0"}, // tolerate a missing prefix
+		{"v1.0.0", "v1.0.0"},
+		{"dev", ""}, // built from a checkout: follow the default branch
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.version, func(t *testing.T) {
+			if got := skeletonRef(tt.version); got != tt.want {
+				t.Errorf("skeletonRef(%q) = %q, want %q", tt.version, got, tt.want)
+			}
 		})
 	}
 }

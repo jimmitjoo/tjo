@@ -13,6 +13,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/jimmitjoo/tjo/core"
 )
 
@@ -33,10 +34,25 @@ var validDatabases = map[string]struct {
 	port    string
 	sslMode string
 }{
-	"postgres":  {"postgres", "localhost", "5432", "disable"},
-	"mysql":     {"mysql", "localhost", "3306", ""},
-	"mariadb":   {"mariadb", "localhost", "3306", ""},
-	"sqlite":    {"sqlite", "", "", ""},
+	"postgres": {"postgres", "localhost", "5432", "disable"},
+	"mysql":    {"mysql", "localhost", "3306", ""},
+	"mariadb":  {"mariadb", "localhost", "3306", ""},
+	"sqlite":   {"sqlite", "", "", ""},
+}
+
+// skeletonRepo is the project skeleton tjo new starts from.
+const skeletonRepo = "https://github.com/jimmitjoo/tjo-bare.git"
+
+// skeletonRef returns the skeleton tag a given CLI version should clone, or
+// an empty string for a build that has no released version.
+func skeletonRef(version string) string {
+	if version == "" || version == "dev" {
+		return ""
+	}
+	if !strings.HasPrefix(version, "v") {
+		return "v" + version
+	}
+	return version
 }
 
 func doNew(appName string, template string, dbType string) error {
@@ -73,14 +89,35 @@ func doNew(appName string, template string, dbType string) error {
 		color.Green("Creating new application: %s", appname)
 	}
 
-	// Git clone the skeleton application
-	color.Green("\tCloning skeleton application...")
-	_, err := git.PlainClone("./"+appname, false, &git.CloneOptions{
-		URL:      "https://github.com/jimmitjoo/tjo-bare.git",
+	// Git clone the skeleton application.
+	//
+	// A released CLI clones the skeleton tag matching its own version, so the
+	// same binary produces the same project every time it runs. It used to
+	// clone the default branch unpinned, which meant a v0.6.1 binary generated
+	// from whatever had been pushed that morning -- and is how the skeleton and
+	// the CLI's own templates drifted apart without anyone noticing.
+	//
+	// A binary built from a checkout has no version to match, so it follows the
+	// default branch and says so.
+	opts := &git.CloneOptions{
+		URL:      skeletonRepo,
 		Progress: os.Stdout,
 		Depth:    1,
-	})
+	}
+
+	if ref := skeletonRef(core.Version); ref != "" {
+		opts.ReferenceName = plumbing.NewTagReferenceName(ref)
+		opts.SingleBranch = true
+		color.Green("\tCloning skeleton application (%s)...", ref)
+	} else {
+		color.Yellow("\tCloning skeleton application from the default branch (this build has no version)...")
+	}
+
+	_, err := git.PlainClone("./"+appname, false, opts)
 	if err != nil {
+		if opts.ReferenceName != "" {
+			exitGracefully(fmt.Errorf("could not clone skeleton %s at %s: %w -- the skeleton needs a tag matching this release", skeletonRepo, opts.ReferenceName.Short(), err))
+		}
 		exitGracefully(err)
 	}
 
@@ -361,7 +398,7 @@ func injectModels(templateDir string) error {
 			continue
 		}
 
-		modelPlural := parts[0]  // e.g., "Posts"
+		modelPlural := parts[0]   // e.g., "Posts"
 		modelSingular := parts[1] // e.g., "Post"
 
 		// Check if already exists

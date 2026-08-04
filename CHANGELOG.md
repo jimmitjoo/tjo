@@ -275,6 +275,13 @@ MySQL and SQLite are unaffected; `DialectQuestion` remains the default.
 
 ### Added
 
+- `tjo new` clones the skeleton tag matching the CLI's own version, so a
+  released binary produces the same project every time it runs. It followed the
+  default branch before, which is how the skeleton and the CLI's templates
+  drifted apart. A build from a checkout has no version to match and follows
+  the default branch, saying so. Releasing now requires a matching tag in
+  jimmitjoo/tjo-bare; `make release` prints the command. (#30)
+- Prebuilt CLI binaries for macOS, Linux and Windows on version tags (#32).
 - CI covering all five modules (#2).
 - `database.Dialect`, `DialectFor`, and `WithDialect` on both `QueryBuilder` and
   `Model`.

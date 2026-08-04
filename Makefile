@@ -74,6 +74,10 @@ release:
 	@echo "  git push origin main"
 	@echo "  git push origin v$(v) $(foreach m,$(SUBMODULES),$(m)/v$(v))"
 	@echo ""
+	@echo "The skeleton needs a matching tag, or tjo new will refuse to clone:"
+	@echo "  gh api repos/jimmitjoo/tjo-bare/git/refs -f ref=refs/tags/v$(v) \\"
+	@echo "    -f sha=\$$(gh api repos/jimmitjoo/tjo-bare/git/ref/heads/main --jq .object.sha)"
+	@echo ""
 	@echo "Then, once the tags are live:"
 	@echo "  make release-check"
 
