@@ -112,23 +112,32 @@ release:
 ## one code path instead of an automation that looks like it works. See #61.
 release-push:
 	@if [ -z "$(v)" ]; then echo "Usage: make release-push v=0.9.0"; exit 1; fi
-	@# The skeleton has to be tagged before the CLI is built, because `tjo new`
-	@# clones the skeleton tag matching its own version. v0.8.0 shipped with
-	@# that tag pointing at a skeleton still requiring v0.7.0, because tagging
-	@# was separated from checking. Verify, then tag.
+	@# Framework tags first. The skeleton has to require the released version,
+	@# and it cannot resolve that requirement until the tag exists -- checking
+	@# the skeleton before pushing, as this target did originally, is a
+	@# dependency cycle that can never be satisfied on a first release.
+	@echo "Pushing..."
+	@git push origin main
+	@git push origin v$(v) $(foreach m,$(SUBMODULES),$(m)/v$(v))
+	@echo ""
+	@# Now the skeleton can be checked and tagged. `tjo new` clones the skeleton
+	@# tag matching the CLI's own version, so a tag pointing at a tree that
+	@# requires the previous release produces projects that are wrong in a way
+	@# nothing in this repository would catch. v0.8.0 shipped exactly that,
+	@# because tagging was separated from checking.
 	@echo "Checking the skeleton requires v$(v)..."
 	@skel=$$(gh api repos/jimmitjoo/tjo-bare/contents/go.mod --jq '.content' | base64 -d | grep -oE 'jimmitjoo/tjo v[0-9.]+' | head -1); \
 		case "$$skel" in \
 			*"v$(v)") echo "  tjo-bare requires $$skel";; \
-			*) echo "  tjo-bare requires $$skel, not v$(v) -- update and push it first"; exit 1;; \
+			*) echo "  tjo-bare requires $$skel, not v$(v)"; \
+			   echo "  update and push tjo-bare, then re-run this target"; exit 1;; \
 		esac
 	@gh api repos/jimmitjoo/tjo-bare/git/refs -f ref=refs/tags/v$(v) \
-		-f sha=$$(gh api repos/jimmitjoo/tjo-bare/git/ref/heads/main --jq .object.sha) >/dev/null \
-		&& echo "  tagged tjo-bare v$(v)"
-	@echo ""
-	@echo "Pushing..."
-	@git push origin main
-	@git push origin v$(v) $(foreach m,$(SUBMODULES),$(m)/v$(v))
+		-f sha=$$(gh api repos/jimmitjoo/tjo-bare/git/ref/heads/main --jq .object.sha) >/dev/null 2>&1 \
+		&& echo "  tagged tjo-bare v$(v)" \
+		|| gh api -X PATCH repos/jimmitjoo/tjo-bare/git/refs/tags/v$(v) \
+			-f sha=$$(gh api repos/jimmitjoo/tjo-bare/git/ref/heads/main --jq .object.sha) -F force=true >/dev/null \
+		&& echo "  moved tjo-bare v$(v)"
 	@echo ""
 	@echo "Starting the release build..."
 	@gh workflow run release.yml -f version=v$(v)
