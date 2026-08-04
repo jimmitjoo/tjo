@@ -274,9 +274,13 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// Session validation
+	// Session validation.
+	//
+	// This list has to match what session.InitSecureSession can actually
+	// serve. "badger" used to be accepted here with no badger session store
+	// existing anywhere, so it fell through to an in-memory store.
 	validSessionTypes := map[string]bool{
-		"cookie": true, "redis": true, "database": true, "badger": true,
+		"cookie": true, "redis": true, "database": true,
 	}
 	if !validSessionTypes[c.Session.Type] {
 		errs = append(errs, fmt.Sprintf("invalid SESSION_TYPE: %s", c.Session.Type))

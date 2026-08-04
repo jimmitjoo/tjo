@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +19,9 @@ import (
 )
 
 type Session struct {
+	// DBType names the driver behind DBPool, so SESSION_TYPE=database can
+	// resolve to the right store.
+	DBType         string
 	CookieLifetime string
 	CookiePersist  string
 	CookieName     string
@@ -29,22 +34,37 @@ type Session struct {
 
 // SecureSessionConfig holds secure session configuration
 type SecureSessionConfig struct {
-	EnableRotation    bool
-	RotateOnAuth      bool
-	MaxLifetime       time.Duration
-	IdleTimeout       time.Duration
-	RegenerationTime  time.Duration
-	HttpOnlyDefault   bool
-	SecureDefault     bool
-	SameSiteDefault   http.SameSite
+	EnableRotation   bool
+	RotateOnAuth     bool
+	MaxLifetime      time.Duration
+	IdleTimeout      time.Duration
+	RegenerationTime time.Duration
+	HttpOnlyDefault  bool
+	SecureDefault    bool
+	SameSiteDefault  http.SameSite
 }
 
-func (g *Session) InitSession() *scs.SessionManager {
-	return g.InitSecureSession(DefaultSecureSessionConfig())
+// InitSession creates a session manager from the Session's own fields.
+func (g *Session) InitSession() (*scs.SessionManager, error) {
+	config := DefaultSecureSessionConfig()
+
+	// Seed MaxLifetime from COOKIE_LIFETIME. It used to be parsed into
+	// session.Lifetime and then unconditionally overwritten by the hardcoded
+	// 30 minutes below, so the documented setting did nothing at all.
+	if minutes, err := strconv.Atoi(g.CookieLifetime); err == nil && minutes > 0 {
+		config.MaxLifetime = time.Duration(minutes) * time.Minute
+	}
+
+	return g.InitSecureSession(config)
 }
 
-// InitSecureSession creates a session manager with enhanced security
-func (g *Session) InitSecureSession(config SecureSessionConfig) *scs.SessionManager {
+// InitSecureSession creates a session manager with enhanced security.
+//
+// It returns an error for a session type it cannot serve. Falling through to
+// an in-memory store meant SESSION_TYPE=database -- a value the config layer
+// explicitly accepts -- silently produced sessions that vanished on restart
+// and broke behind a second replica, with no warning anywhere.
+func (g *Session) InitSecureSession(config SecureSessionConfig) (*scs.SessionManager, error) {
 	var persist, secure bool
 
 	// how long should sessions last?
@@ -66,7 +86,7 @@ func (g *Session) InitSecureSession(config SecureSessionConfig) *scs.SessionMana
 	// create session with secure defaults
 	session := scs.New()
 	session.Lifetime = time.Duration(minutes) * time.Minute
-	
+
 	// Apply secure configuration
 	if config.MaxLifetime > 0 {
 		session.Lifetime = config.MaxLifetime
@@ -83,18 +103,45 @@ func (g *Session) InitSecureSession(config SecureSessionConfig) *scs.SessionMana
 	session.Cookie.SameSite = config.SameSiteDefault
 
 	// which session store?
-	switch strings.ToLower(g.SessionType) {
-	case "redis":
-		session.Store = redisstore.New(g.RedisPool)
-	case "mysql", "mariadb":
-		session.Store = mysqlstore.New(g.DBPool)
-	case "postgres", "postgresql":
-		session.Store = postgresstore.New(g.DBPool)
-	default:
-		// cookie store as fallback
+	//
+	// The names accepted here have to match what config.Validate accepts.
+	// They did not: config allowed cookie/redis/database/badger while this
+	// switch understood redis/mysql/mariadb/postgres/postgresql, so the two
+	// only overlapped on "redis".
+	sessionType := strings.ToLower(g.SessionType)
+	if sessionType == "database" {
+		// Resolve to the concrete driver the app is already connected to.
+		sessionType = strings.ToLower(g.DBType)
 	}
 
-	return session
+	switch sessionType {
+	case "redis":
+		if g.RedisPool == nil {
+			return nil, errors.New("SESSION_TYPE=redis but no redis pool is configured")
+		}
+		session.Store = redisstore.New(g.RedisPool)
+
+	case "mysql", "mariadb":
+		if g.DBPool == nil {
+			return nil, errors.New("database-backed sessions requested but no database pool is configured")
+		}
+		session.Store = mysqlstore.New(g.DBPool)
+
+	case "postgres", "postgresql", "pgx":
+		if g.DBPool == nil {
+			return nil, errors.New("database-backed sessions requested but no database pool is configured")
+		}
+		session.Store = postgresstore.New(g.DBPool)
+
+	case "cookie", "":
+		// scs's default in-memory store. Fine for a single process; session
+		// data does not survive a restart and is not shared between replicas.
+
+	default:
+		return nil, fmt.Errorf("unsupported SESSION_TYPE %q (supported: cookie, redis, database with DATABASE_TYPE mysql/mariadb/postgres)", g.SessionType)
+	}
+
+	return session, nil
 }
 
 // DefaultSecureSessionConfig returns secure default configuration
@@ -130,7 +177,7 @@ func SecureSessionRotationMiddleware(sessionManager *scs.SessionManager, config 
 					}
 				}
 			}
-			
+
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -187,7 +234,7 @@ func (ash *AuthSessionHandler) LoginUser(w http.ResponseWriter, r *http.Request,
 	ash.sessionManager.Put(r.Context(), "user_id", userID)
 	ash.sessionManager.Put(r.Context(), "auth_time", time.Now().Unix())
 	ash.sessionManager.Put(r.Context(), "created_at", time.Now().Unix())
-	
+
 	// Generate and store session fingerprint for additional security
 	fingerprint, err := generateSessionFingerprint(r)
 	if err == nil {

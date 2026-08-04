@@ -214,16 +214,17 @@ func (g *Tjo) New(rootPath string, modules ...Module) error {
 		CookieDomain:   g.Config.Cookie.Domain,
 		CookieSecure:   strconv.FormatBool(g.Config.Cookie.Secure),
 		DBPool:         g.Data.DB.Pool,
+		DBType:         g.Config.Database.Type,
 	}
 
-	switch g.Config.Session.Type {
-	case "redis":
+	if g.Config.Session.Type == "redis" {
 		sess.RedisPool = g.Data.redisCache.Conn
-	case "mysql", "postgres", "mariadb", "postgresql", "pgx", "sqlite", "sqlite3":
-		sess.DBPool = g.Data.DB.Pool
 	}
 
-	g.HTTP.Session = sess.InitSession()
+	g.HTTP.Session, err = sess.InitSession()
+	if err != nil {
+		return fmt.Errorf("session setup: %w", err)
+	}
 	g.EncryptionKey = g.Config.App.EncryptionKey
 
 	// Setup Jet template engine
