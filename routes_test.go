@@ -200,3 +200,74 @@ func TestRouterDoesNotTrustForwardedHeadersForRemoteAddr(t *testing.T) {
 		})
 	}
 }
+
+// TestCrossOriginProtectionRejectsCrossSitePosts covers the stdlib gate added
+// alongside the nosurf upgrade.
+//
+// nosurf v1.1.1 checked same-origin against r.URL.Scheme, which is empty on a
+// server-side request, so the comparison never matched and the check never ran
+// (CVE-2025-46721). v1.2.0 fixes that. http.CrossOriginProtection is a second,
+// independent gate that does not depend on a template author remembering to
+// render a token.
+//
+// The third case is the deliberate gap, pinned so nobody mistakes it for a bug:
+// requests with neither Sec-Fetch-Site nor Origin are allowed, because they are
+// either same-origin or not from a browser.
+func TestCrossOriginProtectionRejectsCrossSitePosts(t *testing.T) {
+	g := newRoutableApp(false)
+	g.Config = &config.Config{}
+
+	mux, err := g.routes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux.Post("/submit", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	post := func(headers map[string]string) int {
+		req := httptest.NewRequest(http.MethodPost, "/submit", nil)
+		req.Host = "example.test"
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	t.Run("cross-site is rejected before it reaches CSRF token checking", func(t *testing.T) {
+		if got := post(map[string]string{"Sec-Fetch-Site": "cross-site"}); got != http.StatusForbidden {
+			t.Errorf("status = %d, want %d", got, http.StatusForbidden)
+		}
+	})
+
+	t.Run("mismatched Origin is rejected", func(t *testing.T) {
+		if got := post(map[string]string{"Origin": "https://attacker.example"}); got != http.StatusForbidden {
+			t.Errorf("status = %d, want %d", got, http.StatusForbidden)
+		}
+	})
+
+	// Not a bug: documented stdlib behaviour, and what keeps curl and
+	// server-to-server clients working. Token CSRF covers this half.
+	t.Run("no fetch metadata and no Origin is allowed through to NoSurf", func(t *testing.T) {
+		if got := post(nil); got == http.StatusForbidden {
+			t.Error("a request with neither Sec-Fetch-Site nor Origin was rejected by the origin gate")
+		}
+	})
+
+	// GET must never be blocked; issue #18 was a CSRF layer 403ing ordinary
+	// traffic behind a standard nginx config.
+	t.Run("safe methods are always allowed", func(t *testing.T) {
+		mux.Get("/read", func(w http.ResponseWriter, r *http.Request) {})
+
+		req := httptest.NewRequest(http.MethodGet, "/read", nil)
+		req.Header.Set("Sec-Fetch-Site", "cross-site")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if rec.Code == http.StatusForbidden {
+			t.Error("a GET was rejected as cross-origin")
+		}
+	})
+}

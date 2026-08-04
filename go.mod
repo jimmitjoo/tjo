@@ -28,7 +28,7 @@ require (
 	github.com/jimmitjoo/tjo/otel v0.7.0
 	github.com/jimmitjoo/tjo/sms v0.7.0
 	github.com/joho/godotenv v1.5.1
-	github.com/justinas/nosurf v1.1.1
+	github.com/justinas/nosurf v1.2.0
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/minio/minio-go/v7 v7.0.72
