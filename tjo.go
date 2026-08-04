@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/CloudyKit/jet/v6"
-	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v4"
 	"github.com/gomodule/redigo/redis"
 	"github.com/jimmitjoo/tjo/cache"
 	"github.com/jimmitjoo/tjo/config"
