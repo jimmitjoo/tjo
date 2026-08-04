@@ -1,5 +1,7 @@
 # Tjo
 
+[![CI](https://github.com/jimmitjoo/tjo/actions/workflows/ci.yml/badge.svg)](https://github.com/jimmitjoo/tjo/actions/workflows/ci.yml)
+
 ![alt tjo](https://raw.githubusercontent.com/jimmitjoo/tjo-bare/main/public/images/tjo-logo.webp)
 
 Tjo is a modern, full-featured web application framework for Go that provides everything you need to build scalable web applications quickly and securely.
@@ -11,7 +13,7 @@ Tjo is a modern, full-featured web application framework for Go that provides ev
 ## Features
 
 - Chi Router - Fast and lightweight HTTP router
-- Multi-Database Support - PostgreSQL, MySQL, MariaDB, SQLite
+- Multi-Database Support - PostgreSQL, MySQL, MariaDB, SQLite (PostgreSQL needs `WithDialect`, see [query builder docs](docs/query-builder.md#database-dialects))
 - Security First - CSRF protection, rate limiting, input validation, XSS prevention, 2FA
 - Email System - Multiple provider support with templates
 - Caching - Redis and Badger cache implementations

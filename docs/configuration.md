@@ -125,11 +125,11 @@ REDIS_PREFIX=myapp
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `SESSION_TYPE` | Session storage: `cookie`, `redis`, `database`, `badger` | `cookie` | No |
+| `SESSION_TYPE` | Session storage: `cookie`, `redis`, `database` | `cookie` | No |
 
 ### Session Types
 
-- **cookie**: Encrypted client-side sessions (default)
+- **cookie**: In-memory server-side store, session ID in a cookie (default). Data does not survive a restart and is not shared between replicas — fine for a single process, not for more than one.
 - **redis**: Server-side sessions in Redis
 - **database**: Server-side sessions in database
 - **badger**: Server-side sessions in Badger (embedded)
@@ -292,6 +292,11 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
 
 **Security Note:** Leaving `CORS_ALLOWED_ORIGINS` empty blocks all cross-origin requests. This is the safest default.
+
+**Where this is read:** CORS settings are owned by the `security` package, not by
+`config`. They take effect only if your application installs the security
+middleware, which loads them via `security.LoadFromEnv()`. Setting the variable
+without installing that middleware configures nothing.
 
 ---
 
@@ -463,11 +468,18 @@ Tjo validates configuration at startup. Invalid configuration will prevent the a
 configuration errors: invalid DATABASE_TYPE: mongodb; OTEL_SERVICE_NAME is required when OTEL_ENABLED=true
 ```
 
+Malformed values fail the same way. A default applies to a variable that is
+*unset*, never to one that is set to something invalid:
+
+```
+configuration errors: PORT="80O0" is not a valid integer
+```
+
 ### Validation Rules
 
 - `PORT`: Must be 1-65535
 - `DATABASE_TYPE`: Must be `postgres`, `postgresql`, `pgx`, `mysql`, `mariadb`, `sqlite`, or `sqlite3`
-- `SESSION_TYPE`: Must be `cookie`, `redis`, `database`, or `badger`
+- `SESSION_TYPE`: Must be `cookie`, `redis`, or `database`
 - `LOG_LEVEL`: Must be `trace`, `debug`, `info`, `warn`, `error`, or `fatal`
 - `LOG_FORMAT`: Must be `json` or `text`
 - `JOB_WORKERS`: Must be at least 1

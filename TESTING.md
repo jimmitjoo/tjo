@@ -163,6 +163,18 @@ To run tests without Docker:
 
 ## Continuous Integration
 
+### Modules
+
+This repository is a Go workspace (see `go.work`). `go test ./...` from the root
+covers the **root module only** — it does not reach `email`, `otel`, `sms` or
+`websocket`, which are separate modules. To run everything:
+
+```bash
+for m in . email otel sms websocket; do (cd $m && go test -short -race ./...); done
+```
+
+CI does exactly this, one job per module.
+
 For CI/CD pipelines, use the standard test command without colors:
 
 ```bash

@@ -23,7 +23,6 @@ type Config struct {
 	Storage  StorageConfig
 	Logging  LoggingConfig
 	Jobs     JobsConfig
-	CORS     CORSConfig
 	OTel     OTelConfig
 }
 
@@ -129,11 +128,6 @@ type JobsConfig struct {
 	EnablePersistence bool
 }
 
-// CORSConfig holds CORS settings
-type CORSConfig struct {
-	AllowedOrigins []string // Empty means block all cross-origin requests
-}
-
 // OTelConfig holds OpenTelemetry settings
 type OTelConfig struct {
 	Enabled        bool    // Enable OpenTelemetry tracing
@@ -229,13 +223,6 @@ func Load() (*Config, error) {
 	// Jobs config
 	cfg.Jobs.Workers = envInt("JOB_WORKERS", 5)
 	cfg.Jobs.EnablePersistence = envBool("JOB_ENABLE_PERSISTENCE", false)
-
-	// CORS config.
-	//
-	// Read by security.CORSMiddleware via SecurityConfig; the app wires it up.
-	// Nothing used to read this at all, so a user who set
-	// CORS_ALLOWED_ORIGINS believed they had configured CORS and had not.
-	cfg.CORS.AllowedOrigins = envStringSlice("CORS_ALLOWED_ORIGINS")
 
 	// OTel config
 	cfg.OTel.Enabled = envBool("OTEL_ENABLED", false)

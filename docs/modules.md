@@ -124,9 +124,9 @@ MAIL_FROM_NAME=My App
 MAIL_DOMAIN=example.com
 
 # API Provider (alternative to SMTP)
-MAIL_API=mailgun  # mailgun, sendgrid, sparkpost
-MAIL_API_KEY=your_api_key
-MAIL_API_URL=https://api.mailgun.net/v3
+MAILER_API=mailgun  # mailgun, sendgrid, sparkpost
+MAILER_KEY=your_api_key
+MAILER_URL=https://api.mailgun.net/v3
 
 # Templates directory
 EMAIL_TEMPLATES=./email
@@ -404,7 +404,7 @@ func (m *Module) Name() string {
     return "mymodule"
 }
 
-func (m *Module) Initialize(g interface{}) error {
+func (m *Module) Initialize(app any) error {
     // Setup your module
     // g is *tjo.Tjo but typed as interface{} for decoupling
     return nil
