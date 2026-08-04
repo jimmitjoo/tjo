@@ -1,39 +1,15 @@
 package s3filesystem
 
 import (
-	"errors"
+	"context"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/jimmitjoo/tjo/filesystems"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
-
-// MockS3Client for testing
-type MockS3Client struct {
-	mock.Mock
-}
-
-func (m *MockS3Client) ListObjects(input *s3.ListObjectsInput) (*s3.ListObjectsOutput, error) {
-	args := m.Called(input)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*s3.ListObjectsOutput), args.Error(1)
-}
-
-func (m *MockS3Client) DeleteObject(input *s3.DeleteObjectInput) (*s3.DeleteObjectOutput, error) {
-	args := m.Called(input)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*s3.DeleteObjectOutput), args.Error(1)
-}
 
 func TestS3_New(t *testing.T) {
 	s3fs := &S3{
@@ -60,8 +36,9 @@ func TestS3_getCredentials(t *testing.T) {
 	creds := s3fs.getCredentials()
 	assert.NotNil(t, creds)
 
-	// Verify credentials are set correctly
-	value, err := creds.Get()
+	// v2 replaced Get() with Retrieve(ctx) on the CredentialsProvider
+	// interface.
+	value, err := creds.Retrieve(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, "test-key", value.AccessKeyID)
 	assert.Equal(t, "test-secret", value.SecretAccessKey)
@@ -239,40 +216,44 @@ func TestS3_ListingConversion(t *testing.T) {
 	assert.Equal(t, expectedListing.Size, mb)
 }
 
-func TestS3_ErrorHandling(t *testing.T) {
-	// Test AWS error handling
-	tests := []struct {
-		name          string
-		err           error
-		expectedPrint bool
-	}{
-		{
-			name:          "No such bucket error",
-			err:           awserr.New(s3.ErrCodeNoSuchBucket, "The specified bucket does not exist", nil),
-			expectedPrint: true,
-		},
-		{
-			name:          "Generic AWS error",
-			err:           awserr.New("AccessDenied", "Access Denied", nil),
-			expectedPrint: true,
-		},
-		{
-			name:          "Non-AWS error",
-			err:           errors.New("generic error"),
-			expectedPrint: true,
-		},
-	}
+// TestS3_ClientUsesPathStyleAddressing covers the one v1-to-v2 difference that
+// fails silently.
+//
+// v1 inferred path-style addressing from a custom Endpoint, which is what made
+// this package work against MinIO and other S3-compatible servers. v2 infers
+// nothing: without UsePathStyle the client builds virtual-host URLs like
+// https://bucket.minio.local/, which resolve nowhere. Nothing about that is a
+// compile error, and every test in this file passed without it.
+//
+// This replaces TestS3_ErrorHandling, which constructed awserr values and
+// asserted they had a code and a message -- a property of the SDK, not of any
+// code in this package.
+func TestS3_ClientUsesPathStyleAddressing(t *testing.T) {
+	t.Run("custom endpoint", func(t *testing.T) {
+		s3fs := &S3{
+			Key:      "test-key",
+			Secret:   "test-secret",
+			Region:   "us-east-1",
+			Endpoint: "https://minio.example.test:9000",
+			Bucket:   "test-bucket",
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// These errors would be printed in the actual code
-			// We're just testing the error types here
-			if aerr, ok := tt.err.(awserr.Error); ok {
-				assert.NotEmpty(t, aerr.Code())
-				assert.NotEmpty(t, aerr.Message())
-			}
-		})
-	}
+		opts := s3fs.client().Options()
+
+		assert.True(t, opts.UsePathStyle, "virtual-host addressing against a custom endpoint resolves nowhere")
+		assert.NotNil(t, opts.BaseEndpoint)
+		assert.Equal(t, "https://minio.example.test:9000", *opts.BaseEndpoint)
+		assert.Equal(t, "us-east-1", opts.Region)
+	})
+
+	t.Run("no endpoint leaves BaseEndpoint unset", func(t *testing.T) {
+		s3fs := &S3{Key: "k", Secret: "s", Region: "eu-north-1", Bucket: "b"}
+
+		opts := s3fs.client().Options()
+
+		assert.Nil(t, opts.BaseEndpoint, "an empty Endpoint must not become a literal empty base endpoint")
+		assert.Equal(t, "eu-north-1", opts.Region)
+	})
 }
 
 // Benchmark tests
