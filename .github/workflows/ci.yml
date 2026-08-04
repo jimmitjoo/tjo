@@ -244,9 +244,9 @@ jobs:
       - name: Add authentication and generated code
         working-directory: ${{ runner.temp }}/demo
         run: |
-          $RUNNER_TEMP/tjo make auth
-          $RUNNER_TEMP/tjo make controller Widget
-          $RUNNER_TEMP/tjo make handler Thing
+          "$RUNNER_TEMP/tjo" make auth
+          "$RUNNER_TEMP/tjo" make controller Widget
+          "$RUNNER_TEMP/tjo" make handler Thing
 
       - name: Build it again with everything generated
         working-directory: ${{ runner.temp }}/demo

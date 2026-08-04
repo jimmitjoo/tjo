@@ -1,4 +1,4 @@
-.PHONY: test test-simple cover coverage build_cli build clean release release-push vuln
+.PHONY: test test-simple cover coverage build_cli build clean release release-push vuln lint-workflows
 
 # Get version from git tag (exact match), fallback to "dev"
 VERSION := $(shell git describe --tags --exact-match 2>/dev/null || echo "dev")
@@ -22,6 +22,18 @@ vuln:
 		echo "==> $$m"; \
 		(cd $$m && go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...) || exit 1; \
 	done
+
+## lint-workflows: checks the GitHub Actions workflows
+#
+# In Docker, because that is the only way to match what CI does. actionlint runs
+# shellcheck over every `run:` block when shellcheck is present -- and it simply
+# skips those checks when it is not. Running `go run .../actionlint` on a machine
+# without shellcheck therefore reports success on scripts CI will reject, which
+# is exactly what happened once: two real quoting findings were invisible
+# locally and red on main.
+lint-workflows:
+	@docker run --rm -v "$(PWD):/repo:ro" -w /repo rhysd/actionlint:1.7.7 -color \
+		.github/workflows/ci.yml .github/workflows/release.yml
 
 ## cover: open coverage in browser
 cover:

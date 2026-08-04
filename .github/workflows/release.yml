@@ -142,7 +142,7 @@ jobs:
       # without trusting the transport.
       - name: Checksums
         working-directory: dist
-        run: sha256sum *.tar.gz *.zip > checksums.txt
+        run: sha256sum ./*.tar.gz ./*.zip > checksums.txt
 
       # CycloneDX 1.6 rather than 1.7: cyclonedx-gomod v1.10.0 does not emit
       # 1.7, and 1.6 is what the tooling ecosystem actually reads. `app` scopes
