@@ -53,8 +53,15 @@ release:
 	@# would mean writing a requirement on a tag that does not exist yet, which
 	@# breaks go.sum until the tag is pushed. Published otel v0.6.1 still
 	@# requires root v0.5.4 for exactly this reason, and it resolves correctly.
+	@# Only bump what the root already requires. Blindly requiring every
+	@# submodule adds one the root does not import -- websocket appears only
+	@# inside a documentation string in the MCP help -- which would put a
+	@# needless dependency in every consumer's module graph.
 	@for m in $(SUBMODULES); do \
-		go mod edit -require=github.com/jimmitjoo/tjo/$$m@v$(v) go.mod 2>/dev/null || true; \
+		if grep -q "github.com/jimmitjoo/tjo/$$m v" go.mod; then \
+			go mod edit -require=github.com/jimmitjoo/tjo/$$m@v$(v) go.mod; \
+			echo "  root requires $$m v$(v)"; \
+		fi; \
 	done
 	@# The scaffolding template pins the framework version for new projects.
 	@sed -i.bak 's|github.com/jimmitjoo/tjo v[0-9.]*|github.com/jimmitjoo/tjo v$(v)|g' \
