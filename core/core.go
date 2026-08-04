@@ -13,6 +13,14 @@ import (
 // Use: go build -ldflags "-X github.com/jimmitjoo/tjo/core.Version=x.y.z"
 var Version = "dev"
 
+// BuildDate is injected at build time and is deliberately not time.Now().
+//
+// A timestamp taken at build time makes the binary different on every build,
+// which is the difference between "reproducible" and "nearly reproducible".
+// Releases set it from the tagged commit's own commit date, so rebuilding a tag
+// years later produces the same bytes.
+var BuildDate = "unknown"
+
 // randomStringSource is the character set for random strings
 const randomStringSource = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_+"
 

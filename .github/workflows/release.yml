@@ -1,114 +1,106 @@
 name: Release
 
-# Only the framework's own version tags. Submodule tags look like
-# email/v0.7.0, which do not match this pattern and must not trigger a
-# CLI release of their own.
+# Dispatch only, deliberately.
 #
-# Also dispatchable, because GitHub does not create workflow runs when more
-# than three tags are pushed at once -- and a release pushes five, one per
-# module. That silently skipped the first v0.7.0 build. Dispatch is also how
-# you rebuild a release without touching its tag.
+# This workflow used to declare `on: push: tags: ['v*']` as well. That trigger
+# never fired once in this repository's history -- every release run has been a
+# dispatch. GitHub does not create workflow runs when more than three tags are
+# pushed at once, and a release pushes five, one per module in the workspace. It
+# silently skipped the first v0.7.0 build and the first v0.8.0 build.
+#
+# A trigger that cannot fire is worse than no trigger, because it reads as
+# coverage. `make release` now dispatches this workflow itself; see #61.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Tag to build, e.g. v0.7.0'
+        description: 'Tag to build, e.g. v0.9.0'
         required: true
         type: string
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   build:
     name: ${{ matrix.goos }}/${{ matrix.goarch }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
 
-    # Native runners per target, because the SQLite driver is mattn/go-sqlite3
-    # and needs cgo. Built with CGO_ENABLED=0 the binaries compile fine and
-    # then fail at runtime with "go-sqlite3 requires cgo to work. This is a
-    # stub" -- which would break `tjo make auth` and `tjo migrate` on exactly
-    # the zero-configuration database people reach for first.
+    # One runner, cross-compiled, CGO_ENABLED=0.
+    #
+    # This used to be a native runner per target -- two macOS, two Linux, one
+    # Windows -- because mattn/go-sqlite3 needs cgo, and a CGO_ENABLED=0 build
+    # produced binaries that compiled and then failed at runtime with
+    # "go-sqlite3 requires cgo to work. This is a stub". modernc.org/sqlite is
+    # pure Go, so that constraint is gone along with the Intel-runner queueing
+    # and the darwin/amd64 cross-compile special case.
     strategy:
       fail-fast: false
       matrix:
         include:
           - goos: darwin
             goarch: arm64
-            runner: macos-latest
-          # amd64 is cross-compiled from the arm64 runner rather than built on
-          # macos-13. Intel runners are being retired and queue for a long
-          # time -- one queued 15 minutes and never started. macOS SDKs are
-          # universal, so cgo cross-compiles cleanly; verified locally that the
-          # result is an x86_64 Mach-O binary that runs and reports its version.
           - goos: darwin
             goarch: amd64
-            runner: macos-latest
           - goos: linux
             goarch: amd64
-            runner: ubuntu-latest
           - goos: linux
             goarch: arm64
-            runner: ubuntu-24.04-arm
           - goos: windows
             goarch: amd64
-            runner: windows-latest
             ext: .exe
 
     env:
-      VERSION: ${{ inputs.version || github.ref_name }}
+      VERSION: ${{ inputs.version }}
 
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.version || github.ref_name }}
+          ref: ${{ inputs.version }}
 
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      # The same -ldflags the Makefile uses, so `tjo version` reports the
-      # release rather than "dev".
+      # -trimpath and a fixed build date are the whole recipe for a reproducible
+      # binary once cgo is out of the picture: no absolute paths, no timestamp,
+      # no C toolchain varying underneath. SOURCE_DATE_EPOCH comes from the
+      # tagged commit, so rebuilding the same tag produces the same bytes.
       - name: Build
-        # bash, because the default shell on the Windows runner is PowerShell,
-        # which does not understand backslash line continuations or ${VAR}.
-        shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: '1'
+          CGO_ENABLED: '0'
         run: |
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct "${VERSION}")
+          BUILD_DATE=$(date -u -d "@${SOURCE_DATE_EPOCH}" +%Y-%m-%dT%H:%M:%SZ)
           go build \
-            -ldflags "-s -w \
+            -trimpath \
+            -ldflags "-s -w -buildid= \
               -X github.com/jimmitjoo/tjo/core.Version=${VERSION} \
-              -X github.com/jimmitjoo/tjo.version=${VERSION}" \
+              -X github.com/jimmitjoo/tjo.version=${VERSION} \
+              -X github.com/jimmitjoo/tjo/core.BuildDate=${BUILD_DATE}" \
             -o "tjo${{ matrix.ext }}" \
             ./cmd/tjo
 
-      # A stubbed SQLite driver only shows up at runtime, so a successful
-      # build is not evidence the binary works. Running it is the cheapest
-      # check that it starts at all on its target; the SQLite guarantee comes
-      # from CGO_ENABLED=1 on a native runner rather than from this step.
+      # A build succeeding is not evidence the binary works -- a stubbed SQLite
+      # driver only showed up at runtime, which is the failure this step exists
+      # for. Cross-compiled targets cannot be run here, so only the native one
+      # is executed; the others are covered by the pure-Go driver test in CI.
       - name: Verify the binary runs
-        shell: bash
-        run: ./tjo${{ matrix.ext }} version
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: ./tjo version
 
       - name: Archive
         if: matrix.goos != 'windows'
         run: tar czf "tjo_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" tjo LICENSE readme.md
 
-      # zip is not reliably on PATH in the Windows runner's bash, so use
-      # PowerShell, which is.
       - name: Archive (windows)
         if: matrix.goos == 'windows'
-        shell: pwsh
-        run: |
-          Compress-Archive -Path tjo.exe, LICENSE, readme.md `
-            -DestinationPath "tjo_${env:VERSION}_windows_amd64.zip"
+        run: zip -q "tjo_${VERSION}_windows_amd64.zip" tjo.exe LICENSE readme.md
 
       - uses: actions/upload-artifact@v4
         with:
@@ -123,10 +115,24 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
     env:
-      VERSION: ${{ inputs.version || github.ref_name }}
+      VERSION: ${{ inputs.version }}
 
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.version }}
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -138,6 +144,34 @@ jobs:
         working-directory: dist
         run: sha256sum *.tar.gz *.zip > checksums.txt
 
+      # CycloneDX 1.6 rather than 1.7: cyclonedx-gomod v1.10.0 does not emit
+      # 1.7, and 1.6 is what the tooling ecosystem actually reads. `app` scopes
+      # the SBOM to what is really linked into the CLI for a given target, which
+      # is narrower and more honest than the whole module graph.
+      - name: SBOM
+        run: |
+          go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.10.0 \
+            app -json -licenses -main ./cmd/tjo -output "dist/tjo_${VERSION}_sbom.cdx.json" .
+
+      # Binds every artifact to this workflow run in a signed, in-toto SLSA
+      # provenance statement. Verified by consumers with:
+      #   gh attestation verify <file> --repo jimmitjoo/tjo
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: 'dist/*.tar.gz, dist/*.zip'
+
+      # Keyless: the certificate comes from Fulcio against this job's OIDC
+      # identity and is logged to Rekor, so there is no signing key to hold or
+      # leak. Signing the checksum file covers every artifact it lists.
+      - name: Sign checksums
+        run: |
+          go run github.com/sigstore/cosign/v2/cmd/cosign@v2.6.1 sign-blob \
+            --yes \
+            --output-signature dist/checksums.txt.sig \
+            --output-certificate dist/checksums.txt.pem \
+            dist/checksums.txt
+
       - name: Publish to the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -145,7 +179,14 @@ jobs:
           gh release create "${VERSION}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "${VERSION}" \
-            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${VERSION}/CHANGELOG.md)." \
+            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${VERSION}/CHANGELOG.md).
+
+Verify the download:
+
+\`\`\`
+gh attestation verify tjo_${VERSION}_<os>_<arch>.tar.gz --repo ${GITHUB_REPOSITORY}
+sha256sum -c checksums.txt --ignore-missing
+\`\`\`" \
             --verify-tag \
             dist/* \
           || gh release upload "${VERSION}" dist/* --repo "${GITHUB_REPOSITORY}" --clobber
