@@ -151,6 +151,7 @@ type OTelConfig struct {
 // Load reads configuration from environment variables and validates it.
 // Returns an error if required values are missing or invalid.
 func Load() (*Config, error) {
+	envParseErrors = nil
 	cfg := &Config{}
 
 	// App config
@@ -229,7 +230,11 @@ func Load() (*Config, error) {
 	cfg.Jobs.Workers = envInt("JOB_WORKERS", 5)
 	cfg.Jobs.EnablePersistence = envBool("JOB_ENABLE_PERSISTENCE", false)
 
-	// CORS config
+	// CORS config.
+	//
+	// Read by security.CORSMiddleware via SecurityConfig; the app wires it up.
+	// Nothing used to read this at all, so a user who set
+	// CORS_ALLOWED_ORIGINS believed they had configured CORS and had not.
 	cfg.CORS.AllowedOrigins = envStringSlice("CORS_ALLOWED_ORIGINS")
 
 	// OTel config
@@ -256,6 +261,10 @@ func Load() (*Config, error) {
 // Returns a combined error with all validation failures.
 func (c *Config) Validate() error {
 	var errs []string
+
+	// Malformed values seen while reading the environment. Reported here so a
+	// typo fails startup instead of silently becoming the default.
+	errs = append(errs, envParseErrors...)
 
 	// Server validation
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
@@ -370,6 +379,16 @@ func envDefault(key, defaultVal string) string {
 	return defaultVal
 }
 
+// envParseErrors collects malformed values seen during Load so Validate can
+// report them. A default is the right answer for an *unset* variable, not for
+// an invalid one: PORT=80O0 used to bind 4000 in silence, and Validate never
+// saw the typo because the bad value had already been replaced by a good one.
+var envParseErrors []string
+
+func noteEnvParseError(key, val, want string) {
+	envParseErrors = append(envParseErrors, fmt.Sprintf("%s=%q is not a valid %s", key, val, want))
+}
+
 func envBool(key string, defaultVal bool) bool {
 	val := os.Getenv(key)
 	if val == "" {
@@ -377,6 +396,7 @@ func envBool(key string, defaultVal bool) bool {
 	}
 	b, err := strconv.ParseBool(val)
 	if err != nil {
+		noteEnvParseError(key, val, "boolean")
 		return defaultVal
 	}
 	return b
@@ -389,6 +409,7 @@ func envInt(key string, defaultVal int) int {
 	}
 	i, err := strconv.Atoi(val)
 	if err != nil {
+		noteEnvParseError(key, val, "integer")
 		return defaultVal
 	}
 	return i
@@ -401,6 +422,7 @@ func envFloat(key string, defaultVal float64) float64 {
 	}
 	f, err := strconv.ParseFloat(val, 64)
 	if err != nil {
+		noteEnvParseError(key, val, "number")
 		return defaultVal
 	}
 	return f

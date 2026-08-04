@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"net/http"
@@ -11,14 +12,14 @@ import (
 
 // InputValidationConfig holds configuration for input validation
 type InputValidationConfig struct {
-	MaxFieldLength    int
-	MaxTotalLength    int
-	AllowHTML         bool
-	StrictMode        bool
-	CustomPatterns    map[string]*regexp.Regexp
-	BlockedPatterns   []*regexp.Regexp
-	ExemptPaths       []string
-	ExemptMethods     []string
+	MaxFieldLength  int
+	MaxTotalLength  int
+	AllowHTML       bool
+	StrictMode      bool
+	CustomPatterns  map[string]*regexp.Regexp
+	BlockedPatterns []*regexp.Regexp
+	ExemptPaths     []string
+	ExemptMethods   []string
 }
 
 // DefaultInputValidationConfig returns a secure default configuration
@@ -29,21 +30,21 @@ func DefaultInputValidationConfig() InputValidationConfig {
 		regexp.MustCompile(`(?i)(union\s+(all\s+)?select|insert\s+into|delete\s+from|drop\s+table|alter\s+table)`),
 		regexp.MustCompile(`(?i)(\bor\b\s+\d+\s*=\s*\d+|\band\b\s+\d+\s*=\s*\d+)`),
 		regexp.MustCompile(`(?i)(exec\s*\(|execute\s*\(|sp_executesql)`),
-		
+
 		// XSS patterns
 		regexp.MustCompile(`(?i)(<script[^>]*>|</script>|javascript:|vbscript:|onload=|onerror=)`),
 		regexp.MustCompile(`(?i)(eval\s*\(|expression\s*\(|setTimeout\s*\(|setInterval\s*\()`),
-		
+
 		// Path traversal patterns
 		regexp.MustCompile(`\.\./|\.\.\\|\.\./\.\./|\.\.\\/\.\.\\/`),
-		
+
 		// Command injection patterns
 		regexp.MustCompile(`(?i)(\|\s*curl\s+|\|\s*wget\s+|\|\s*nc\s+|\|\s*netcat\s+)`),
 		regexp.MustCompile(`(?i)(;\s*rm\s+|;\s*del\s+|;\s*format\s+|;\s*shutdown\s+)`),
-		
+
 		// LDAP injection patterns
 		regexp.MustCompile(`(?i)(\*\s*\)\s*\(|\*\s*\)\s*\(&)`),
-		
+
 		// NoSQL injection patterns
 		regexp.MustCompile(`(?i)(\$where|\$regex|\$ne|\$gt|\$lt)`),
 	}
@@ -87,10 +88,10 @@ type ValidationResult struct {
 
 // ThreatDetails contains information about detected threats
 type ThreatDetails struct {
-	Field       string
-	ThreatType  string
-	Pattern     string
-	Severity    string
+	Field      string
+	ThreatType string
+	Pattern    string
+	Severity   string
 }
 
 // ValidateRequest validates all input data in a request
@@ -119,7 +120,7 @@ func (iv *InputValidator) ValidateRequest(r *http.Request) *ValidationResult {
 	// Validate form values
 	for field, values := range r.Form {
 		cleanedValues := []string{}
-		
+
 		for _, value := range values {
 			// Check field length
 			if len(value) > iv.config.MaxFieldLength {
@@ -132,13 +133,13 @@ func (iv *InputValidator) ValidateRequest(r *http.Request) *ValidationResult {
 
 			// Validate individual value
 			cleanedValue, threats := iv.validateValue(field, value)
-			
+
 			if len(threats) > 0 {
 				result.Threats = append(result.Threats, threats...)
 				if iv.config.StrictMode {
 					result.Valid = false
 					for _, threat := range threats {
-						result.Errors = append(result.Errors, 
+						result.Errors = append(result.Errors,
 							fmt.Sprintf("Security threat detected in field '%s': %s", field, threat.ThreatType))
 					}
 				}
@@ -146,7 +147,7 @@ func (iv *InputValidator) ValidateRequest(r *http.Request) *ValidationResult {
 
 			cleanedValues = append(cleanedValues, cleanedValue)
 		}
-		
+
 		result.CleanedInput[field] = cleanedValues
 	}
 
@@ -213,7 +214,7 @@ func (iv *InputValidator) validateValue(field, value string) (string, []ThreatDe
 func (iv *InputValidator) sanitizeInput(input string) string {
 	// Remove null bytes
 	input = strings.ReplaceAll(input, "\x00", "")
-	
+
 	// Remove control characters except whitespace
 	var result strings.Builder
 	for _, r := range input {
@@ -231,7 +232,7 @@ func (iv *InputValidator) sanitizeInput(input string) string {
 
 	// Trim excessive whitespace
 	input = strings.TrimSpace(input)
-	
+
 	return input
 }
 
@@ -257,7 +258,7 @@ func (iv *InputValidator) containsSuspiciousContent(input string) bool {
 // identifyThreatType identifies the type of threat based on regex pattern
 func (iv *InputValidator) identifyThreatType(pattern *regexp.Regexp) string {
 	patternStr := strings.ToLower(pattern.String())
-	
+
 	if strings.Contains(patternStr, "union") || strings.Contains(patternStr, "select") {
 		return "sql_injection"
 	}
@@ -273,7 +274,7 @@ func (iv *InputValidator) identifyThreatType(pattern *regexp.Regexp) string {
 	if strings.Contains(patternStr, "\\$") {
 		return "nosql_injection"
 	}
-	
+
 	return "unknown_threat"
 }
 
@@ -308,8 +309,8 @@ func (iv *InputValidator) logThreats(r *http.Request, threats []ThreatDetails) {
 		case "path_traversal":
 			iv.logger.LogPathTraversal(r, threat.Field)
 		default:
-			iv.logger.LogSuspiciousRequest(r, 
-				fmt.Sprintf("%s detected in field %s", threat.ThreatType, threat.Field), 
+			iv.logger.LogSuspiciousRequest(r,
+				fmt.Sprintf("%s detected in field %s", threat.ThreatType, threat.Field),
 				threat.Severity)
 		}
 	}
@@ -318,43 +319,62 @@ func (iv *InputValidator) logThreats(r *http.Request, threats []ThreatDetails) {
 // InputValidationMiddleware creates middleware for input validation
 func InputValidationMiddleware(config InputValidationConfig) func(next http.Handler) http.Handler {
 	validator := NewInputValidator(config, DefaultSecurityLogger)
-	
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			result := validator.ValidateRequest(r)
-			
+
 			if !result.Valid {
 				// Log validation failure
-				DefaultSecurityLogger.LogSuspiciousRequest(r, 
-					fmt.Sprintf("Input validation failed: %s", strings.Join(result.Errors, ", ")), 
+				DefaultSecurityLogger.LogSuspiciousRequest(r,
+					fmt.Sprintf("Input validation failed: %s", strings.Join(result.Errors, ", ")),
 					"high")
-				
+
 				// Return error response
 				http.Error(w, "Invalid input data", http.StatusBadRequest)
 				return
 			}
-			
-			// Store validation result in context for later use
-			// In a real implementation, you'd add this to the request context
-			
-			next.ServeHTTP(w, r)
+
+			// Make the sanitised values reachable. They used to be computed
+			// and thrown away with a comment saying a real implementation
+			// would do this, so the sanitising half of the middleware had no
+			// effect at all.
+			ctx := context.WithValue(r.Context(), cleanedInputKey, result.CleanedInput)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
-// GetCleanedFormValue safely retrieves a cleaned form value
+// contextKey is unexported so no other package can collide with it.
+type contextKey int
+
+const cleanedInputKey contextKey = iota
+
+// CleanedInput returns the sanitised values InputValidationMiddleware produced
+// for this request, if it ran.
+func CleanedInput(r *http.Request) (map[string][]string, bool) {
+	cleaned, ok := r.Context().Value(cleanedInputKey).(map[string][]string)
+	return cleaned, ok
+}
+
+// GetCleanedFormValue safely retrieves a cleaned form value, preferring the
+// value InputValidationMiddleware sanitised for this request.
 func GetCleanedFormValue(r *http.Request, key string) string {
-	// This would typically retrieve from the validation result stored in context
-	// For now, we'll provide basic sanitization
+	if cleaned, ok := CleanedInput(r); ok {
+		if values, present := cleaned[key]; present && len(values) > 0 {
+			return values[0]
+		}
+	}
+
 	value := r.FormValue(key)
 	if value == "" {
 		return ""
 	}
-	
+
 	// Basic sanitization
 	value = html.EscapeString(value)
 	value = strings.TrimSpace(value)
-	
+
 	return value
 }
 

@@ -155,6 +155,11 @@ func CORSMiddleware(config SecurityConfig) func(next http.Handler) http.Handler 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 
+			// The ACAO value depends on the request's Origin, so any shared
+			// cache must key on it. Without this a CDN can serve one origin's
+			// ACAO header to another, defeating the allowlist.
+			w.Header().Add("Vary", "Origin")
+
 			// Check if origin is allowed
 			originAllowed := false
 			if origin != "" && isOriginAllowed(origin, config.AllowedOrigins) {
