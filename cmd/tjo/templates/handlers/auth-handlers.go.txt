@@ -19,10 +19,10 @@ func (h *Handlers) UserRegister(w http.ResponseWriter, r *http.Request) {
 
 	h.isAuthenticated(w, r)
 
-	err := h.App.Render.Page(w, r, "register", nil, nil)
+	err := h.App.HTTP.Render.Page(w, r, "register", nil, nil)
 
 	if err != nil {
-		h.App.ErrorLog.Println("error rendering register:", err)
+		h.App.Logging.Error.Println("error rendering register:", err)
 	}
 }
 
@@ -32,7 +32,7 @@ func (h *Handlers) PostUserRegister(w http.ResponseWriter, r *http.Request) {
 
 	err := r.ParseForm()
 	if err != nil {
-		h.App.ErrorLog.Println("error parsing register form:", err)
+		h.App.Logging.Error.Println("error parsing register form:", err)
 	}
 
 	emailAddress := r.Form.Get("email")
@@ -53,8 +53,8 @@ func (h *Handlers) PostUserRegister(w http.ResponseWriter, r *http.Request) {
 	user.Validate(validator)
 
 	if !validator.Valid() {
-		h.App.ErrorLog.Println("error validating register form:", validator.Errors)
-		h.App.Session.Put(r.Context(), "errors", validator.Errors)
+		h.App.Logging.Error.Println("error validating register form:", validator.Errors)
+		h.App.HTTP.Session.Put(r.Context(), "errors", validator.Errors)
 
 		http.Redirect(w, r, "/register", http.StatusSeeOther)
 		return
@@ -62,14 +62,14 @@ func (h *Handlers) PostUserRegister(w http.ResponseWriter, r *http.Request) {
 
 	_, err = h.Models.Users.Create(user)
 	if err != nil {
-		h.App.ErrorLog.Println("error creating user:", err)
+		h.App.Logging.Error.Println("error creating user:", err)
 		w.Write([]byte(err.Error()))
 		return
 	}
 
 	h.sendActivationLink(user)
 
-	h.App.Session.Put(r.Context(), "flash", "You have been registered. Please check your email for an activation link.")
+	h.App.HTTP.Session.Put(r.Context(), "flash", "You have been registered. Please check your email for an activation link.")
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -97,10 +97,10 @@ func (h *Handlers) sendActivationLink(user data.User) {
 		From:     os.Getenv("MAIL_FROM_ADDRESS"),
 	}
 
-	h.App.Mail.Jobs <- msg
-	res := <-h.App.Mail.Results
+	h.App.Background.Mail.Jobs <- msg
+	res := <-h.App.Background.Mail.Results
 	if res.Error != nil {
-		h.App.ErrorLog.Println("error sending email:", res.Error)
+		h.App.Logging.Error.Println("error sending email:", res.Error)
 		return
 	}
 }
@@ -109,10 +109,10 @@ func (h *Handlers) UserLogin(w http.ResponseWriter, r *http.Request) {
 
 	h.isAuthenticated(w, r)
 
-	err := h.App.Render.Page(w, r, "login", nil, nil)
+	err := h.App.HTTP.Render.Page(w, r, "login", nil, nil)
 
 	if err != nil {
-		h.App.ErrorLog.Println("error rendering login:", err)
+		h.App.Logging.Error.Println("error rendering login:", err)
 	}
 }
 
@@ -123,7 +123,7 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
 		w.Write([]byte(err.Error()))
-		h.App.ErrorLog.Println("error parsing login form:", err)
+		h.App.Logging.Error.Println("error parsing login form:", err)
 		return
 	}
 
@@ -133,7 +133,7 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 	// check if email is empty
 	if emailAddress == "" {
 		// put error message in session and redirect back
-		h.App.Session.Put(r.Context(), "error", "Email address is required")
+		h.App.HTTP.Session.Put(r.Context(), "error", "Email address is required")
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -141,14 +141,14 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 	// check if password is empty
 	if password == "" {
 		// put error message in session and redirect back
-		h.App.Session.Put(r.Context(), "error", "Password is required")
+		h.App.HTTP.Session.Put(r.Context(), "error", "Password is required")
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
 	user, err := h.Models.Users.ByEmail(emailAddress)
 	if err != nil {
-		h.App.Session.Put(r.Context(), "error", "These credentials do not match our records.")
+		h.App.HTTP.Session.Put(r.Context(), "error", "These credentials do not match our records.")
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		// w.Write([]byte(err.Error()))
 		return
@@ -156,7 +156,7 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 
 	if user == nil {
 		// w.Write([]byte("Invalid email address"))
-		h.App.Session.Put(r.Context(), "error", "These credentials do not match our records.")
+		h.App.HTTP.Session.Put(r.Context(), "error", "These credentials do not match our records.")
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -165,7 +165,7 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 		// send activation link
 		h.sendActivationLink(*user)
 
-		h.App.Session.Put(r.Context(), "flash", "Your account is not active. Please check your email for an activation link.")
+		h.App.HTTP.Session.Put(r.Context(), "flash", "Your account is not active. Please check your email for an activation link.")
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -177,7 +177,7 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !matches {
-		h.App.Session.Put(r.Context(), "error", "These credentials do not match our records.")
+		h.App.HTTP.Session.Put(r.Context(), "error", "These credentials do not match our records.")
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -185,7 +185,7 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 	// Check if 2FA is enabled
 	if user.Has2FAEnabled() {
 		// Store user ID for 2FA verification
-		h.App.Session.Put(r.Context(), "pending_2fa_user_id", user.ID)
+		h.App.HTTP.Session.Put(r.Context(), "pending_2fa_user_id", user.ID)
 
 		// Handle remember me - store for after 2FA verification
 		if r.Form.Get("remember") == "remember" {
@@ -197,7 +197,7 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			sha := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
-			h.App.Session.Put(r.Context(), "pending_remember_token", sha)
+			h.App.HTTP.Session.Put(r.Context(), "pending_remember_token", sha)
 		}
 
 		http.Redirect(w, r, "/2fa/challenge", http.StatusSeeOther)
@@ -228,28 +228,28 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 			Path:     "/",
 			Expires:  time.Now().Add(time.Hour * 24 * 365),
 			HttpOnly: true,
-			Domain:   h.App.Session.Cookie.Domain,
+			Domain:   h.App.HTTP.Session.Cookie.Domain,
 			MaxAge:   31536000,
-			Secure:   h.App.Session.Cookie.Secure,
+			Secure:   h.App.HTTP.Session.Cookie.Secure,
 			SameSite: http.SameSiteStrictMode,
 		}
 
 		http.SetCookie(w, &cookie)
-		h.App.Session.Put(r.Context(), "remember_token", sha)
+		h.App.HTTP.Session.Put(r.Context(), "remember_token", sha)
 	}
 
 	// Rotate the session ID now that the user is authenticated. Without this an
 	// attacker who managed to fix a session ID on the victim's browser before
 	// login still holds a valid, now-authenticated session afterwards. Logout
 	// already did this; login did not.
-	if err := h.App.Session.RenewToken(r.Context()); err != nil {
-		h.App.ErrorLog.Println("error renewing session token on login:", err)
+	if err := h.App.HTTP.Session.RenewToken(r.Context()); err != nil {
+		h.App.Logging.Error.Println("error renewing session token on login:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
 
-	h.App.Session.Put(r.Context(), "userID", user.ID)
-	h.App.Session.Put(r.Context(), "auth_time", time.Now().Unix())
+	h.App.HTTP.Session.Put(r.Context(), "userID", user.ID)
+	h.App.HTTP.Session.Put(r.Context(), "auth_time", time.Now().Unix())
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -268,7 +268,7 @@ func (h *Handlers) ActivateUserAccount(w http.ResponseWriter, r *http.Request) {
 
 	valid := signer.VerifyToken(testUrl)
 	if !valid {
-		h.App.ErrorLog.Println("error validating url")
+		h.App.Logging.Error.Println("error validating url")
 		h.App.ErrorUnauthorized(w, r)
 		return
 	}
@@ -277,7 +277,7 @@ func (h *Handlers) ActivateUserAccount(w http.ResponseWriter, r *http.Request) {
 	// is still current. Without this an activation URL leaked from an old
 	// mailbox stays valid forever.
 	if signer.Expired(testUrl, 60*24) {
-		h.App.ErrorLog.Println("activation link has expired")
+		h.App.Logging.Error.Println("activation link has expired")
 		h.App.ErrorUnauthorized(w, r)
 		return
 	}
@@ -296,16 +296,16 @@ func (h *Handlers) ActivateUserAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.App.Session.Put(r.Context(), "flash", "Your account has been activated. You can now log in.")
+	h.App.HTTP.Session.Put(r.Context(), "flash", "Your account has been activated. You can now log in.")
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 func (h *Handlers) UserLogout(w http.ResponseWriter, r *http.Request) {
 
 	// delete remember me cookie if it exists
-	if h.App.Session.Exists(r.Context(), "remember_token") {
+	if h.App.HTTP.Session.Exists(r.Context(), "remember_token") {
 		rt := data.RememberToken{}
-		_ = rt.DeleteToken(h.App.Session.GetString(r.Context(), "remember_token"))
+		_ = rt.DeleteToken(h.App.HTTP.Session.GetString(r.Context(), "remember_token"))
 	}
 
 	// delete cookie
@@ -315,18 +315,18 @@ func (h *Handlers) UserLogout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		Expires:  time.Now().Add(-100 * time.Hour * 24),
 		HttpOnly: true,
-		Domain:   h.App.Session.Cookie.Domain,
+		Domain:   h.App.HTTP.Session.Cookie.Domain,
 		MaxAge:   -1,
-		Secure:   h.App.Session.Cookie.Secure,
+		Secure:   h.App.HTTP.Session.Cookie.Secure,
 		SameSite: http.SameSiteStrictMode,
 	}
 	http.SetCookie(w, &newCookie)
 
-	h.App.Session.RenewToken(r.Context())
-	h.App.Session.Remove(r.Context(), "userID")
-	h.App.Session.Remove(r.Context(), "remember_token")
-	h.App.Session.Destroy(r.Context())
-	h.App.Session.RenewToken(r.Context())
+	h.App.HTTP.Session.RenewToken(r.Context())
+	h.App.HTTP.Session.Remove(r.Context(), "userID")
+	h.App.HTTP.Session.Remove(r.Context(), "remember_token")
+	h.App.HTTP.Session.Destroy(r.Context())
+	h.App.HTTP.Session.RenewToken(r.Context())
 
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
@@ -334,10 +334,10 @@ func (h *Handlers) UserLogout(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) Forgot(w http.ResponseWriter, r *http.Request) {
 	h.isAuthenticated(w, r)
 
-	err := h.App.Render.Page(w, r, "forgot", nil, nil)
+	err := h.App.HTTP.Render.Page(w, r, "forgot", nil, nil)
 
 	if err != nil {
-		h.App.ErrorLog.Println("error rendering forget:", err)
+		h.App.Logging.Error.Println("error rendering forget:", err)
 		h.App.Error500(w, r)
 	}
 }
@@ -348,7 +348,7 @@ func (h *Handlers) PostForgot(w http.ResponseWriter, r *http.Request) {
 
 	err := r.ParseForm()
 	if err != nil {
-		h.App.ErrorLog.Println("error parsing forgot form:", err)
+		h.App.Logging.Error.Println("error parsing forgot form:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
@@ -358,7 +358,7 @@ func (h *Handlers) PostForgot(w http.ResponseWriter, r *http.Request) {
 	emailAddress := r.Form.Get("email")
 	user, err = user.ByEmail(emailAddress)
 	if err != nil {
-		h.App.ErrorLog.Println("error getting user by email:", err)
+		h.App.Logging.Error.Println("error getting user by email:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
@@ -386,15 +386,15 @@ func (h *Handlers) PostForgot(w http.ResponseWriter, r *http.Request) {
 		From:     os.Getenv("MAIL_FROM_ADDRESS"),
 	}
 
-	h.App.Mail.Jobs <- msg
-	res := <-h.App.Mail.Results
+	h.App.Background.Mail.Jobs <- msg
+	res := <-h.App.Background.Mail.Results
 	if res.Error != nil {
-		h.App.ErrorLog.Println("error sending email:", res.Error)
+		h.App.Logging.Error.Println("error sending email:", res.Error)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
 
-	h.App.Session.Put(r.Context(), "flash", "An email has been sent to you with a link to reset your password.")
+	h.App.HTTP.Session.Put(r.Context(), "flash", "An email has been sent to you with a link to reset your password.")
 
 	// redirect to login page
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -415,7 +415,7 @@ func (h *Handlers) ResetPasswordForm(w http.ResponseWriter, r *http.Request) {
 
 	valid := signer.VerifyToken(testUrl)
 	if !valid {
-		h.App.ErrorLog.Println("error validating url")
+		h.App.Logging.Error.Println("error validating url")
 		h.App.ErrorUnauthorized(w, r)
 		return
 	}
@@ -423,7 +423,7 @@ func (h *Handlers) ResetPasswordForm(w http.ResponseWriter, r *http.Request) {
 	// make sure it is not expired
 	expired := signer.Expired(testUrl, 60)
 	if expired {
-		h.App.ErrorLog.Println("reset password link has expired")
+		h.App.Logging.Error.Println("reset password link has expired")
 		h.App.ErrorUnauthorized(w, r)
 		return
 	}
@@ -447,7 +447,7 @@ func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 	// parse the form
 	err := r.ParseForm()
 	if err != nil {
-		h.App.ErrorLog.Println("error parsing reset password form:", err)
+		h.App.Logging.Error.Println("error parsing reset password form:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
@@ -461,13 +461,13 @@ func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !signer.VerifyToken(signedURL) {
-		h.App.ErrorLog.Println("error validating url on password reset")
+		h.App.Logging.Error.Println("error validating url on password reset")
 		h.App.ErrorUnauthorized(w, r)
 		return
 	}
 
 	if signer.Expired(signedURL, 60) {
-		h.App.ErrorLog.Println("reset password link has expired")
+		h.App.Logging.Error.Println("reset password link has expired")
 		h.App.ErrorUnauthorized(w, r)
 		return
 	}
@@ -475,14 +475,14 @@ func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 	// Take the address from the verified URL, never from the submitted form.
 	parsedURL, err := url.Parse(signedURL)
 	if err != nil {
-		h.App.ErrorLog.Println("error parsing signed url:", err)
+		h.App.Logging.Error.Println("error parsing signed url:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
 
 	emailAddress := parsedURL.Query().Get("email")
 	if emailAddress == "" {
-		h.App.ErrorLog.Println("signed url carries no email address")
+		h.App.Logging.Error.Println("signed url carries no email address")
 		h.App.ErrorUnauthorized(w, r)
 		return
 	}
@@ -491,7 +491,7 @@ func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 	var user *data.User
 	user, err = user.ByEmail(emailAddress)
 	if err != nil {
-		h.App.ErrorLog.Println("error getting user by email:", err)
+		h.App.Logging.Error.Println("error getting user by email:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
@@ -499,7 +499,7 @@ func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 	// check if passwords are the same
 	if r.Form.Get("password") != r.Form.Get("verify_password") {
 		// set flash message
-		h.App.Session.Put(r.Context(), "flash", "Passwords do not match.")
+		h.App.HTTP.Session.Put(r.Context(), "flash", "Passwords do not match.")
 
 		// Send them back to the signed link, which is still valid. The POST
 		// URI carries no signature and would fail verification on the way in.
@@ -510,13 +510,13 @@ func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 	// reset the password
 	err = user.ResetPassword(user.ID, r.Form.Get("password"))
 	if err != nil {
-		h.App.ErrorLog.Println("error resetting password:", err)
+		h.App.Logging.Error.Println("error resetting password:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
 
 	// add a flash message
-	h.App.Session.Put(r.Context(), "flash", "Your password has been reset. You can now login with your new password.")
+	h.App.HTTP.Session.Put(r.Context(), "flash", "Your password has been reset. You can now login with your new password.")
 
 	// redirect to login page
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -524,8 +524,20 @@ func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) isAuthenticated(w http.ResponseWriter, r *http.Request) {
-	if h.App.Session.Exists(r.Context(), "userID") {
+	if h.App.HTTP.Session.Exists(r.Context(), "userID") {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
+}
+
+// render wraps the framework's page renderer so the auth handlers above read
+// the way handlers in this package normally do. Defined here rather than in
+// the skeleton because it is the auth scaffolding that needs it.
+func (h *Handlers) render(w http.ResponseWriter, r *http.Request, view string, variables, data interface{}) error {
+	return h.App.HTTP.Render.Page(w, r, view, variables, data)
+}
+
+// randomString returns a cryptographically random string of the given length.
+func (h *Handlers) randomString(length int) string {
+	return h.App.RandomString(length)
 }

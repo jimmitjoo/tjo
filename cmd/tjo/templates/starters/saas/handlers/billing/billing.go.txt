@@ -23,7 +23,7 @@ func (h *Handlers) Plans(w http.ResponseWriter, r *http.Request) {
 
 	team, err := h.Models.Teams.GetBySlug(teamSlug)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
@@ -36,9 +36,9 @@ func (h *Handlers) Plans(w http.ResponseWriter, r *http.Request) {
 	vars["plans"] = data.AvailablePlans()
 	vars["currentSubscription"] = currentSub
 
-	err = h.App.Render.Page(w, r, "billing/plans", vars, nil)
+	err = h.App.HTTP.Render.Page(w, r, "billing/plans", vars, nil)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 	}
 }
 
@@ -49,7 +49,7 @@ func (h *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 
 	team, err := h.Models.Teams.GetBySlug(teamSlug)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
@@ -71,10 +71,10 @@ func (h *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		h.App.ErrorLog.Println(err)
-		h.App.Session.Put(r.Context(), "error", "Failed to update subscription")
+		h.App.Logging.Error.Println(err)
+		h.App.HTTP.Session.Put(r.Context(), "error", "Failed to update subscription")
 	} else {
-		h.App.Session.Put(r.Context(), "flash", "Subscription updated successfully!")
+		h.App.HTTP.Session.Put(r.Context(), "flash", "Subscription updated successfully!")
 	}
 
 	http.Redirect(w, r, "/team/"+teamSlug+"/billing", http.StatusSeeOther)
@@ -86,14 +86,14 @@ func (h *Handlers) Cancel(w http.ResponseWriter, r *http.Request) {
 
 	team, err := h.Models.Teams.GetBySlug(teamSlug)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
 
 	currentSub, err := h.Models.Subscriptions.GetByTeam(team.ID)
 	if err != nil {
-		h.App.Session.Put(r.Context(), "error", "No subscription found")
+		h.App.HTTP.Session.Put(r.Context(), "error", "No subscription found")
 		http.Redirect(w, r, "/team/"+teamSlug+"/billing", http.StatusSeeOther)
 		return
 	}
@@ -101,10 +101,10 @@ func (h *Handlers) Cancel(w http.ResponseWriter, r *http.Request) {
 	// TODO: Cancel with Stripe
 	err = h.Models.Subscriptions.Cancel(currentSub.ID)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
-		h.App.Session.Put(r.Context(), "error", "Failed to cancel subscription")
+		h.App.Logging.Error.Println(err)
+		h.App.HTTP.Session.Put(r.Context(), "error", "Failed to cancel subscription")
 	} else {
-		h.App.Session.Put(r.Context(), "flash", "Subscription canceled")
+		h.App.HTTP.Session.Put(r.Context(), "flash", "Subscription canceled")
 	}
 
 	http.Redirect(w, r, "/team/"+teamSlug+"/billing", http.StatusSeeOther)
@@ -116,7 +116,7 @@ func (h *Handlers) Invoices(w http.ResponseWriter, r *http.Request) {
 
 	team, err := h.Models.Teams.GetBySlug(teamSlug)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
@@ -126,8 +126,8 @@ func (h *Handlers) Invoices(w http.ResponseWriter, r *http.Request) {
 	vars["team"] = team
 	vars["invoices"] = []interface{}{} // Empty for now
 
-	err = h.App.Render.Page(w, r, "billing/invoices", vars, nil)
+	err = h.App.HTTP.Render.Page(w, r, "billing/invoices", vars, nil)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 	}
 }

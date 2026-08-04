@@ -15,7 +15,7 @@ type Handlers struct {
 
 // Index displays the main dashboard
 func (h *Handlers) Index(w http.ResponseWriter, r *http.Request) {
-	userID := h.App.Session.GetInt(r.Context(), "userID")
+	userID := h.App.HTTP.Session.GetInt(r.Context(), "userID")
 	if userID == 0 {
 		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
 		return
@@ -24,15 +24,15 @@ func (h *Handlers) Index(w http.ResponseWriter, r *http.Request) {
 	// Get user's teams
 	teams, err := h.Models.Teams.GetUserTeams(userID)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 	}
 
 	vars := make(map[string]interface{})
 	vars["teams"] = teams
 
-	err = h.App.Render.Page(w, r, "dashboard/index", vars, nil)
+	err = h.App.HTTP.Render.Page(w, r, "dashboard/index", vars, nil)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 	}
 }
 
@@ -46,7 +46,7 @@ func (h *Handlers) TeamDashboard(w http.ResponseWriter, r *http.Request) {
 
 	team, err := h.Models.Teams.GetBySlug(teamSlug)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
@@ -62,9 +62,9 @@ func (h *Handlers) TeamDashboard(w http.ResponseWriter, r *http.Request) {
 	vars["subscription"] = sub
 	vars["members"] = members
 
-	err = h.App.Render.Page(w, r, "dashboard/team", vars, nil)
+	err = h.App.HTTP.Render.Page(w, r, "dashboard/team", vars, nil)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 	}
 }
 
@@ -78,7 +78,7 @@ func (h *Handlers) Settings(w http.ResponseWriter, r *http.Request) {
 
 	team, err := h.Models.Teams.GetBySlug(teamSlug)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
@@ -86,8 +86,8 @@ func (h *Handlers) Settings(w http.ResponseWriter, r *http.Request) {
 	vars := make(map[string]interface{})
 	vars["team"] = team
 
-	err = h.App.Render.Page(w, r, "dashboard/settings", vars, nil)
+	err = h.App.HTTP.Render.Page(w, r, "dashboard/settings", vars, nil)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 	}
 }

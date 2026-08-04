@@ -11,8 +11,8 @@ import (
 func (h *Handlers) PostsIndex(w http.ResponseWriter, r *http.Request) {
 	posts, err := h.Models.Posts.GetAll()
 	if err != nil {
-		h.App.ErrorLog.Println(err)
-		h.App.ErrorInternalServerError(w, r)
+		h.App.Logging.Error.Println(err)
+		h.App.Error500(w, r)
 		return
 	}
 
@@ -21,7 +21,7 @@ func (h *Handlers) PostsIndex(w http.ResponseWriter, r *http.Request) {
 
 	err = h.render(w, r, "posts/index", vars, nil)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 	}
 }
 
@@ -29,14 +29,14 @@ func (h *Handlers) PostsIndex(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) PostsShow(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		h.App.ErrorNotFound(w, r)
+		h.App.Error404(w, r)
 		return
 	}
 
 	post, err := h.Models.Posts.Get(id)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
-		h.App.ErrorNotFound(w, r)
+		h.App.Logging.Error.Println(err)
+		h.App.Error404(w, r)
 		return
 	}
 
@@ -45,7 +45,7 @@ func (h *Handlers) PostsShow(w http.ResponseWriter, r *http.Request) {
 
 	err = h.render(w, r, "posts/show", vars, nil)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 	}
 }
 
@@ -53,7 +53,7 @@ func (h *Handlers) PostsShow(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) PostsNew(w http.ResponseWriter, r *http.Request) {
 	err := h.render(w, r, "posts/new", nil, nil)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 	}
 }
 
@@ -61,8 +61,8 @@ func (h *Handlers) PostsNew(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) PostsCreate(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
-		h.App.ErrorLog.Println(err)
-		h.App.ErrorBadRequest(w, r)
+		h.App.Logging.Error.Println(err)
+		h.App.ErrorStatus(w, http.StatusBadRequest)
 		return
 	}
 
@@ -74,12 +74,12 @@ func (h *Handlers) PostsCreate(w http.ResponseWriter, r *http.Request) {
 
 	_, err = h.Models.Posts.Insert(post)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
-		h.App.ErrorInternalServerError(w, r)
+		h.App.Logging.Error.Println(err)
+		h.App.Error500(w, r)
 		return
 	}
 
-	h.App.Session.Put(r.Context(), "flash", "Post created successfully!")
+	h.App.HTTP.Session.Put(r.Context(), "flash", "Post created successfully!")
 	http.Redirect(w, r, "/posts", http.StatusSeeOther)
 }
 
@@ -87,14 +87,14 @@ func (h *Handlers) PostsCreate(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) PostsEdit(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		h.App.ErrorNotFound(w, r)
+		h.App.Error404(w, r)
 		return
 	}
 
 	post, err := h.Models.Posts.Get(id)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
-		h.App.ErrorNotFound(w, r)
+		h.App.Logging.Error.Println(err)
+		h.App.Error404(w, r)
 		return
 	}
 
@@ -103,7 +103,7 @@ func (h *Handlers) PostsEdit(w http.ResponseWriter, r *http.Request) {
 
 	err = h.render(w, r, "posts/edit", vars, nil)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
+		h.App.Logging.Error.Println(err)
 	}
 }
 
@@ -111,14 +111,14 @@ func (h *Handlers) PostsEdit(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) PostsUpdate(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		h.App.ErrorNotFound(w, r)
+		h.App.Error404(w, r)
 		return
 	}
 
 	err = r.ParseForm()
 	if err != nil {
-		h.App.ErrorLog.Println(err)
-		h.App.ErrorBadRequest(w, r)
+		h.App.Logging.Error.Println(err)
+		h.App.ErrorStatus(w, http.StatusBadRequest)
 		return
 	}
 
@@ -131,12 +131,12 @@ func (h *Handlers) PostsUpdate(w http.ResponseWriter, r *http.Request) {
 
 	err = h.Models.Posts.Update(post)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
-		h.App.ErrorInternalServerError(w, r)
+		h.App.Logging.Error.Println(err)
+		h.App.Error500(w, r)
 		return
 	}
 
-	h.App.Session.Put(r.Context(), "flash", "Post updated successfully!")
+	h.App.HTTP.Session.Put(r.Context(), "flash", "Post updated successfully!")
 	http.Redirect(w, r, "/posts", http.StatusSeeOther)
 }
 
@@ -144,17 +144,17 @@ func (h *Handlers) PostsUpdate(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) PostsDelete(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		h.App.ErrorNotFound(w, r)
+		h.App.Error404(w, r)
 		return
 	}
 
 	err = h.Models.Posts.Delete(id)
 	if err != nil {
-		h.App.ErrorLog.Println(err)
-		h.App.ErrorInternalServerError(w, r)
+		h.App.Logging.Error.Println(err)
+		h.App.Error500(w, r)
 		return
 	}
 
-	h.App.Session.Put(r.Context(), "flash", "Post deleted successfully!")
+	h.App.HTTP.Session.Put(r.Context(), "flash", "Post deleted successfully!")
 	http.Redirect(w, r, "/posts", http.StatusSeeOther)
 }

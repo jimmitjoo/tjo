@@ -11,7 +11,7 @@ import (
 
 func (m *Middleware) CheckRemember(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !m.App.Session.Exists(r.Context(), "userID") {
+		if !m.App.HTTP.Session.Exists(r.Context(), "userID") {
 			// user is not logged in
 			cookie, err := r.Cookie(fmt.Sprintf("_%s_remember", m.App.AppName))
 			if err != nil {
@@ -49,8 +49,8 @@ func (m *Middleware) CheckRemember(next http.Handler) http.Handler {
 					return
 				} else {
 					user, _ := u.Find(id)
-					m.App.Session.Put(r.Context(), "userID", user.ID)
-					m.App.Session.Put(r.Context(), "remember_token", hash)
+					m.App.HTTP.Session.Put(r.Context(), "userID", user.ID)
+					m.App.HTTP.Session.Put(r.Context(), "remember_token", hash)
 					next.ServeHTTP(w, r)
 					return
 				}
@@ -69,7 +69,7 @@ func (m *Middleware) CheckRemember(next http.Handler) http.Handler {
 }
 
 func (m *Middleware) deleteRememberCookie(w http.ResponseWriter, r *http.Request) {
-	_ = m.App.Session.RenewToken(r.Context())
+	_ = m.App.HTTP.Session.RenewToken(r.Context())
 
 	// delete cookie
 	newCookie := http.Cookie{
@@ -78,15 +78,15 @@ func (m *Middleware) deleteRememberCookie(w http.ResponseWriter, r *http.Request
 		Path:     "/",
 		Expires:  time.Now().Add(-100 * time.Hour * 24),
 		HttpOnly: true,
-		Domain:   m.App.Session.Cookie.Domain,
+		Domain:   m.App.HTTP.Session.Cookie.Domain,
 		MaxAge:   -1,
-		Secure:   m.App.Session.Cookie.Secure,
-		SameSite: m.App.Session.Cookie.SameSite,
+		Secure:   m.App.HTTP.Session.Cookie.Secure,
+		SameSite: m.App.HTTP.Session.Cookie.SameSite,
 	}
 	http.SetCookie(w, &newCookie)
 
 	// log the user out
-	m.App.Session.Remove(r.Context(), "userID")
-	m.App.Session.Destroy(r.Context())
-	m.App.Session.RenewToken(r.Context())
+	m.App.HTTP.Session.Remove(r.Context(), "userID")
+	m.App.HTTP.Session.Destroy(r.Context())
+	m.App.HTTP.Session.RenewToken(r.Context())
 }
