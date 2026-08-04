@@ -17,14 +17,14 @@ import (
 func TestGetDefaultHub(t *testing.T) {
 	hub1 := GetDefaultHub()
 	hub2 := GetDefaultHub()
-	
+
 	assert.Same(t, hub1, hub2, "GetDefaultHub should return the same instance")
 }
 
 func TestSetDefaultHub(t *testing.T) {
 	customHub := NewHub(DefaultConfig())
 	SetDefaultHub(customHub)
-	
+
 	retrievedHub := GetDefaultHub()
 	assert.Same(t, customHub, retrievedHub)
 }
@@ -80,30 +80,31 @@ func TestRegisterRoutesWithDefaultPath(t *testing.T) {
 
 func TestContextHelpers(t *testing.T) {
 	ctx := context.Background()
-	
+
 	client := &Client{
 		id:       "test-client",
 		userID:   "test-user",
 		rooms:    make(map[string]bool),
 		metadata: make(map[string]interface{}),
+		closed:   make(chan struct{}),
 	}
-	
+
 	hub := NewHub(DefaultConfig())
-	
+
 	ctxWithClient := WithClient(ctx, client)
 	ctxWithHub := WithHub(ctxWithClient, hub)
-	
+
 	retrievedClient, ok := GetClient(ctxWithHub)
 	assert.True(t, ok)
 	assert.Same(t, client, retrievedClient)
-	
+
 	retrievedHub, ok := GetHub(ctxWithHub)
 	assert.True(t, ok)
 	assert.Same(t, hub, retrievedHub)
-	
+
 	_, ok = GetClient(ctx)
 	assert.False(t, ok)
-	
+
 	_, ok = GetHub(ctx)
 	assert.False(t, ok)
 }
@@ -111,12 +112,12 @@ func TestContextHelpers(t *testing.T) {
 func TestGlobalBroadcastFunctions(t *testing.T) {
 	hub := NewHub(DefaultConfig())
 	SetDefaultHub(hub)
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	go hub.Run(ctx)
-	
+
 	client := &Client{
 		hub:      hub,
 		send:     make(chan []byte, 256),
@@ -124,34 +125,35 @@ func TestGlobalBroadcastFunctions(t *testing.T) {
 		userID:   "test-user",
 		rooms:    make(map[string]bool),
 		metadata: make(map[string]interface{}),
+		closed:   make(chan struct{}),
 	}
-	
+
 	hub.register <- client
 	time.Sleep(10 * time.Millisecond)
-	
+
 	message := []byte("global broadcast test")
 	BroadcastToAll(message)
-	
+
 	select {
 	case msg := <-client.send:
 		assert.Equal(t, message, msg)
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Client did not receive global broadcast message")
 	}
-	
+
 	hub.JoinRoom(client, "test-room")
 	time.Sleep(10 * time.Millisecond)
-	
+
 	roomMessage := []byte("room broadcast test")
 	BroadcastToRoom("test-room", roomMessage, nil)
-	
+
 	select {
 	case msg := <-client.send:
 		assert.Equal(t, roomMessage, msg)
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Client did not receive room broadcast message")
 	}
-	
+
 	assert.Equal(t, 1, GetConnectedClients())
 	assert.Equal(t, 1, GetRoomClients("test-room"))
 	assert.Contains(t, GetRooms(), "test-room")
@@ -163,14 +165,14 @@ func TestAuthMiddleware(t *testing.T) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	})
-	
+
 	middleware := AuthMiddleware(handler)
-	
+
 	req := httptest.NewRequest("GET", "/test", nil)
 	w := httptest.NewRecorder()
-	
+
 	middleware.ServeHTTP(w, req)
-	
+
 	assert.True(t, called)
 	assert.Equal(t, http.StatusOK, w.Code)
 }

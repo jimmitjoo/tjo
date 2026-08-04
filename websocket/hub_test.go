@@ -3,9 +3,11 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,7 +34,7 @@ func TestHubWithCustomConfig(t *testing.T) {
 		WithBufferSizes(128, 128, 128),
 	)
 	hub := NewHub(config)
-	
+
 	assert.Equal(t, int64(1024), hub.config.MaxMessageSize)
 	assert.Equal(t, 128, hub.config.BroadcastBuffer)
 }
@@ -40,15 +42,15 @@ func TestHubWithCustomConfig(t *testing.T) {
 func TestHubRun(t *testing.T) {
 	hub := NewHub(DefaultConfig())
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	done := make(chan bool)
 	go func() {
 		hub.Run(ctx)
 		done <- true
 	}()
-	
+
 	cancel()
-	
+
 	select {
 	case <-done:
 	case <-time.After(time.Second):
@@ -60,9 +62,9 @@ func TestHubClientRegistration(t *testing.T) {
 	hub := NewHub(DefaultConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	go hub.Run(ctx)
-	
+
 	client := &Client{
 		hub:      hub,
 		send:     make(chan []byte, 256),
@@ -70,16 +72,17 @@ func TestHubClientRegistration(t *testing.T) {
 		userID:   "test-user",
 		rooms:    make(map[string]bool),
 		metadata: make(map[string]interface{}),
+		closed:   make(chan struct{}),
 	}
-	
+
 	hub.register <- client
 	time.Sleep(10 * time.Millisecond)
-	
+
 	assert.Equal(t, 1, hub.GetConnectedClients())
-	
+
 	hub.unregister <- client
 	time.Sleep(10 * time.Millisecond)
-	
+
 	assert.Equal(t, 0, hub.GetConnectedClients())
 }
 
@@ -87,9 +90,9 @@ func TestHubBroadcasting(t *testing.T) {
 	hub := NewHub(DefaultConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	go hub.Run(ctx)
-	
+
 	client1 := &Client{
 		hub:      hub,
 		send:     make(chan []byte, 256),
@@ -97,8 +100,9 @@ func TestHubBroadcasting(t *testing.T) {
 		userID:   "user1",
 		rooms:    make(map[string]bool),
 		metadata: make(map[string]interface{}),
+		closed:   make(chan struct{}),
 	}
-	
+
 	client2 := &Client{
 		hub:      hub,
 		send:     make(chan []byte, 256),
@@ -106,22 +110,23 @@ func TestHubBroadcasting(t *testing.T) {
 		userID:   "user2",
 		rooms:    make(map[string]bool),
 		metadata: make(map[string]interface{}),
+		closed:   make(chan struct{}),
 	}
-	
+
 	hub.register <- client1
 	hub.register <- client2
 	time.Sleep(10 * time.Millisecond)
-	
+
 	message := []byte("test broadcast message")
 	hub.BroadcastToAll(message)
-	
+
 	select {
 	case msg := <-client1.send:
 		assert.Equal(t, message, msg)
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Client1 did not receive broadcast message")
 	}
-	
+
 	select {
 	case msg := <-client2.send:
 		assert.Equal(t, message, msg)
@@ -134,9 +139,9 @@ func TestRoomFunctionality(t *testing.T) {
 	hub := NewHub(DefaultConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	go hub.Run(ctx)
-	
+
 	client1 := &Client{
 		hub:      hub,
 		send:     make(chan []byte, 256),
@@ -144,8 +149,9 @@ func TestRoomFunctionality(t *testing.T) {
 		userID:   "user1",
 		rooms:    make(map[string]bool),
 		metadata: make(map[string]interface{}),
+		closed:   make(chan struct{}),
 	}
-	
+
 	client2 := &Client{
 		hub:      hub,
 		send:     make(chan []byte, 256),
@@ -153,39 +159,40 @@ func TestRoomFunctionality(t *testing.T) {
 		userID:   "user2",
 		rooms:    make(map[string]bool),
 		metadata: make(map[string]interface{}),
+		closed:   make(chan struct{}),
 	}
-	
+
 	hub.register <- client1
 	hub.register <- client2
 	time.Sleep(10 * time.Millisecond)
-	
+
 	roomName := "test-room"
 	hub.JoinRoom(client1, roomName)
 	time.Sleep(10 * time.Millisecond)
-	
+
 	assert.Equal(t, 1, hub.GetRoomClients(roomName))
 	assert.Contains(t, hub.GetRooms(), roomName)
 	assert.Contains(t, client1.GetRooms(), roomName)
-	
+
 	message := []byte("room message")
 	hub.BroadcastToRoom(roomName, message, nil)
-	
+
 	select {
 	case msg := <-client1.send:
 		assert.Equal(t, message, msg)
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Client1 did not receive room message")
 	}
-	
+
 	select {
 	case <-client2.send:
 		t.Fatal("Client2 should not receive room message")
 	case <-time.After(50 * time.Millisecond):
 	}
-	
+
 	hub.LeaveRoom(client1, roomName)
 	time.Sleep(10 * time.Millisecond)
-	
+
 	assert.Equal(t, 0, hub.GetRoomClients(roomName))
 	assert.NotContains(t, hub.GetRooms(), roomName)
 	assert.NotContains(t, client1.GetRooms(), roomName)
@@ -197,11 +204,12 @@ func TestClientMessageHandling(t *testing.T) {
 		userID:   "test-user",
 		rooms:    make(map[string]bool),
 		metadata: make(map[string]interface{}),
+		closed:   make(chan struct{}),
 	}
-	
+
 	client.SetMetadata("key1", "value1")
 	assert.Equal(t, "value1", client.GetMetadata("key1"))
-	
+
 	assert.Equal(t, "test-client", client.GetID())
 	assert.Equal(t, "test-user", client.GetUserID())
 }
@@ -359,32 +367,46 @@ func TestConfigOptions(t *testing.T) {
 }
 
 func TestEventHandlers(t *testing.T) {
+	// Callbacks fire on the hub goroutine, so the flags need a lock. Reading
+	// them bare after a time.Sleep is a data race, not synchronisation.
+	var mu sync.Mutex
 	connectCalled := false
 	disconnectCalled := false
 	joinRoomCalled := false
 	leaveRoomCalled := false
-	
+
+	called := func(flag *bool) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return *flag
+	}
+	setCalled := func(flag *bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		*flag = true
+	}
+
 	config := NewConfig(
 		WithOnConnect(func(c *Client) {
-			connectCalled = true
+			setCalled(&connectCalled)
 		}),
 		WithOnDisconnect(func(c *Client) {
-			disconnectCalled = true
+			setCalled(&disconnectCalled)
 		}),
 		WithOnJoinRoom(func(c *Client, room string) {
-			joinRoomCalled = true
+			setCalled(&joinRoomCalled)
 		}),
 		WithOnLeaveRoom(func(c *Client, room string) {
-			leaveRoomCalled = true
+			setCalled(&leaveRoomCalled)
 		}),
 	)
-	
+
 	hub := NewHub(config)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	go hub.Run(ctx)
-	
+
 	client := &Client{
 		hub:      hub,
 		send:     make(chan []byte, 256),
@@ -392,21 +414,112 @@ func TestEventHandlers(t *testing.T) {
 		userID:   "test-user",
 		rooms:    make(map[string]bool),
 		metadata: make(map[string]interface{}),
+		closed:   make(chan struct{}),
 	}
-	
+
 	hub.register <- client
 	time.Sleep(10 * time.Millisecond)
-	assert.True(t, connectCalled)
-	
+	assert.True(t, called(&connectCalled))
+
 	hub.JoinRoom(client, "test-room")
 	time.Sleep(10 * time.Millisecond)
-	assert.True(t, joinRoomCalled)
-	
+	assert.True(t, called(&joinRoomCalled))
+
 	hub.LeaveRoom(client, "test-room")
 	time.Sleep(10 * time.Millisecond)
-	assert.True(t, leaveRoomCalled)
-	
+	assert.True(t, called(&leaveRoomCalled))
+
 	hub.unregister <- client
 	time.Sleep(10 * time.Millisecond)
-	assert.True(t, disconnectCalled)
+	assert.True(t, called(&disconnectCalled))
+}
+
+// TestHubUnregisterWithRoomsDoesNotDeadlock guards the reentrant-lock deadlock:
+// unregisterClient held h.mu and called leaveRoom, which locked h.mu again.
+// sync.Mutex is not reentrant, so the hub wedged forever on the normal path of
+// any client that had joined a room. See issue #7.
+func TestHubUnregisterWithRoomsDoesNotDeadlock(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	hub := NewHub(DefaultConfig())
+	go hub.Run(ctx)
+
+	client := newClient(hub, nil, "c1", "u1", 8)
+	hub.register <- client
+	hub.JoinRoom(client, "room1")
+	hub.JoinRoom(client, "room2")
+
+	hub.unregister <- client
+
+	// If the hub is wedged this never returns, so bound the wait.
+	done := make(chan int, 1)
+	go func() { done <- hub.GetConnectedClients() }()
+
+	select {
+	case n := <-done:
+		assert.Equal(t, 0, n, "client should be gone")
+	case <-time.After(2 * time.Second):
+		t.Fatal("hub deadlocked: GetConnectedClients blocked after unregistering a client with rooms")
+	}
+
+	assert.Empty(t, hub.GetRooms(), "empty rooms should have been cleaned up")
+}
+
+// TestHubShutdownDoesNotPanicProducers guards against shutdown closing channels
+// whose producers are application code. BroadcastToAll and Client.Send then
+// panicked with "send on closed channel" during graceful shutdown. See #8.
+func TestHubShutdownDoesNotPanicProducers(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	hub := NewHub(DefaultConfig())
+	go hub.Run(ctx)
+
+	client := newClient(hub, nil, "c1", "u1", 8)
+	hub.register <- client
+	hub.JoinRoom(client, "room1")
+
+	cancel()
+	time.Sleep(100 * time.Millisecond) // let shutdown run
+
+	assert.NotPanics(t, func() { hub.BroadcastToAll([]byte("x")) })
+	assert.NotPanics(t, func() { hub.BroadcastToRoom("room1", []byte("x"), nil) })
+	assert.NotPanics(t, func() { _ = client.Send([]byte("x")) })
+
+	assert.Error(t, client.Send([]byte("x")), "sending to a shut-down hub should error, not panic")
+}
+
+// TestHubConcurrentUnregisterAndBroadcast runs the two paths against each other
+// under -race, which is where the unsynchronised len(h.clients) reads and the
+// close/send interleaving showed up.
+func TestHubConcurrentUnregisterAndBroadcast(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	hub := NewHub(DefaultConfig())
+	go hub.Run(ctx)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		client := newClient(hub, nil, fmt.Sprintf("c%d", i), "u", 8)
+		hub.register <- client
+		hub.JoinRoom(client, "room1")
+
+		wg.Add(1)
+		go func(c *Client) {
+			defer wg.Done()
+			hub.BroadcastToAll([]byte("ping"))
+			hub.unregister <- c
+			_ = c.Send([]byte("after"))
+		}(client)
+	}
+
+	waited := make(chan struct{})
+	go func() { wg.Wait(); close(waited) }()
+
+	select {
+	case <-waited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("hub deadlocked under concurrent unregister and broadcast")
+	}
 }

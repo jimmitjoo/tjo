@@ -22,6 +22,12 @@ type Hub struct {
 	mu           sync.RWMutex
 	config       *Config
 	upgrader     websocket.Upgrader
+
+	// done is closed once when the hub shuts down. It replaces closing the
+	// channels above: their producers are application code, and a closed
+	// channel makes every subsequent send a panic rather than a no-op.
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 type Client struct {
@@ -33,6 +39,35 @@ type Client struct {
 	rooms    map[string]bool
 	metadata map[string]interface{}
 	mu       sync.RWMutex
+
+	// closed is closed once when the client is unregistered. Nothing ever
+	// closes send: Send is public, so a closed send channel would let any
+	// caller panic the process on a disconnected client.
+	closed    chan struct{}
+	closeOnce sync.Once
+}
+
+// newClient builds a Client with its internal channels initialised. Always use
+// this rather than a struct literal: a Client whose closed channel is nil
+// cannot signal writePump to stop, and unregistering it panics.
+func newClient(hub *Hub, conn *websocket.Conn, id, userID string, sendBuffer int) *Client {
+	return &Client{
+		hub:      hub,
+		conn:     conn,
+		send:     make(chan []byte, sendBuffer),
+		id:       id,
+		userID:   userID,
+		rooms:    make(map[string]bool),
+		metadata: make(map[string]interface{}),
+		closed:   make(chan struct{}),
+	}
+}
+
+// close signals writePump to finish. Safe to call more than once.
+func (c *Client) close() {
+	c.closeOnce.Do(func() {
+		close(c.closed)
+	})
 }
 
 type Room struct {
@@ -69,6 +104,7 @@ func NewHub(config *Config) *Hub {
 		unregister:   make(chan *Client),
 		roomMessages: make(chan *RoomMessage, config.RoomMessageBuffer),
 		config:       config,
+		done:         make(chan struct{}),
 	}
 
 	// Configure upgrader with origin checking
@@ -131,32 +167,55 @@ func (h *Hub) Run(ctx context.Context) {
 func (h *Hub) registerClient(client *Client) {
 	h.mu.Lock()
 	h.clients[client] = true
+	total := len(h.clients)
 	h.mu.Unlock()
 
 	if h.config.OnConnect != nil {
 		h.config.OnConnect(client)
 	}
 
-	log.Printf("Client %s connected. Total clients: %d", client.id, len(h.clients))
+	log.Printf("Client %s connected. Total clients: %d", client.id, total)
 }
 
 func (h *Hub) unregisterClient(client *Client) {
+	var leftRooms []string
+	var total int
+
 	h.mu.Lock()
 	if _, ok := h.clients[client]; ok {
 		delete(h.clients, client)
-		close(client.send)
+		client.close()
 
+		// Snapshot first: leaveRoomLocked mutates client.rooms, and the read
+		// needs client.mu anyway. Lock order is h.mu -> client.mu throughout.
+		client.mu.RLock()
+		roomNames := make([]string, 0, len(client.rooms))
 		for roomName := range client.rooms {
-			h.leaveRoom(client, roomName)
+			roomNames = append(roomNames, roomName)
+		}
+		client.mu.RUnlock()
+
+		for _, roomName := range roomNames {
+			if h.leaveRoomLocked(client, roomName) {
+				leftRooms = append(leftRooms, roomName)
+			}
 		}
 	}
+	total = len(h.clients)
 	h.mu.Unlock()
+
+	// Callbacks run outside the lock so a handler cannot deadlock the hub.
+	if h.config.OnLeaveRoom != nil {
+		for _, roomName := range leftRooms {
+			h.config.OnLeaveRoom(client, roomName)
+		}
+	}
 
 	if h.config.OnDisconnect != nil {
 		h.config.OnDisconnect(client)
 	}
 
-	log.Printf("Client %s disconnected. Total clients: %d", client.id, len(h.clients))
+	log.Printf("Client %s disconnected. Total clients: %d", client.id, total)
 }
 
 func (h *Hub) broadcastToAll(message []byte) {
@@ -178,7 +237,7 @@ func (h *Hub) broadcastToAll(message []byte) {
 		for _, client := range deadClients {
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				close(client.send)
+				client.close()
 			}
 		}
 		h.mu.Unlock()
@@ -256,10 +315,27 @@ func (h *Hub) LeaveRoom(client *Client, roomName string) {
 func (h *Hub) leaveRoom(client *Client, roomName string) {
 	// Use write lock from start to prevent TOCTOU race
 	h.mu.Lock()
+	left := h.leaveRoomLocked(client, roomName)
+	h.mu.Unlock()
+
+	if !left {
+		return
+	}
+
+	if h.config.OnLeaveRoom != nil {
+		h.config.OnLeaveRoom(client, roomName)
+	}
+
+	log.Printf("Client %s left room %s", client.id, roomName)
+}
+
+// leaveRoomLocked removes client from roomName and reports whether the room
+// existed. The caller must already hold h.mu -- sync.Mutex is not reentrant,
+// so callers that hold it must never route through the exported leaveRoom.
+func (h *Hub) leaveRoomLocked(client *Client, roomName string) bool {
 	room, exists := h.rooms[roomName]
 	if !exists {
-		h.mu.Unlock()
-		return
+		return false
 	}
 
 	room.mu.Lock()
@@ -271,22 +347,23 @@ func (h *Hub) leaveRoom(client *Client, roomName string) {
 	delete(client.rooms, roomName)
 	client.mu.Unlock()
 
-	// Safe to delete room now - we still hold h.mu.Lock
 	if isEmpty {
 		delete(h.rooms, roomName)
 	}
-	h.mu.Unlock()
 
-	if h.config.OnLeaveRoom != nil {
-		h.config.OnLeaveRoom(client, roomName)
-	}
-
-	log.Printf("Client %s left room %s", client.id, roomName)
+	return true
 }
 
 func (h *Hub) BroadcastToAll(message []byte) {
 	select {
+	case <-h.done:
+		return
+	default:
+	}
+
+	select {
 	case h.broadcast <- message:
+	case <-h.done:
 	default:
 		log.Printf("Broadcast channel is full, dropping message")
 	}
@@ -301,6 +378,7 @@ func (h *Hub) BroadcastToRoom(roomName string, message []byte, exclude *Client) 
 
 	select {
 	case h.roomMessages <- roomMsg:
+	case <-h.done:
 	default:
 		log.Printf("Room message channel is full, dropping message for room %s", roomName)
 	}
@@ -337,7 +415,18 @@ func (h *Hub) GetRooms() []string {
 	return rooms
 }
 
+// shutdown signals every producer to stop and drops the connections.
+//
+// It deliberately closes none of the hub's channels. Application code sends on
+// broadcast/register/unregister/roomMessages and on client.send, so closing
+// them turns any in-flight send into a panic -- during graceful shutdown, of
+// all moments. Closing done instead lets each sender bail out and return an
+// error, and lets writePump exit on its own.
 func (h *Hub) shutdown() {
+	h.closeOnce.Do(func() {
+		close(h.done)
+	})
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -345,13 +434,10 @@ func (h *Hub) shutdown() {
 		if client.conn != nil {
 			client.conn.Close()
 		}
-		close(client.send)
 	}
 
-	close(h.broadcast)
-	close(h.register)
-	close(h.unregister)
-	close(h.roomMessages)
+	h.clients = make(map[*Client]bool)
+	h.rooms = make(map[string]*Room)
 }
 
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
@@ -381,35 +467,24 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		userID = clientID
 	}
 
-	client := &Client{
-		hub:      h,
-		conn:     conn,
-		send:     make(chan []byte, h.config.ClientBuffer),
-		id:       clientID,
-		userID:   userID,
-		rooms:    make(map[string]bool),
-		metadata: make(map[string]interface{}),
-	}
+	client := newClient(h, conn, clientID, userID, h.config.ClientBuffer)
 
-	// Safely register - recover if hub is shutting down
-	func() {
-		defer func() {
-			if recover() != nil {
-				conn.Close()
-			}
-		}()
-		client.hub.register <- client
+	select {
+	case client.hub.register <- client:
 		go client.writePump()
 		go client.readPump()
-	}()
+	case <-h.done:
+		conn.Close()
+	}
 }
 
 func (c *Client) readPump() {
 	defer c.conn.Close()
 	defer func() {
-		// Safely unregister - recover if hub is shutting down
-		defer func() { recover() }()
-		c.hub.unregister <- c
+		select {
+		case c.hub.unregister <- c:
+		case <-c.hub.done:
+		}
 	}()
 
 	c.conn.SetReadLimit(c.hub.config.MaxMessageSize)
@@ -454,6 +529,14 @@ func (c *Client) writePump() {
 
 	for {
 		select {
+		case <-c.closed:
+			c.conn.SetWriteDeadline(time.Now().Add(c.hub.config.WriteWait))
+			c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+			return
+		case <-c.hub.done:
+			c.conn.SetWriteDeadline(time.Now().Add(c.hub.config.WriteWait))
+			c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+			return
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(c.hub.config.WriteWait))
 			if !ok {
@@ -523,6 +606,14 @@ func (c *Client) handleMessage(msg *Message) {
 }
 
 func (c *Client) Send(message []byte) error {
+	select {
+	case <-c.closed:
+		return fmt.Errorf("client %s is closed", c.id)
+	case <-c.hub.done:
+		return fmt.Errorf("hub is shut down")
+	default:
+	}
+
 	select {
 	case c.send <- message:
 		return nil
