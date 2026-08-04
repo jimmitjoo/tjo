@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"$APPURL$/data"
 	"time"
@@ -384,7 +385,6 @@ func (h *Handlers) ResetPasswordForm(w http.ResponseWriter, r *http.Request) {
 	h.isAuthenticated(w, r)
 
 	// get the form values
-	emailAddress := r.URL.Query().Get("email")
 	theUrl := r.RequestURI
 	testUrl := fmt.Sprintf("%s%s", h.App.Server.URL, theUrl)
 
@@ -408,18 +408,13 @@ func (h *Handlers) ResetPasswordForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// render the form
-	encrypedEmail, err := h.encrypt(emailAddress)
-	if err != nil {
-		h.App.ErrorLog.Println("error encrypting email:", err)
-		h.App.ErrorStatus(w, http.StatusInternalServerError)
-		return
-	}
-
+	// Carry the signed link into the form so the POST handler can verify it
+	// again. The signature is what authorises the reset; the email address is
+	// read back out of the verified URL rather than trusted from the form.
 	vars := make(jet.VarMap)
-	vars.Set("email", encrypedEmail)
+	vars.Set("signed_url", testUrl)
 
-	err = h.render(w, r, "reset-password", vars, nil)
+	err := h.render(w, r, "reset-password", vars, nil)
 	if err != nil {
 		return
 	}
@@ -437,11 +432,38 @@ func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// get and decrypt the email
-	emailAddress, err := h.decrypt(r.Form.Get("email"))
+	// Re-verify the signed link. This is the only thing authorising the reset,
+	// so it has to be checked here and not merely on the GET that rendered the
+	// form -- this is the handler that actually changes the password.
+	signedURL := r.Form.Get("signed_url")
+	signer := urlsigner.Signer{
+		Secret: []byte(h.App.EncryptionKey),
+	}
+
+	if !signer.VerifyToken(signedURL) {
+		h.App.ErrorLog.Println("error validating url on password reset")
+		h.App.ErrorUnauthorized(w, r)
+		return
+	}
+
+	if signer.Expired(signedURL, 60) {
+		h.App.ErrorLog.Println("reset password link has expired")
+		h.App.ErrorUnauthorized(w, r)
+		return
+	}
+
+	// Take the address from the verified URL, never from the submitted form.
+	parsedURL, err := url.Parse(signedURL)
 	if err != nil {
-		h.App.ErrorLog.Println("error decrypting email:", err)
+		h.App.ErrorLog.Println("error parsing signed url:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
+		return
+	}
+
+	emailAddress := parsedURL.Query().Get("email")
+	if emailAddress == "" {
+		h.App.ErrorLog.Println("signed url carries no email address")
+		h.App.ErrorUnauthorized(w, r)
 		return
 	}
 
@@ -459,11 +481,9 @@ func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 		// set flash message
 		h.App.Session.Put(r.Context(), "flash", "Passwords do not match.")
 
-		// get entire url
-		theUrl := r.RequestURI
-
-		// redirect back
-		http.Redirect(w, r, theUrl, http.StatusSeeOther)
+		// Send them back to the signed link, which is still valid. The POST
+		// URI carries no signature and would fail verification on the way in.
+		http.Redirect(w, r, signedURL, http.StatusSeeOther)
 		return
 	}
 
