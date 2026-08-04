@@ -207,12 +207,19 @@ func doNew(appName string, template string, dbType string) error {
 		}
 	}
 
-	// Run go mod tidy
+	// Run go mod tidy.
+	//
+	// Run, not Start: Start returns as soon as the process is spawned, so the
+	// exit status was discarded and the success banner below printed over a
+	// scaffold that had failed. It also meant the CLI could exit before tidy
+	// finished writing go.sum, leaving the first build to fail on a truncated
+	// file. Its output goes to the terminal so a failure says what went wrong.
 	color.Green("\tRunning go mod tidy...")
 	cmd := exec.Command("go", "mod", "tidy")
-	err = cmd.Start()
-	if err != nil {
-		exitGracefully(err)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("go mod tidy failed in %s: %w", appname, err)
 	}
 
 	color.Green("\tDone building " + appname + "!")

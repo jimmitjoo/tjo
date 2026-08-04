@@ -9,44 +9,44 @@ import (
 
 func TestValidateInput(t *testing.T) {
 	tests := []struct {
-		name        string
-		args        []string
+		name         string
+		args         []string
 		expectedArg1 string
 		expectedArg2 string
 		expectedArg3 string
-		expectError bool
+		expectError  bool
 	}{
 		{
-			name:        "No arguments",
-			args:        []string{"cli"},
+			name:         "No arguments",
+			args:         []string{"cli"},
 			expectedArg1: "",
 			expectedArg2: "",
 			expectedArg3: "",
-			expectError: true,
+			expectError:  true,
 		},
 		{
-			name:        "One argument",
-			args:        []string{"cli", "help"},
+			name:         "One argument",
+			args:         []string{"cli", "help"},
 			expectedArg1: "help",
 			expectedArg2: "",
 			expectedArg3: "",
-			expectError: false,
+			expectError:  false,
 		},
 		{
-			name:        "Two arguments",
-			args:        []string{"cli", "new", "myapp"},
+			name:         "Two arguments",
+			args:         []string{"cli", "new", "myapp"},
 			expectedArg1: "new",
 			expectedArg2: "myapp",
 			expectedArg3: "",
-			expectError: false,
+			expectError:  false,
 		},
 		{
-			name:        "Three arguments",
-			args:        []string{"cli", "make", "model", "user"},
+			name:         "Three arguments",
+			args:         []string{"cli", "make", "model", "user"},
 			expectedArg1: "make",
 			expectedArg2: "model",
 			expectedArg3: "user",
-			expectError: false,
+			expectError:  false,
 		},
 	}
 
@@ -75,18 +75,45 @@ func TestValidateInput(t *testing.T) {
 	}
 }
 
+// withExitRecorder swaps os.Exit for a recorder so exitGracefully can be
+// called from a test without taking the test binary down with it.
+func withExitRecorder(t *testing.T) *int {
+	t.Helper()
+
+	var got int
+	original := exitCode
+	exitCode = func(code int) { got = code }
+	t.Cleanup(func() { exitCode = original })
+
+	return &got
+}
+
+// TestExitGracefully pins the exit status. It used to only print and return,
+// so the CLI reported "Error: ..." and then told the shell it had succeeded --
+// no script, Makefile or CI job could detect a failed scaffold.
 func TestExitGracefully(t *testing.T) {
-	// Test with no error and no message
-	exitGracefully(nil)
+	tests := []struct {
+		name     string
+		err      error
+		msg      []string
+		wantCode int
+	}{
+		{name: "no error", err: nil, wantCode: 0},
+		{name: "no error with message", err: nil, msg: []string{"Test message"}, wantCode: 0},
+		{name: "error", err: os.ErrNotExist, wantCode: 1},
+		{name: "error with message", err: os.ErrNotExist, msg: []string{"Custom message"}, wantCode: 1},
+	}
 
-	// Test with no error but with message
-	exitGracefully(nil, "Test message")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := withExitRecorder(t)
+			exitGracefully(tt.err, tt.msg...)
 
-	// Test with error
-	exitGracefully(os.ErrNotExist)
-
-	// Test with error and message
-	exitGracefully(os.ErrNotExist, "Custom message")
+			if *got != tt.wantCode {
+				t.Errorf("exit code %d, want %d -- a failure that exits 0 is invisible to CI", *got, tt.wantCode)
+			}
+		})
+	}
 }
 
 func TestShowHelp(t *testing.T) {

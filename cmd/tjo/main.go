@@ -99,6 +99,17 @@ func validateInput() (string, string, string, error) {
 	return arg1, arg2, arg3, nil
 }
 
+// exitGracefully reports the problem and exits.
+//
+// It used to only print and return, so every one of its 28 call sites carried
+// on as though nothing had happened and the process ended with status 0. The
+// CLI would print "Error: ..." and then tell the shell it had succeeded, which
+// means no script, Makefile or CI job could detect a failed scaffold.
+//
+// exitCode is a variable so tests can substitute a recorder instead of killing
+// the test binary.
+var exitCode = os.Exit
+
 func exitGracefully(err error, msg ...string) {
 	message := ""
 	if len(msg) > 0 {
@@ -112,6 +123,13 @@ func exitGracefully(err error, msg ...string) {
 	if message != "" {
 		color.Yellow(message)
 	}
+
+	if err != nil {
+		exitCode(1)
+		return
+	}
+
+	exitCode(0)
 }
 
 func parseTemplateFlag() string {

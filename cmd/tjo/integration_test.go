@@ -72,7 +72,7 @@ func TestMainFunction(t *testing.T) {
 			if tt.setupFunc != nil {
 				tt.setupFunc()
 			}
-			
+
 			if tt.cleanupFunc != nil {
 				defer tt.cleanupFunc()
 			}
@@ -153,7 +153,7 @@ func TestCommandRouting(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test command routing logic
 			var err error
-			
+
 			switch tt.arg1 {
 			case "new":
 				if tt.arg2 == "" {
@@ -225,7 +225,7 @@ func TestEndToEndWorkflow(t *testing.T) {
 		// Step 3: Create necessary directories
 		dirs := []string{
 			"handlers",
-			"models", 
+			"models",
 			"migrations",
 			"views",
 			"mail",
@@ -357,8 +357,9 @@ func TestCLIErrorHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.setupFunc()
-			
+
 			// Test exitGracefully handles errors properly
+			withExitRecorder(t)
 			assert.NotPanics(t, func() {
 				exitGracefully(err)
 			})
@@ -378,33 +379,33 @@ func TestConcurrentCommands(t *testing.T) {
 
 	// Test that multiple commands can be processed
 	// (In practice, CLI runs one command at a time, but testing robustness)
-	
+
 	done := make(chan bool, 3)
-	
+
 	// Run multiple validation checks concurrently
 	go func() {
 		os.Args = []string{"cli", "version"}
 		validateInput()
 		done <- true
 	}()
-	
+
 	go func() {
 		os.Args = []string{"cli", "help"}
 		validateInput()
 		done <- true
 	}()
-	
+
 	go func() {
 		os.Args = []string{"cli", "make", "model", "test"}
 		validateInput()
 		done <- true
 	}()
-	
+
 	// Wait for all to complete
 	for i := 0; i < 3; i++ {
 		<-done
 	}
-	
+
 	// If we get here, concurrent execution didn't cause issues
 	assert.True(t, true)
 }
