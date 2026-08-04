@@ -248,6 +248,27 @@ func (u *User) Delete(id int) error {
 }
 
 // ResetPassword updates the user's password
+// SetPasswordHash stores an already-computed hash.
+//
+// Separate from ResetPassword because the framework's auth package produces the
+// hash as part of redeeming a reset token -- it validates the token, checks the
+// password against the policy, and hashes, all in one place. Handing the result
+// here keeps the decision about *whether* the password may change in tested
+// library code rather than in generated code.
+func (u *User) SetPasswordHash(id int, hash []byte) error {
+	user, err := u.Find(id)
+	if err != nil {
+		return fmt.Errorf("SetPasswordHash find: %w", err)
+	}
+
+	user.Password = string(hash)
+	if _, err := u.Update(*user); err != nil {
+		return fmt.Errorf("SetPasswordHash update: %w", err)
+	}
+
+	return nil
+}
+
 func (u *User) ResetPassword(id int, password string) error {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
