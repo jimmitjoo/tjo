@@ -5,6 +5,156 @@ All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is 0, breaking changes may land in a minor release.
 
+## [0.9.0] - 2026-08-04
+
+Where v0.8.0 was about being correct, this one is about being shippable: a
+deploy story, signed releases, and the batteries that make a database the only
+service you have to run.
+
+Four dependencies were removed rather than upgraded.
+
+### Breaking changes
+
+**1. SQLite is now pure Go, and the driver name changed**
+
+`mattn/go-sqlite3` is replaced by `modernc.org/sqlite`. Configuration accepts
+both `sqlite` and `sqlite3` as before, and `OpenDB` normalises them — but code
+calling `sql.Open("sqlite3", …)` directly must now use `"sqlite"`.
+
+Migrations moved with it, so the golang-migrate URL scheme is `sqlite://`
+rather than `sqlite3://`.
+
+This costs measured performance. On darwin/arm64 with one write connection
+under WAL:
+
+| | mattn | modernc | |
+|---|---|---|---|
+| insert | 6699 ns/op | 8273 ns/op | 1.2× slower |
+| select | 32388 ns/op | 100475 ns/op | 3.1× slower |
+
+It is bought deliberately. cgo makes `GOOS=linux CGO_ENABLED=0 go build`
+impossible, and that cross-compile is what `tjo deploy` does and what collapses
+the release matrix from five native runners to one. For a request doing a
+handful of point lookups the difference is tens of microseconds against template
+rendering and network; past that point the answer is PostgreSQL.
+
+**2. `nosurf` is gone; CSRF tokens live in the session**
+
+`NoSurf` still exists as an alias, so mounting it keeps working. But there is no
+longer a `csrf_token` cookie — the token is in the session, which is what
+removes the need for masking. `{{.CSRFToken}}` and the `csrf_token` form field
+are unchanged, so templates need no edits.
+
+If you renew the session yourself, rotate the token too:
+
+```go
+tjo.RotateCSRFToken(app.HTTP.Session, r)
+```
+
+Scaffolded auth does this at all three renewal points. Without it the token
+minted for the anonymous session survives into the authenticated one.
+
+**3. `WriteTimeout` is no longer set**
+
+It is an absolute deadline from the start of the request rather than an idle
+timeout, so it cut every stream at ten minutes regardless of activity. Streams
+bound individual writes with `Stream.SetWriteDeadline`; `ReadTimeout` and
+`IdleTimeout` still cover the slow-client cases it was reaching for.
+
+**4. Duplicate JSON object names are rejected**
+
+`ReadJson` and `api.JSONRequest` now return an error for
+`{"role":"user","role":"admin"}` rather than silently taking the last one. See
+below.
+
+### Added
+
+- **`tjo deploy`** — build a static binary, copy it over SSH, restart a systemd
+  unit. No Docker, no registry, no orchestrator, nothing on the host but the app
+  and optionally Caddy. Keeps five releases, health-checks after restarting and
+  rolls back if that fails.
+- **Socket activation and readiness notification.** The app adopts a listening
+  socket from systemd rather than opening its own, so restarts drop no
+  connections, and reports readiness so `systemctl restart` blocks until the new
+  binary is actually serving.
+- **`sse`** — Server-Sent Events. The transport every major LLM API streams
+  over, that htmx 4 moves into core, and that Datastar uses natively. No client
+  library is picked; the wire format is what all three consume.
+- **HTTP/2, including cleartext**, which SSE requires to be usable at all.
+- **`jobs.SQLQueue`** — a job queue in the database you already have, with
+  `PushTx` to enqueue inside the caller's transaction. Postgres and MySQL use
+  `FOR UPDATE SKIP LOCKED`; SQLite claims with a single serialised `UPDATE`.
+- **`filesystems.ContextFS`** — cancellation, deadlines and trace propagation
+  for S3 and MinIO. `DeleteContext` returns an error and honours its arguments,
+  which `Delete` never did.
+- **Signed releases** — SLSA build provenance, a keyless cosign signature and a
+  CycloneDX 1.6 SBOM per artifact. Verify with
+  `gh attestation verify <file> --repo jimmitjoo/tjo`.
+- **Reproducible builds.** Two builds of the same tag produce identical bytes.
+- **`auth`** — API token generation and verification as real tested code rather
+  than only as template output.
+- **`AGENTS.md`**, the cross-tool convention now stewarded by the Linux
+  Foundation. `CLAUDE.md` points at it.
+- **MCP introspection** — `tjo_routes_list`, `tjo_schema_describe` and
+  `tjo_config_describe` answer questions about *your* application. Routes are
+  parsed statically, so they work while the project does not compile.
+- **`evals/`** — measures whether a coding agent produces a working Tjo app,
+  with the compiler as the grader.
+- **A CRA position** in `SECURITY.md`, and an OpenSSF Scorecard badge.
+
+### Removed
+
+`mattn/go-sqlite3`, `justinas/nosurf`, `asaskevich/govalidator` and
+`twilio/twilio-go`. The last two were replaced by four small functions and by
+the HTTP call that was already in the file.
+
+### Fixed
+
+- **The release workflow's tag trigger had never fired.** Every release in this
+  repository's history was built by manual dispatch, because GitHub does not
+  create workflow runs when more than three tags are pushed at once and a
+  release pushes five. The first v0.7.0 and v0.8.0 builds were both silently
+  skipped. The trigger is deleted and `make release-push` dispatches explicitly;
+  a trigger that cannot fire is worse than none, because it reads as coverage.
+- **Twilio shipped through its SDK while its tested HTTP path ran only in
+  tests.** The same split hid `vonage-go-sdk`'s dependency on `golang-jwt/jwt`
+  v3 from every test in that package until `govulncheck` found it. API errors
+  now surface Twilio's code and message instead of a raw body dump.
+- **Two tests reached live third-party APIs** and asserted only that something
+  failed — equally true with no network. They were skipped under `-short`, which
+  is what CI runs, so the branch users execute had no coverage at all.
+- The `#21` badger aliasing guard, which stopped guarding anything under v4 and
+  was rewritten in v0.8.0, is unaffected here — but the equivalent problem
+  appeared again in `filesystems`: `Delete` ignoring its arguments was carried
+  forward deliberately and is corrected in `DeleteContext`.
+
+### On duplicate JSON keys
+
+The issue behind this was written on the premise that Go 1.27 would make
+`encoding/json/v2` the default and that its strictness would arrive with it.
+Measuring first showed that is wrong: v1's semantics are deliberately preserved
+behind the v1 API.
+
+```
+encoding/json     {"role":"user","role":"admin"}  ->  err=<nil>  role="admin"
+encoding/json/v2  {"role":"user","role":"admin"}  ->  duplicate object member name
+```
+
+So the permissive behaviour is not arriving and not going away. It is a
+smuggling primitive whenever anything else in the request path — a proxy, a WAF,
+an audit log — parses the same body and resolves the conflict differently, so
+the framework now rejects it. CI gains a `jsonv2` leg as a canary rather than a
+migration check.
+
+### Not in this release
+
+**Extracting authentication as a standalone module (#52).** The token primitives
+landed; users, sessions, 2FA and password reset did not. That is ~1,100 lines
+still in templates plus store interfaces that do not exist yet, and the issue's
+own definition of done requires a security review before tagging — on the
+grounds that an auth library with a session-fixation bug is worse than no auth
+library. It gets its own cycle.
+
 ## [0.8.0] - 2026-08-04
 
 A dependency and security release. It closes 71 known vulnerabilities that had a
