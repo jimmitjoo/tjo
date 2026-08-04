@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
@@ -369,50 +370,97 @@ func TestMockHTTPClient(t *testing.T) {
 	})
 }
 
-func TestVonage_ProductionPath(t *testing.T) {
-	// Reaches rest.nexmo.com for real. It asserts only that *something* went
-	// wrong with deliberately invalid credentials, which is a weak claim that
-	// also fails with no network at all -- so it is skipped under -short, which
-	// is what CI runs.
-	if testing.Short() {
-		t.Skip("makes a live request to the Vonage API")
-	}
+func TestVonage_NilClientUsesTheDefault(t *testing.T) {
+	// This used to call rest.nexmo.com for real and assert only that something
+	// failed, which is also true with no network at all. A nil httpClient must
+	// fall back to defaultHTTPClient rather than panicking; before v0.8.0 that
+	// branch called vonage-go-sdk, so the code users ran was the one path
+	// nothing else in this file covered.
+	var got url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		got = r.PostForm
+		w.Write([]byte(`{"messages":[{"status":"0"}]}`))
+	}))
+	defer srv.Close()
 
-	v := &Vonage{
-		APIKey:     "test",
-		APISecret:  "test",
-		FromNumber: "+123",
-		httpClient: nil,
-	}
+	v := &Vonage{APIKey: "key", APISecret: "secret", FromNumber: "+123", apiBase: srv.URL}
 
-	// A nil httpClient must fall back to defaultHTTPClient rather than
-	// panicking. Before v0.8.0 this branch called vonage-go-sdk instead, so the
-	// code that shipped to users was the one path nothing else in this file
-	// covered.
-	err := v.Send("+456", "test", false)
-	assert.Error(t, err)
+	if err := v.Send("+456", "hello", true); err != nil {
+		t.Fatalf("Send with nil httpClient: %v", err)
+	}
+	if got.Get("api_key") != "key" || got.Get("to") != "+456" || got.Get("text") != "hello" {
+		t.Errorf("unexpected form: %v", got)
+	}
+	if got.Get("type") != "unicode" {
+		t.Error("unicode=true did not set type=unicode")
+	}
 }
 
-func TestTwilio_ProductionPath(t *testing.T) {
-	// Same as TestVonage_ProductionPath: a live call asserting only that it
-	// failed. Twilio still routes production through its SDK, so this remains
-	// the one test touching that branch -- see the note on Twilio.Send.
-	if testing.Short() {
-		t.Skip("makes a live request to the Twilio API")
-	}
+func TestTwilio_SurfacesAPIErrors(t *testing.T) {
+	// Before v0.9.0 this test made a live call to api.twilio.com and asserted
+	// only that something went wrong -- which is also what happens with no
+	// network. httptest covers the branch that actually ships now.
+	t.Run("error body becomes a readable error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"code":21211,"message":"The 'To' number is not a valid phone number.","more_info":"https://www.twilio.com/docs/errors/21211","status":400}`))
+		}))
+		defer srv.Close()
 
-	tw := &Twilio{
-		AccountSid: "AC123",
-		APIKey:     "test",
-		APISecret:  "test",
-		FromNumber: "+123",
-		httpClient: nil,
-	}
-	
-	// This will use the production SDK path which will fail with test credentials
-	// We're just testing that it attempts to use the SDK
-	err := tw.Send("+456", "test", false)
-	assert.Error(t, err) // Expected to fail with test credentials
+		tw := &Twilio{AccountSid: "AC123", APIKey: "k", APISecret: "s", FromNumber: "+1", apiBase: srv.URL}
+
+		err := tw.Send("nonsense", "hi", false)
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+		for _, want := range []string{"21211", "not a valid phone number", "twilio.com/docs/errors"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not mention %q", err, want)
+			}
+		}
+	})
+
+	t.Run("success sends the documented form fields with basic auth", func(t *testing.T) {
+		var gotAuth bool
+		var body url.Values
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, p, ok := r.BasicAuth()
+			gotAuth = ok && u == "key" && p == "secret"
+			r.ParseForm()
+			body = r.PostForm
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte(`{"sid":"SM1"}`))
+		}))
+		defer srv.Close()
+
+		tw := &Twilio{AccountSid: "AC123", APIKey: "key", APISecret: "secret", FromNumber: "+46700000000", apiBase: srv.URL}
+
+		if err := tw.Send("+46701234567", "hello", false); err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+		if !gotAuth {
+			t.Error("basic auth was not sent with the API key and secret")
+		}
+		if body.Get("To") != "+46701234567" || body.Get("From") != "+46700000000" || body.Get("Body") != "hello" {
+			t.Errorf("unexpected form: %v", body)
+		}
+	})
+
+	// A nil httpClient must fall back to defaultHTTPClient rather than
+	// panicking. Before v0.9.0 that branch called twilio-go instead, so the
+	// code users ran was the one path nothing else here covered.
+	t.Run("nil client does not panic", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusCreated)
+		}))
+		defer srv.Close()
+
+		tw := &Twilio{AccountSid: "AC1", APIKey: "k", APISecret: "s", FromNumber: "+1", apiBase: srv.URL}
+		if err := tw.Send("+2", "x", false); err != nil {
+			t.Fatalf("Send with nil httpClient: %v", err)
+		}
+	})
 }
 
 // Benchmark tests
