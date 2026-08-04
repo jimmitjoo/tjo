@@ -1,6 +1,7 @@
 # Tjo
 
 [![CI](https://github.com/jimmitjoo/tjo/actions/workflows/ci.yml/badge.svg)](https://github.com/jimmitjoo/tjo/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/jimmitjoo/tjo/badge)](https://scorecard.dev/viewer/?uri=github.com/jimmitjoo/tjo)
 
 ![alt tjo](https://raw.githubusercontent.com/jimmitjoo/tjo-bare/main/public/images/tjo-logo.webp)
 
