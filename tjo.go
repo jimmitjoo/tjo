@@ -362,6 +362,31 @@ func (g *Tjo) ListenAndServe() error {
 			g.Logging.Info.Printf("Listening on port %d", g.Config.Server.Port)
 		}
 
+		// Prefer a socket systemd already owns. That socket outlives the
+		// process, so connections arriving during a restart queue in the kernel
+		// backlog instead of being refused -- which is the entire zero-downtime
+		// mechanism behind `tjo deploy`, and it needs no proxy and no draining.
+		//
+		// Falling back to ListenAndServe means running outside systemd, which is
+		// every development machine.
+		listeners, err := socketActivatedListeners()
+		if err != nil {
+			serverErr <- err
+			return
+		}
+
+		if len(listeners) > 0 {
+			if g.Logging.Info != nil {
+				g.Logging.Info.Printf("Serving on a socket passed by systemd")
+			}
+			notifyReady()
+			if err := srv.Serve(listeners[0]); err != nil && err != http.ErrServerClosed {
+				serverErr <- err
+			}
+			return
+		}
+
+		notifyReady()
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			serverErr <- err
 		}

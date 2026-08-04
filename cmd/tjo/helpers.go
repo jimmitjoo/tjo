@@ -108,6 +108,8 @@ func showHelp() {
 	make model <name>        - creates a new model
 	make session             - creates session table
 	make mail <name>         - creates email template
+	deploy init              - write deploy.conf
+	deploy                   - build, ship and restart over SSH (no Docker)
 
 Examples:
 	tjo new myapp
@@ -115,6 +117,8 @@ Examples:
 	tjo new myapp -t blog -d mysql
 	tjo new myapp --template=saas --db=postgres
 
+	tjo deploy init
+	tjo deploy
 	`)
 }
 

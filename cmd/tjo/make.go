@@ -151,7 +151,7 @@ func doMake(arg2, arg3 string) error {
 		return doDocker()
 
 	case "deploy":
-		return doDeploy()
+		return doMakeDeployScripts()
 
 	default:
 		return errors.New("Unknown subcommand " + arg2)
@@ -598,8 +598,12 @@ func doDocker() error {
 	return nil
 }
 
-// doDeploy creates deployment scripts and configuration
-func doDeploy() error {
+// doMakeDeployScripts creates deployment scripts and configuration.
+//
+// This is `tjo make deploy`, which writes a deploy.sh, a GitHub Actions
+// workflow and a Makefile into the project. It is unrelated to `tjo deploy`,
+// which ships the app itself; the name is qualified so the two do not collide.
+func doMakeDeployScripts() error {
 	files := map[string]string{
 		"deploy.sh":                       "templates/deploy/deploy.sh.txt",
 		".github/workflows/deploy.yml":   "templates/deploy/github-actions.yml.txt",
