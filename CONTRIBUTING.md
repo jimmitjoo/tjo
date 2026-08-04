@@ -10,7 +10,7 @@ Be respectful and inclusive. We're all here to learn and build great software to
 
 ### Prerequisites
 
-- Go 1.23+
+- Go 1.25+
 - Docker (optional, for database/cache tests)
 - PostgreSQL (optional, for database tests)
 - Redis (optional, for cache tests)
