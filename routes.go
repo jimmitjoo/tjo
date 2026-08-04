@@ -69,6 +69,7 @@ func (g *Tjo) routes() (*chi.Mux, error) {
 	mux.Use(middleware.Recoverer)
 
 	mux.Use(g.SessionLoad)
+	mux.Use(g.CrossOriginProtection)
 	mux.Use(g.NoSurf)
 
 	return mux, nil
