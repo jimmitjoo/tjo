@@ -3,6 +3,7 @@ package s3filesystem
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,7 +85,7 @@ func TestS3_Put_FileNotFound(t *testing.T) {
 func TestS3_List_MockResponse(t *testing.T) {
 	// This test demonstrates the structure of List method
 	// In real implementation, you'd need to mock AWS SDK properly
-	
+
 	s3fs := &S3{
 		Key:      "test-key",
 		Secret:   "test-secret",
@@ -96,7 +97,7 @@ func TestS3_List_MockResponse(t *testing.T) {
 	// In a real test, we would mock the S3 client
 	// For now, we can only test with invalid credentials
 	listing, err := s3fs.List("prefix/")
-	
+
 	// This will fail without valid AWS credentials
 	assert.Error(t, err)
 	assert.Nil(t, listing)
@@ -297,5 +298,37 @@ func BenchmarkS3_Creation(b *testing.B) {
 			Endpoint: "https://s3.amazonaws.com",
 			Bucket:   "test-bucket",
 		}
+	}
+}
+
+// TestDestinationPath pins where downloads land. S3.Get used to ignore its
+// destination argument and call os.Create(path.Base(key)), so every file
+// landed in the process's working directory -- while the minio implementation
+// of the same FS interface honoured it.
+func TestDestinationPath(t *testing.T) {
+	tests := []struct {
+		name        string
+		destination string
+		key         string
+		want        string
+	}{
+		{"plain key", "/tmp/dest", "report.pdf", "/tmp/dest/report.pdf"},
+		{"key in a folder", "/tmp/dest", "reports/q3/report.pdf", "/tmp/dest/report.pdf"},
+		{"traversal in the key cannot escape", "/tmp/dest", "../../etc/passwd", "/tmp/dest/passwd"},
+		{"absolute key cannot escape", "/tmp/dest", "/etc/passwd", "/tmp/dest/passwd"},
+		{"relative destination", "downloads", "a/b/c.txt", "downloads/c.txt"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := destinationPath(tt.destination, tt.key)
+			if got != tt.want {
+				t.Errorf("destinationPath(%q, %q) = %q, want %q",
+					tt.destination, tt.key, got, tt.want)
+			}
+			if !strings.HasPrefix(got, tt.destination) {
+				t.Errorf("%q escapes the destination %q", got, tt.destination)
+			}
+		})
 	}
 }

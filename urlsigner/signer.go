@@ -39,6 +39,19 @@ func (s *Signer) VerifyToken(token string) bool {
 	return true
 }
 
+// Expired reports whether the token's embedded timestamp is older than
+// minutesUntilExpire.
+//
+// It does NOT verify the signature. A tampered token whose trailing timestamp
+// section is still well-formed reports a perfectly ordinary age, so calling
+// this on its own tells you nothing about authenticity. Always call VerifyToken
+// first and act on its result:
+//
+//	if !signer.VerifyToken(url) { /* reject */ }
+//	if signer.Expired(url, 60)  { /* reject */ }
+//
+// Input it cannot parse at all is reported as expired, so that path fails
+// closed.
 func (s *Signer) Expired(token string, minutesUntilExpire int) bool {
 	crypt := goalone.New(s.Secret, goalone.Timestamp)
 	ts := crypt.Parse([]byte(token))

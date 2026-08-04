@@ -11,6 +11,7 @@ import (
 	"github.com/jimmitjoo/tjo/filesystems"
 	"os"
 	"path"
+	"path/filepath"
 )
 
 type S3 struct {
@@ -136,26 +137,46 @@ func (s *S3) Get(destination string, items ...string) error {
 	downloader := s3manager.NewDownloader(sess)
 
 	for _, file := range items {
-		fileName, err := os.Create(path.Base(file))
-		if err != nil {
+		if err := s.download(downloader, destination, file); err != nil {
 			return err
 		}
-		defer func() {
-			err := fileName.Close()
-			if err != nil {
-				fmt.Println(err)
-			}
-		}()
-
-		_, err = downloader.Download(fileName, &s3.GetObjectInput{
-			Bucket: aws.String(s.Bucket),
-			Key:    aws.String(file),
-		})
-		if err != nil {
-			return err
-		}
-
 	}
 
 	return nil
+}
+
+// download fetches one object into destination.
+//
+// Split out of Get so the file is closed at the end of each iteration rather
+// than accumulating deferred closes until the whole batch finishes.
+func (s *S3) download(downloader *s3manager.Downloader, destination, key string) error {
+	target, err := os.Create(destinationPath(destination, key))
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := target.Close(); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	_, err = downloader.Download(target, &s3.GetObjectInput{
+		Bucket: aws.String(s.Bucket),
+		Key:    aws.String(key),
+	})
+
+	return err
+}
+
+// destinationPath returns where an object is written locally.
+//
+// Get used to ignore its destination argument entirely and call
+// os.Create(path.Base(key)), dropping every download into the process's working
+// directory instead of where the caller asked. The minio implementation of the
+// same interface honoured it.
+//
+// Only the base name of the key is used, so an object named "../../etc/passwd"
+// cannot write outside destination.
+func destinationPath(destination, key string) string {
+	return filepath.Join(destination, path.Base(key))
 }
