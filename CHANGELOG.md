@@ -52,6 +52,19 @@ Additional hardening:
   plaintext.
 - IPv6 clients no longer bypass `IPBlacklistMiddleware`.
 - `CORSMiddleware` sets `Vary: Origin`.
+- `getClientIPWithTrustedProxies` read the **leftmost** `X-Forwarded-For`
+  entry, which is the value the client sent and a proxy forwards untouched.
+  One client produced 50 distinct identities across 50 requests by varying the
+  header. It had no callers, but GHSA-hm83-wmj9-52fm and a code comment both
+  named it as the correct implementation to copy; both are corrected. It now
+  walks the chain from the right and rejects hops that are not IP addresses.
+- `SecurityMonitor.IsIPBlocked` deleted from two maps while holding only a
+  read lock. The expiry path takes the write lock and re-checks.
+- The input blocklist gained a pattern for a quote followed by a comment
+  marker. `admin'--` is the most common SQL probe there is and every existing
+  SQL pattern missed it.
+- `ValidateSession` no longer skips its age check when `auth_time` is absent.
+  See breaking change 10.
 
 ### Breaking changes
 
@@ -148,7 +161,20 @@ expecting `config` to act on it configured nothing. CORS is owned by the
 `security.LoadFromEnv()` and applies it in `CORSMiddleware`. The duplicate
 struct is gone; the environment variable is unchanged.
 
-**10. PostgreSQL requires `WithDialect`**
+**10. `ValidateSession` rejects sessions it cannot age**
+
+`AuthSessionHandler.ValidateSession` skipped its `MaxLifetime` check entirely
+when `auth_time` was missing, so a session carrying `user_id` but no
+`auth_time` — which is what an application gets if it writes `user_id` itself
+instead of calling `LoginUser` — was never aged out regardless of
+configuration. An age check that cannot determine the age now fails closed.
+
+If you set session keys yourself, either go through `LoginUser` or set
+`auth_time` alongside `user_id`. Note also that this handler stores the user
+under `user_id` while the scaffolded auth handlers use `userID`; the two have
+never interoperated, which is now documented on the type.
+
+**11. PostgreSQL requires `WithDialect`**
 
 Not a signature change, but required to make PostgreSQL work at all:
 
@@ -216,6 +242,19 @@ MySQL and SQLite are unaffected; `DialectQuestion` remains the default.
   calls `next` — templates are embedded data and are not otherwise compiled by
   anything.
 - `config` package tests, which did not exist.
+
+### Testing
+
+Coverage went from 59% to 62% overall, aimed at code where being wrong is
+expensive rather than at the number: `security` 59% → 78%, `session` 40% → 86%.
+Four defects surfaced from writing those tests — the forwarded-header handling,
+the monitor's read-lock delete, the missing SQL comment pattern and the session
+age fail-open — all listed above.
+
+`S3.Get` also ignored its `destination` argument entirely, dropping every
+download into the process's working directory while the minio implementation of
+the same interface honoured it. The existing test passed a destination and
+never checked where files landed.
 
 ### Removed
 

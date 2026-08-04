@@ -217,7 +217,13 @@ func AuthenticationSessionHandler(sessionManager *scs.SessionManager, config Sec
 	}
 }
 
-// AuthSessionHandler handles authentication-related session operations
+// AuthSessionHandler handles authentication-related session operations.
+//
+// Note that this stores the user under "user_id", while the handlers generated
+// by `tjo make auth` write "userID" directly through the session manager. The
+// two do not interoperate: an application either goes through LoginUser and
+// ValidateSession, or manages the session keys itself. Mixing them means
+// ValidateSession never sees a user.
 type AuthSessionHandler struct {
 	sessionManager *scs.SessionManager
 	config         SecureSessionConfig
@@ -268,15 +274,25 @@ func (ash *AuthSessionHandler) ValidateSession(r *http.Request) bool {
 		}
 	}
 
-	// Check session age limits
+	// Check session age limits.
+	//
+	// A missing auth_time is rejected rather than skipped. This used to fall
+	// through to "valid", so a session carrying user_id but no auth_time --
+	// which is what you get if an application writes user_id itself instead of
+	// going through LoginUser -- was never aged out at all, no matter what
+	// MaxLifetime said. An age check that cannot determine the age has to fail
+	// closed.
 	if ash.config.MaxLifetime > 0 {
 		authTime := ash.sessionManager.GetInt64(r.Context(), "auth_time")
-		if authTime > 0 {
-			sessionAge := time.Since(time.Unix(authTime, 0))
-			if sessionAge > ash.config.MaxLifetime {
-				ash.sessionManager.Destroy(r.Context())
-				return false
-			}
+		if authTime <= 0 {
+			ash.sessionManager.Destroy(r.Context())
+			return false
+		}
+
+		sessionAge := time.Since(time.Unix(authTime, 0))
+		if sessionAge > ash.config.MaxLifetime {
+			ash.sessionManager.Destroy(r.Context())
+			return false
 		}
 	}
 
