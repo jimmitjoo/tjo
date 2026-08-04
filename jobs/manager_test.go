@@ -43,12 +43,6 @@ func TestJobManager(t *testing.T) {
 }
 
 func TestJobManagerEnqueueIn(t *testing.T) {
-	// NewJobManager starts workers immediately, so the assertion on job.Status
-	// below races with Job.MarkRunning on a worker goroutine. Job is shared
-	// mutable state with 17 unsynchronised public fields; fixing it is a
-	// design change, not a test tweak. Unskip when that lands.
-	t.Skip("skipped: data race on Job.Status, see issue #24")
-
 	manager := NewJobManager(nil)
 
 	var handlerCalled atomic.Bool

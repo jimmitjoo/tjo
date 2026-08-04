@@ -12,16 +12,16 @@ import (
 )
 
 type JobManager struct {
-	queueManager   *QueueManager
-	processor      *JobProcessor
-	workerPool     *WorkerPool
-	scheduler      *cron.Cron
-	persistence    *JobPersistence
-	config         *ManagerConfig
-	ctx            context.Context
-	cancel         context.CancelFunc
-	mutex          sync.RWMutex
-	running        bool
+	queueManager *QueueManager
+	processor    *JobProcessor
+	workerPool   *WorkerPool
+	scheduler    *cron.Cron
+	persistence  *JobPersistence
+	config       *ManagerConfig
+	ctx          context.Context
+	cancel       context.CancelFunc
+	mutex        sync.RWMutex
+	running      bool
 }
 
 type ManagerConfig struct {
@@ -260,15 +260,15 @@ func (jm *JobManager) GetManagerStats() ManagerStats {
 	}
 
 	return ManagerStats{
-		TotalQueues:     len(queueStats),
-		TotalWorkers:    len(workerStats),
-		ActiveWorkers:   jm.workerPool.GetActiveWorkers(),
-		BusyWorkers:     jm.workerPool.GetBusyWorkers(),
-		TotalJobs:       totalJobs,
-		QueueStats:      queueStats,
-		WorkerStats:     workerStats,
+		TotalQueues:      len(queueStats),
+		TotalWorkers:     len(workerStats),
+		ActiveWorkers:    jm.workerPool.GetActiveWorkers(),
+		BusyWorkers:      jm.workerPool.GetBusyWorkers(),
+		TotalJobs:        totalJobs,
+		QueueStats:       queueStats,
+		WorkerStats:      workerStats,
 		ProcessorMetrics: metrics,
-		IsRunning:       jm.running,
+		IsRunning:        jm.running,
 	}
 }
 
@@ -309,13 +309,7 @@ func (jm *JobManager) processScheduledJobs() {
 		}
 
 		if memQueue, ok := queue.(*MemoryQueue); ok {
-			scheduledJobs := memQueue.GetJobsByStatus(JobStatusScheduled)
-			for _, job := range scheduledJobs {
-				if job.IsReady() {
-					job.Status = JobStatusPending
-					job.UpdatedAt = time.Now()
-				}
-			}
+			memQueue.PromoteScheduled()
 		}
 	}
 }
@@ -384,13 +378,13 @@ func (jm *JobManager) saveJobToDB(job *Job) {
 }
 
 type ManagerStats struct {
-	TotalQueues      int                    `json:"total_queues"`
-	TotalWorkers     int                    `json:"total_workers"`
-	ActiveWorkers    int                    `json:"active_workers"`
-	BusyWorkers      int                    `json:"busy_workers"`
-	TotalJobs        int                    `json:"total_jobs"`
-	QueueStats       map[string]QueueStats  `json:"queue_stats"`
-	WorkerStats      []WorkerStats          `json:"worker_stats"`
-	ProcessorMetrics ProcessorMetrics       `json:"processor_metrics"`
-	IsRunning        bool                   `json:"is_running"`
+	TotalQueues      int                   `json:"total_queues"`
+	TotalWorkers     int                   `json:"total_workers"`
+	ActiveWorkers    int                   `json:"active_workers"`
+	BusyWorkers      int                   `json:"busy_workers"`
+	TotalJobs        int                   `json:"total_jobs"`
+	QueueStats       map[string]QueueStats `json:"queue_stats"`
+	WorkerStats      []WorkerStats         `json:"worker_stats"`
+	ProcessorMetrics ProcessorMetrics      `json:"processor_metrics"`
+	IsRunning        bool                  `json:"is_running"`
 }

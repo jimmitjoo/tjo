@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -218,4 +219,73 @@ func TestQueueManagerOperations(t *testing.T) {
 
 	_, err = manager.GetQueue("test")
 	assert.Error(t, err)
+}
+
+// TestQueueDoesNotShareJobPointers guards the ownership invariant behind issue
+// #24: the queue keeps its own copy, so a caller holding the job it enqueued
+// never races with Job.MarkRunning on a worker goroutine.
+func TestQueueDoesNotShareJobPointers(t *testing.T) {
+	q := NewMemoryQueue("default")
+
+	job := NewJob("test", "default", map[string]interface{}{"k": "v"})
+	if err := q.Push(job); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mutating the queued copy must not be visible through the caller's job.
+	q.PromoteScheduled()
+	queued, err := q.Peek()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued == job {
+		t.Fatal("Peek handed back the caller's job pointer")
+	}
+
+	queued.Status = JobStatusRunning
+	queued.Payload["k"] = "mutated"
+
+	if job.Status == JobStatusRunning {
+		t.Error("mutating a job from the queue changed the caller's job")
+	}
+	if job.Payload["k"] != "v" {
+		t.Errorf("payload aliased: caller sees %v", job.Payload["k"])
+	}
+
+	for _, got := range q.GetJobs() {
+		if got == job {
+			t.Error("GetJobs handed back the caller's job pointer")
+		}
+	}
+}
+
+// TestJobStatusReadDuringProcessingIsRaceFree is the -race regression: read the
+// enqueued job's fields from the caller's goroutine while workers process it.
+func TestJobStatusReadDuringProcessingIsRaceFree(t *testing.T) {
+	manager := NewJobManager(nil)
+	manager.RegisterHandlerFunc("test", func(ctx context.Context, job *Job) error {
+		return nil
+	})
+	if err := manager.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Stop()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		job := NewJob("test", "default", nil)
+		if err := manager.Enqueue(job); err != nil {
+			t.Fatal(err)
+		}
+
+		wg.Add(1)
+		go func(j *Job) {
+			defer wg.Done()
+			for k := 0; k < 50; k++ {
+				_ = j.Status
+				_ = j.Attempts
+			}
+		}(job)
+	}
+	wg.Wait()
 }
