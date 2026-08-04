@@ -176,17 +176,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Built in a variable rather than inline, because a multi-line string
+          # written straight into the gh invocation had lines starting at column
+          # 0 -- which ends the YAML block scalar and makes the rest of the file
+          # unparseable. GitHub then showed this workflow named after its path
+          # and refused to dispatch it, reporting that it has no
+          # workflow_dispatch trigger.
+          notes=$(cat <<NOTES
+          See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${VERSION}/CHANGELOG.md).
+
+          Verify the download:
+
+          \`\`\`
+          gh attestation verify tjo_${VERSION}_<os>_<arch>.tar.gz --repo ${GITHUB_REPOSITORY}
+          sha256sum -c checksums.txt --ignore-missing
+          \`\`\`
+          NOTES
+          )
+          # The heredoc above is indented to stay inside the block scalar, so
+          # strip that indentation back off before publishing.
+          notes=$(printf '%s\n' "$notes" | sed 's/^          //')
+
           gh release create "${VERSION}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "${VERSION}" \
-            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${VERSION}/CHANGELOG.md).
-
-Verify the download:
-
-\`\`\`
-gh attestation verify tjo_${VERSION}_<os>_<arch>.tar.gz --repo ${GITHUB_REPOSITORY}
-sha256sum -c checksums.txt --ignore-missing
-\`\`\`" \
+            --notes "$notes" \
             --verify-tag \
             dist/* \
           || gh release upload "${VERSION}" dist/* --repo "${GITHUB_REPOSITORY}" --clobber

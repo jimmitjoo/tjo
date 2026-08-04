@@ -106,6 +106,28 @@ jobs:
         with:
           sarif_file: results.sarif
 
+  # The release workflow is not exercised by anything else here, so a syntax
+  # error in it merges green and only shows up when a release is attempted.
+  # That is what happened to v0.9.0: a multi-line string in the release notes
+  # had lines starting at column 0, which ends the YAML block scalar. GitHub
+  # could not parse the file, showed the workflow named after its path, and
+  # refused to dispatch it -- reporting, accurately but confusingly, that it has
+  # no workflow_dispatch trigger.
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Lint workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/*.yml
+
   # Go 1.27 makes encoding/json/v2 the implementation behind encoding/json.
   # It deliberately keeps v1's semantics, so this is a canary rather than a
   # migration: measured before it was written, the v1 API under jsonv2 still
