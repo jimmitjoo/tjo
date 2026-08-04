@@ -3,10 +3,21 @@ name: Release
 # Only the framework's own version tags. Submodule tags look like
 # email/v0.7.0, which do not match this pattern and must not trigger a
 # CLI release of their own.
+#
+# Also dispatchable, because GitHub does not create workflow runs when more
+# than three tags are pushed at once -- and a release pushes five, one per
+# module. That silently skipped the first v0.7.0 build. Dispatch is also how
+# you rebuild a release without touching its tag.
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tag to build, e.g. v0.7.0'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -42,8 +53,13 @@ jobs:
             runner: windows-latest
             ext: .exe
 
+    env:
+      VERSION: ${{ inputs.version || github.ref_name }}
+
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.version || github.ref_name }}
 
       - uses: actions/setup-go@v7
         with:
@@ -60,8 +76,8 @@ jobs:
         run: |
           go build \
             -ldflags "-s -w \
-              -X github.com/jimmitjoo/tjo/core.Version=${GITHUB_REF_NAME} \
-              -X github.com/jimmitjoo/tjo.version=${GITHUB_REF_NAME}" \
+              -X github.com/jimmitjoo/tjo/core.Version=${VERSION} \
+              -X github.com/jimmitjoo/tjo.version=${VERSION}" \
             -o "tjo${{ matrix.ext }}" \
             ./cmd/tjo
 
@@ -75,7 +91,7 @@ jobs:
 
       - name: Archive
         if: matrix.goos != 'windows'
-        run: tar czf "tjo_${GITHUB_REF_NAME}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" tjo LICENSE readme.md
+        run: tar czf "tjo_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" tjo LICENSE readme.md
 
       # zip is not reliably on PATH in the Windows runner's bash, so use
       # PowerShell, which is.
@@ -84,7 +100,7 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path tjo.exe, LICENSE, readme.md `
-            -DestinationPath "tjo_${env:GITHUB_REF_NAME}_windows_amd64.zip"
+            -DestinationPath "tjo_${env:VERSION}_windows_amd64.zip"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -98,6 +114,9 @@ jobs:
     name: publish
     needs: build
     runs-on: ubuntu-latest
+
+    env:
+      VERSION: ${{ inputs.version || github.ref_name }}
 
     steps:
       - uses: actions/download-artifact@v4
@@ -115,10 +134,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
+          gh release create "${VERSION}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "${GITHUB_REF_NAME}" \
-            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md)." \
+            --title "${VERSION}" \
+            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${VERSION}/CHANGELOG.md)." \
             --verify-tag \
             dist/* \
-          || gh release upload "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --clobber
+          || gh release upload "${VERSION}" dist/* --repo "${GITHUB_REPOSITORY}" --clobber
