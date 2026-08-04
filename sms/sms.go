@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/twilio/twilio-go"
-	twilioApi "github.com/twilio/twilio-go/rest/api/v2010"
 )
 
 // ErrNoProvider is returned when attempting to send SMS without a configured provider
@@ -35,6 +33,16 @@ type Vonage struct {
 	APISecret  string
 	FromNumber string
 	httpClient HTTPClient // For testing
+	apiBase    string     // For testing; defaults to Vonage's API
+}
+
+// baseURL returns the API root, overridable so tests can point at httptest
+// rather than reaching the real API to assert that something failed.
+func (v *Vonage) baseURL() string {
+	if v.apiBase != "" {
+		return v.apiBase
+	}
+	return "https://rest.nexmo.com"
 }
 
 // Send sends an SMS via Vonage.
@@ -71,7 +79,7 @@ func (v *Vonage) sendWithHTTPClient(to string, msg string, unicode bool) error {
 		data.Set("type", "unicode")
 	}
 	
-	req, err := http.NewRequest("POST", "https://rest.nexmo.com/sms/json", strings.NewReader(data.Encode()))
+	req, err := http.NewRequest("POST", v.baseURL()+"/sms/json", strings.NewReader(data.Encode()))
 	if err != nil {
 		return err
 	}
@@ -124,69 +132,85 @@ type Twilio struct {
 	APISecret  string
 	FromNumber string
 	httpClient HTTPClient // For testing
+	apiBase    string     // For testing; defaults to Twilio's API
+}
+
+// baseURL returns the API root, overridable so tests can point at httptest
+// rather than reaching the real API to assert that something failed.
+func (t *Twilio) baseURL() string {
+	if t.apiBase != "" {
+		return t.apiBase
+	}
+	return "https://api.twilio.com"
 }
 
 // Send sends an SMS via Twilio.
 //
-// Note the asymmetry with Vonage above: this still routes production through
-// twilio-go while sendWithHTTPClient below is only reached from tests, so the
-// shipped path and the covered path are still different code. twilio-go carries
-// no advisory, so it was left alone in v0.8.0 -- but the split is the same one
-// that hid the Vonage SDK's dependency on golang-jwt/jwt v3 from every test in
-// this package.
+// Plain HTTP rather than twilio-go, for the same reason Vonage above dropped
+// its SDK: routing production through the SDK while the HTTP path ran only
+// under an injected test client meant the code that shipped and the code that
+// had coverage were different code. That split is what hid vonage-go-sdk's
+// dependency on golang-jwt/jwt v3 from every test in this package until
+// govulncheck found it.
 func (t *Twilio) Send(to string, msg string, unicode bool) error {
-	// Use injected client for testing if available
-	if t.httpClient != nil {
-		return t.sendWithHTTPClient(to, msg, unicode)
-	}
-	
-	// Production implementation using Twilio SDK
-	client := twilio.NewRestClientWithParams(twilio.ClientParams{
-		Username:   t.APIKey,
-		Password:   t.APISecret,
-		AccountSid: t.AccountSid,
-	})
-
-	params := &twilioApi.CreateMessageParams{}
-	params.SetTo(to)
-	params.SetFrom(t.FromNumber)
-	params.SetBody(msg)
-
-	_, err := client.Api.CreateMessage(params)
-	if err != nil {
-		return fmt.Errorf("failed to send SMS: %w", err)
-	}
-
-	return nil
+	return t.sendWithHTTPClient(to, msg, unicode)
 }
 
-// sendWithHTTPClient is used for testing with mocked HTTP client
+// twilioError is the error shape Twilio returns on a 4xx or 5xx.
+// https://www.twilio.com/docs/usage/requests-to-twilio#error-responses
+type twilioError struct {
+	Code     int    `json:"code"`
+	Message  string `json:"message"`
+	MoreInfo string `json:"more_info"`
+	Status   int    `json:"status"`
+}
+
+// sendWithHTTPClient posts to Twilio's Messages endpoint. httpClient is the
+// seam tests inject through; it falls back to defaultHTTPClient, which has a
+// timeout, unlike http.DefaultClient.
 func (t *Twilio) sendWithHTTPClient(to string, msg string, unicode bool) error {
 	data := url.Values{}
 	data.Set("To", to)
 	data.Set("From", t.FromNumber)
 	data.Set("Body", msg)
-	
-	url := fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", t.AccountSid)
-	req, err := http.NewRequest("POST", url, strings.NewReader(data.Encode()))
+
+	endpoint := fmt.Sprintf("%s/2010-04-01/Accounts/%s/Messages.json", t.baseURL(), t.AccountSid)
+	req, err := http.NewRequest("POST", endpoint, strings.NewReader(data.Encode()))
 	if err != nil {
 		return err
 	}
-	
+
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(t.APIKey, t.APISecret)
-	
-	resp, err := t.httpClient.Do(req)
+
+	client := t.httpClient
+	if client == nil {
+		client = defaultHTTPClient()
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
+
+		// Twilio describes its failures in the body. Returning the raw bytes
+		// made "SMS send failed with status 400: {...}" the whole diagnosis,
+		// which is worse than what the SDK gave back.
+		var e twilioError
+		if json.Unmarshal(body, &e) == nil && e.Message != "" {
+			if e.MoreInfo != "" {
+				return fmt.Errorf("twilio %d: %s (%s)", e.Code, e.Message, e.MoreInfo)
+			}
+			return fmt.Errorf("twilio %d: %s", e.Code, e.Message)
+		}
+
 		return fmt.Errorf("SMS send failed with status %d: %s", resp.StatusCode, string(body))
 	}
-	
+
 	return nil
 }
 
