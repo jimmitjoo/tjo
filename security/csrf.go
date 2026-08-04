@@ -356,7 +356,8 @@ func isSuspiciousRequest(r *http.Request) bool {
 	// requests that carry both used to 403 every POST behind the default nginx
 	// reverse-proxy config, which sets exactly those two headers. The presence
 	// of both carries no signal; if proxy trust matters, validate the peer
-	// against a configured list (see getClientIPWithTrustedProxies in utils.go).
+	// against a configured list and read the forwarded chain from the right
+	// (see getClientIPWithTrustedProxies in utils.go).
 
 	return false
 }

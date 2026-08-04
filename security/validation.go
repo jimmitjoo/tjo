@@ -23,6 +23,12 @@ type InputValidationConfig struct {
 }
 
 // DefaultInputValidationConfig returns a secure default configuration
+// DefaultInputValidationConfig returns the default blocklist.
+//
+// This is a secondary control. It exists to catch and log obvious probes, not
+// to be the thing standing between an application and SQL injection -- that is
+// what the parameterised queries in the database package are for. Treat a
+// blocklist as a tripwire; never as the reason a query is safe.
 func DefaultInputValidationConfig() InputValidationConfig {
 	// Common attack patterns to block
 	blockPatterns := []*regexp.Regexp{
@@ -30,6 +36,10 @@ func DefaultInputValidationConfig() InputValidationConfig {
 		regexp.MustCompile(`(?i)(union\s+(all\s+)?select|insert\s+into|delete\s+from|drop\s+table|alter\s+table)`),
 		regexp.MustCompile(`(?i)(\bor\b\s+\d+\s*=\s*\d+|\band\b\s+\d+\s*=\s*\d+)`),
 		regexp.MustCompile(`(?i)(exec\s*\(|execute\s*\(|sp_executesql)`),
+		// Quote followed by a comment marker: admin'-- and friends, the most
+		// common probe of all, which the patterns above all miss. Anchored on
+		// the quote so ordinary prose containing a dash does not trip it.
+		regexp.MustCompile(`('|%27)\s*(--|#|/\*)`),
 
 		// XSS patterns
 		regexp.MustCompile(`(?i)(<script[^>]*>|</script>|javascript:|vbscript:|onload=|onerror=)`),
