@@ -64,10 +64,18 @@ func New(config *APIConfig) *API {
 func (api *API) setupMiddleware() {
 	// Request ID
 	api.Router.Use(middleware.RequestID)
-	
-	// Real IP
-	api.Router.Use(middleware.RealIP)
-	
+
+	// chi's middleware.RealIP is deliberately NOT installed here. It rewrites
+	// r.RemoteAddr from X-Forwarded-For without checking that the peer is a
+	// proxy, and the rate limiter below keys on exactly that field:
+	// IPKeyFunc calls GetClientIP(r, nil), whose own comment says "If no
+	// trusted proxies defined, only use RemoteAddr for security".
+	//
+	// With RealIP mounted that sentence stopped being true, and a client could
+	// mint a fresh rate-limit bucket per request by varying a header it
+	// controls -- the bypass published as GHSA-hm83-wmj9-52fm, reachable
+	// through a different file.
+
 	// Logger
 	if api.Config.Debug {
 		api.Router.Use(middleware.Logger)

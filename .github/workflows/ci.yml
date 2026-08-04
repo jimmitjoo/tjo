@@ -29,6 +29,23 @@ jobs:
       matrix:
         module: ['.', 'email', 'otel', 'sms', 'websocket']
 
+    # Cheap enough to run for every module in the matrix rather than splitting
+    # the job in two; only the root module reads the DSN.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tjo
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: tjotest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tjo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v7
 
@@ -47,8 +64,16 @@ jobs:
 
       # -short skips the tests that need Docker; -race is why this workflow
       # earns its keep, since several of the bugs it guards were data races.
+      #
+      # TJO_TEST_POSTGRES_DSN turns on database/postgres_integration_test.go,
+      # which skips without it. Before v0.8.0 every test in that package ran on
+      # SQLite or mocks, so the pgx v4 -> v5 driver swap in #37 had no coverage
+      # that would have noticed PostgreSQL breaking outright. The service
+      # container below is only defined for the root module; the others skip.
       - name: Test
         working-directory: ${{ matrix.module }}
+        env:
+          TJO_TEST_POSTGRES_DSN: ${{ matrix.module == '.' && 'postgres://tjo:secret@localhost:5432/tjotest?sslmode=disable' || '' }}
         run: go test -short -race -timeout 5m ./...
 
   # v0.7.0 shipped with 71 vulnerabilities that had a call path from this

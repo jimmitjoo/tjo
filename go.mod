@@ -23,8 +23,7 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/gomodule/redigo v1.8.9
 	github.com/iancoleman/strcase v0.2.0
-	github.com/jackc/pgconn v1.14.3
-	github.com/jackc/pgx/v4 v4.18.2
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jimmitjoo/tjo/email v0.7.0
 	github.com/jimmitjoo/tjo/otel v0.7.0
 	github.com/jimmitjoo/tjo/sms v0.7.0
@@ -83,12 +82,9 @@ require (
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
-	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
-	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgproto3/v2 v2.3.3 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
-	github.com/jackc/pgtype v1.14.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

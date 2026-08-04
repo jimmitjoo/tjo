@@ -29,7 +29,22 @@ func (g *Tjo) routes() (*chi.Mux, error) {
 
 	mux := chi.NewRouter()
 	mux.Use(middleware.RequestID)
-	mux.Use(middleware.RealIP)
+
+	// chi's middleware.RealIP is deliberately NOT installed.
+	//
+	// It overwrites r.RemoteAddr from X-Forwarded-For or X-Real-IP without
+	// establishing that the peer is a proxy entitled to set them. Every
+	// downstream consumer of RemoteAddr then reads an attacker-chosen value.
+	//
+	// That defeats the fix published as GHSA-hm83-wmj9-52fm. IPThrottler.getRealIP
+	// consults proxy headers only when the peer is a configured trusted proxy --
+	// but with RealIP mounted, the "peer" it inspects is already the forged
+	// header, so it returns it unchallenged. The same applies to
+	// IPBlacklistMiddleware and to anything a user writes against RemoteAddr.
+	//
+	// The framework has its own trusted-proxy-aware resolution. A second,
+	// naive implementation mounted above it does not add a fallback; it removes
+	// the guarantee.
 
 	// Add OpenTelemetry tracing middleware if enabled
 	if g.Logging != nil && g.Logging.OTel != nil && g.Logging.OTel.IsEnabled() {
