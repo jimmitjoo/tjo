@@ -104,6 +104,14 @@ func (g *Tjo) New(rootPath string, modules ...Module) error {
 		return fmt.Errorf("configuration error: %w", err)
 	}
 
+	// Identity has to be set before anything reads it. setupStructuredLogging
+	// stamps AppName and Version onto every log line and every health check,
+	// and it used to run while all three were still zero values.
+	g.Debug = g.Config.App.Debug
+	g.Version = version
+	g.RootPath = rootPath
+	g.AppName = g.Config.App.Name
+
 	// Initialize module registry
 	g.Modules = NewModuleRegistry()
 
@@ -117,8 +125,6 @@ func (g *Tjo) New(rootPath string, modules ...Module) error {
 	infoLog, errorLog := g.startLoggers()
 	g.Logging.Error = errorLog
 	g.Logging.Info = infoLog
-
-	g.setupStructuredLogging()
 
 	// connect to database
 	if g.Config.Database.IsEnabled() {
@@ -178,10 +184,11 @@ func (g *Tjo) New(rootPath string, modules ...Module) error {
 		}
 	}
 
-	g.Debug = g.Config.App.Debug
-	g.Version = version
-	g.RootPath = rootPath
-	g.AppName = g.Config.App.Name
+	// Structured logging registers health checks against the database and
+	// Redis handles, so it has to run after both are connected -- otherwise
+	// the nil guards inside it are always false and /health reports an empty
+	// check set forever.
+	g.setupStructuredLogging()
 
 	// Setup HTTP router
 	g.HTTP.Router = g.routes().(*chi.Mux)
@@ -443,11 +450,11 @@ func (g *Tjo) setupStructuredLogging() {
 
 	// Log startup message
 	g.Logging.Logger.Info("Structured logging initialized", map[string]interface{}{
-		"version":    g.Version,
-		"app_name":   g.AppName,
-		"debug":      g.Debug,
-		"log_level":  logLevel.String(),
-		"json_logs":  enableJSON,
+		"version":   g.Version,
+		"app_name":  g.AppName,
+		"debug":     g.Debug,
+		"log_level": logLevel.String(),
+		"json_logs": enableJSON,
 	})
 
 	// Initialize OpenTelemetry if enabled

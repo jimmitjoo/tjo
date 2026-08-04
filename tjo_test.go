@@ -77,9 +77,9 @@ func TestTjo_Init(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	g := &Tjo{}
-	
+
 	paths := initPaths{
-		rootPath: tempDir,
+		rootPath:    tempDir,
 		folderNames: []string{"test1", "test2"},
 	}
 
@@ -106,7 +106,7 @@ func TestTjo_CreateDirIfNotExists(t *testing.T) {
 
 	g := Tjo{}
 	testDir := filepath.Join(tempDir, "newdir")
-	
+
 	// Test creating a new directory
 	err = g.CreateDirIfNotExists(testDir)
 	if err != nil {
@@ -134,7 +134,7 @@ func TestTjo_CreateFileIfNotExists(t *testing.T) {
 
 	g := Tjo{}
 	testFile := filepath.Join(tempDir, "test.txt")
-	
+
 	// Test creating a new file
 	err = g.CreateFileIfNotExists(testFile)
 	if err != nil {
@@ -194,7 +194,7 @@ func TestServer_Configuration(t *testing.T) {
 
 func TestBuildDSN(t *testing.T) {
 	g := &Tjo{}
-	
+
 	tests := []struct {
 		name     string
 		expected string
@@ -304,5 +304,58 @@ func TestCheckDotEnv(t *testing.T) {
 	err = g.checkDotEnv(tempDir)
 	if err != nil {
 		t.Errorf("Expected no error for existing .env, got %v", err)
+	}
+}
+
+// TestNewRegistersHealthChecks guards the initialisation order in New().
+// setupStructuredLogging used to run before the database connected and before
+// AppName/Version were assigned, so its nil guards were always false: /health
+// reported an empty check set no matter what, and every log line carried an
+// empty service name. See issue #9.
+func TestNewRegistersHealthChecks(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tjo_health_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	for _, dir := range []string{"handlers", "migrations", "views", "email", "data", "public", "tmp", "logs", "middleware"} {
+		if err := os.MkdirAll(filepath.Join(tempDir, dir), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	envContent := `
+APP_NAME=HealthApp
+DEBUG=false
+PORT=4000
+SESSION_TYPE=cookie
+COOKIE_NAME=tjo
+COOKIE_LIFETIME=1440
+DATABASE_TYPE=sqlite3
+DATABASE_NAME=health_test.db
+CACHE=
+`
+	if err := os.WriteFile(filepath.Join(tempDir, ".env"), []byte(envContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	g := &Tjo{}
+	if err := g.New(tempDir); err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if g.Data.DB.Pool == nil {
+		t.Fatal("test setup is wrong: no database pool, so this proves nothing")
+	}
+
+	status := g.Logging.Health.CheckHealth()
+
+	if _, ok := status.Checks["database"]; !ok {
+		t.Errorf("no 'database' health check registered; got checks: %v", status.Checks)
+	}
+
+	if status.Version == "" {
+		t.Error("health status carries no version")
 	}
 }
