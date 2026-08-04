@@ -452,16 +452,13 @@ func TestHubUnregisterWithRoomsDoesNotDeadlock(t *testing.T) {
 
 	hub.unregister <- client
 
-	// If the hub is wedged this never returns, so bound the wait.
-	done := make(chan int, 1)
-	go func() { done <- hub.GetConnectedClients() }()
-
-	select {
-	case n := <-done:
-		assert.Equal(t, 0, n, "client should be gone")
-	case <-time.After(2 * time.Second):
-		t.Fatal("hub deadlocked: GetConnectedClients blocked after unregistering a client with rooms")
-	}
+	// The send returns as soon as Run receives it, before unregisterClient has
+	// finished, so poll rather than assuming. A wedged hub blocks in
+	// GetConnectedClients and this times out instead.
+	assert.Eventually(t, func() bool {
+		return hub.GetConnectedClients() == 0
+	}, 2*time.Second, 10*time.Millisecond,
+		"client with rooms was never unregistered; a deadlocked hub blocks GetConnectedClients here")
 
 	assert.Empty(t, hub.GetRooms(), "empty rooms should have been cleaned up")
 }
@@ -480,7 +477,14 @@ func TestHubShutdownDoesNotPanicProducers(t *testing.T) {
 	hub.JoinRoom(client, "room1")
 
 	cancel()
-	time.Sleep(100 * time.Millisecond) // let shutdown run
+
+	// Wait for shutdown to actually run rather than sleeping at it: if it has
+	// not happened yet, the assertions below pass vacuously.
+	select {
+	case <-hub.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("hub never shut down after context cancellation")
+	}
 
 	assert.NotPanics(t, func() { hub.BroadcastToAll([]byte("x")) })
 	assert.NotPanics(t, func() { hub.BroadcastToRoom("room1", []byte("x"), nil) })
