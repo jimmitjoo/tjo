@@ -195,9 +195,6 @@ func (g *Tjo) New(rootPath string, modules ...Module) error {
 	// check set forever.
 	g.setupStructuredLogging()
 
-	// Setup HTTP router
-	g.HTTP.Router = g.routes().(*chi.Mux)
-
 	g.Server = Server{
 		ServerName: g.Config.Server.ServerName,
 		Port:       strconv.Itoa(g.Config.Server.Port),
@@ -226,6 +223,11 @@ func (g *Tjo) New(rootPath string, modules ...Module) error {
 		return fmt.Errorf("session setup: %w", err)
 	}
 	g.EncryptionKey = g.Config.App.EncryptionKey
+
+	// Setup HTTP router. Must come after InitSession: routes() gates
+	// SessionLoad and NoSurf behind a non-nil g.HTTP.Session, so building the
+	// router first silently ships every app without session or CSRF middleware.
+	g.HTTP.Router = g.routes().(*chi.Mux)
 
 	// Setup Jet template engine
 	var views *jet.Set

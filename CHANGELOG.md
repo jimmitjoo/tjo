@@ -21,6 +21,15 @@ below lived in exactly that blind spot.
 
 ### Security
 
+- **Session and CSRF middleware were never installed** (GHSA-9m5v-pvgv-cv8j,
+  critical). `New()` built the HTTP router before assigning the session
+  manager, and `routes()` installs `SessionLoad` and `NoSurf` only when a
+  session manager is already present. The condition was therefore never true:
+  no application built with this framework had CSRF protection or session
+  loading on its router. Measured on a stock application, the router set zero
+  cookies before the fix and issues a `csrf_token` after it. The CSRF fixes
+  further down this list were corrections to code that was never reached.
+
 - **Renderer had no output escaping** (GHSA-2w6x-c7q3-qcgr, critical).
   `render.GoPage` used `text/template` instead of `html/template`, so every
   interpolated value in a `.page.tmpl` was written to the response verbatim.

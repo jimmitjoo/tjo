@@ -1,6 +1,8 @@
 package tjo
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -490,5 +492,65 @@ func TestEmailModuleReplacesBuiltInMailer(t *testing.T) {
 	}
 	if withModule.Background.Mail.Jobs != nil {
 		t.Error("the core built its own mailer even though the email module was registered")
+	}
+}
+
+// TestRouterHasSessionAndCSRFMiddleware guards an initialisation-order bug
+// that disabled two security middlewares in every application.
+//
+// routes() gates SessionLoad and NoSurf behind a non-nil g.HTTP.Session:
+//
+//	if g.HTTP != nil && g.HTTP.Session != nil {
+//		mux.Use(g.SessionLoad)
+//		mux.Use(g.NoSurf)
+//	}
+//
+// New() built the router before assigning g.HTTP.Session, so the condition was
+// always false and neither middleware was ever installed. Nothing failed and
+// nothing was logged; requests simply carried no session and no CSRF token.
+//
+// The observable difference is a cookie: with the middleware wired, nosurf
+// sets csrf_token on the response. Without it, the router sets nothing.
+func TestRouterHasSessionAndCSRFMiddleware(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tjo_middleware_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	for _, dir := range []string{"handlers", "migrations", "views", "email", "data", "public", "tmp", "logs", "middleware"} {
+		if err := os.MkdirAll(filepath.Join(tempDir, dir), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	envContent := "\nAPP_NAME=MiddlewareApp\nDEBUG=false\nPORT=4000\nSESSION_TYPE=cookie\nCOOKIE_NAME=tjo\nCOOKIE_LIFETIME=1440\nDATABASE_TYPE=\nCACHE=\n"
+	if err := os.WriteFile(filepath.Join(tempDir, ".env"), []byte(envContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	g := &Tjo{}
+	if err := g.New(tempDir); err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	g.HTTP.Router.Get("/probe", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest("GET", "/probe", nil)
+	w := httptest.NewRecorder()
+	g.HTTP.Router.ServeHTTP(w, req)
+
+	var sawCSRF bool
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "csrf_token" {
+			sawCSRF = true
+		}
+	}
+
+	if !sawCSRF {
+		t.Error("the router issued no CSRF cookie: SessionLoad and NoSurf were not installed, " +
+			"so every application runs without session loading or CSRF protection")
 	}
 }
