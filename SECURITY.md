@@ -98,10 +98,17 @@ All five modules in this repository, each versioned separately:
   it.** Not "a test was added" — the test is run against the unfixed code first
   and observed to fail. The v0.8.0 rate-limit bypass, for example, was pinned by
   a test showing 10 of 10 requests passing a limit of 2.
-- **Advisories are filed to `golang.org/x/vulndb` as well as GHSA.**
-  `govulncheck` reads `vuln.go.dev`, so a GHSA-only advisory is invisible to the
-  exact tool Go users run. This is routinely missed and it is part of our release
-  process.
+- **Every advisory gets a CVE requested through GitHub at publication.** This is
+  the step that makes an advisory visible, and it is easy to get wrong: a
+  repository advisory published to this repo's Security tab does **not** enter
+  GitHub's global advisory database on its own, so it never reaches OSV and
+  never reaches `vuln.go.dev`. `govulncheck` reads `vuln.go.dev`. Without a CVE
+  request the chain never starts, and the advisory is invisible to the exact
+  tool this project tells you to run.
+
+  We learned this the slow way: all four advisories below were published without
+  one, and `govulncheck` reported this module clean at every affected version
+  until it was noticed and corrected. See #67.
 - Published advisories are explained in the changelog with what was measured,
   not just what was changed.
 

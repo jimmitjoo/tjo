@@ -45,10 +45,14 @@ SUBMODULES := email otel sms websocket
 
 ## release: creates a new release (usage: make release v=0.7.0)
 ##
-## If this release fixes a vulnerability, file the advisory to BOTH GitHub
-## Security Advisories and golang.org/x/vulndb. govulncheck reads vuln.go.dev,
-## so a GHSA-only advisory is invisible to the exact tool Go users run to find
-## it. This step is routinely missed; see SECURITY.md.
+## If this release fixes a vulnerability, publish the advisory AND request a CVE
+## for it (gh api -X POST repos/jimmitjoo/tjo/security-advisories/GHSA-xxxx/cve).
+##
+## The CVE request is the load-bearing half. A repository advisory does not enter
+## GitHub's global database on its own, so it never reaches OSV and never reaches
+## vuln.go.dev -- which is what govulncheck reads. Publishing without it produces
+## an advisory that the exact tool we tell users to run cannot see. All four of
+## our advisories shipped that way before anyone checked; see #67.
 ##
 ## This repository is a Go workspace: email, otel, sms and websocket are
 ## separate modules with their own tags. Tagging only the root leaves the root
