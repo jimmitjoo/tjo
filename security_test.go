@@ -1,6 +1,7 @@
 package tjo
 
 import (
+	"encoding/base64"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -12,26 +13,26 @@ import (
 // TestRandomStringCryptographicallySecure verifies that RandomString uses secure randomness
 func TestRandomStringCryptographicallySecure(t *testing.T) {
 	g := Tjo{}
-	
+
 	// Generate multiple strings and ensure they're unique
 	generated := make(map[string]bool)
 	iterations := 100
 	length := 32
-	
+
 	for i := 0; i < iterations; i++ {
 		str := g.RandomString(length)
-		
+
 		// Check length
 		if len(str) != length {
 			t.Errorf("Expected length %d, got %d", length, len(str))
 		}
-		
+
 		// Check for duplicates (should be extremely unlikely with secure random)
 		if generated[str] {
 			t.Errorf("Duplicate string generated: %s", str)
 		}
 		generated[str] = true
-		
+
 		// Verify characters are from allowed set
 		for _, char := range str {
 			if !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_+", char) {
@@ -39,7 +40,7 @@ func TestRandomStringCryptographicallySecure(t *testing.T) {
 			}
 		}
 	}
-	
+
 	// Statistical test: ensure reasonable distribution (basic check)
 	if len(generated) < iterations {
 		t.Errorf("Not enough unique strings generated: %d/%d", len(generated), iterations)
@@ -48,7 +49,7 @@ func TestRandomStringCryptographicallySecure(t *testing.T) {
 
 // TestDownloadFilePathTraversal tests protection against path traversal attacks
 func TestDownloadFilePathTraversal(t *testing.T) {
-	
+
 	tests := []struct {
 		name      string
 		path      string
@@ -92,7 +93,7 @@ func TestDownloadFilePathTraversal(t *testing.T) {
 			shouldErr: false, // Hidden files should be allowed
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Mock response writer and request would be needed for full test
@@ -113,20 +114,20 @@ func validateDownloadPath(pathToFile, filename string) error {
 	if strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
 		return errors.New("invalid filename")
 	}
-	
+
 	cleanPath := filepath.Clean(pathToFile)
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
 		return err
 	}
-	
+
 	fp := filepath.Join(absPath, filename)
 	fileToServe := filepath.Clean(fp)
-	
+
 	if !strings.HasPrefix(fileToServe, absPath) {
 		return errors.New("invalid file path")
 	}
-	
+
 	return nil
 }
 
@@ -157,11 +158,11 @@ func TestEncryptionErrorHandling(t *testing.T) {
 			shouldErr: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			enc := Encryption{Key: tt.key}
-			
+
 			// Test encryption
 			encrypted, err := enc.Encrypt(tt.plaintext)
 			if tt.shouldErr && err == nil {
@@ -170,7 +171,7 @@ func TestEncryptionErrorHandling(t *testing.T) {
 			if !tt.shouldErr && err != nil {
 				t.Errorf("Unexpected encryption error: %v", err)
 			}
-			
+
 			// If encryption succeeded, test decryption
 			if err == nil {
 				decrypted, err := enc.Decrypt(encrypted)
@@ -188,7 +189,7 @@ func TestEncryptionErrorHandling(t *testing.T) {
 // TestDecryptInvalidInput verifies that Decrypt properly handles invalid input
 func TestDecryptInvalidInput(t *testing.T) {
 	enc := Encryption{Key: []byte("12345678901234567890123456789012")}
-	
+
 	tests := []struct {
 		name      string
 		input     string
@@ -210,7 +211,7 @@ func TestDecryptInvalidInput(t *testing.T) {
 			shouldErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := enc.Decrypt(tt.input)
@@ -227,28 +228,28 @@ func TestDecryptInvalidInput(t *testing.T) {
 // TestValidationMaxLength verifies input length validation
 func TestValidationMaxLength(t *testing.T) {
 	v := &Validation{Errors: make(map[string]string)}
-	
+
 	// Test email max length
 	longEmail := strings.Repeat("a", 250) + "@test.com"
 	v.IsEmail("email", longEmail)
 	if _, exists := v.Errors["email"]; !exists {
 		t.Error("Expected error for email exceeding maximum length")
 	}
-	
+
 	// Test normal email
 	v.Errors = make(map[string]string)
 	v.IsEmail("email", "normal@test.com")
 	if _, exists := v.Errors["email"]; exists {
 		t.Error("Unexpected error for normal email")
 	}
-	
+
 	// Test MaxLength function
 	v.Errors = make(map[string]string)
 	v.MaxLength("field", "short", 10)
 	if _, exists := v.Errors["field"]; exists {
 		t.Error("Unexpected error for string within max length")
 	}
-	
+
 	v.MaxLength("field", "this is a very long string", 10)
 	if _, exists := v.Errors["field"]; !exists {
 		t.Error("Expected error for string exceeding max length")
@@ -322,7 +323,7 @@ func TestCSRFProtection(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// The NoSurf middleware should be configured with secure settings
 	// This is a basic test to ensure the function doesn't panic
 	handler := g.NoSurf(nil)
@@ -334,11 +335,11 @@ func TestCSRFProtection(t *testing.T) {
 // TestFilePermissions verifies secure file permissions
 func TestFilePermissions(t *testing.T) {
 	g := Tjo{}
-	
+
 	// Test CreateDirIfNotExists uses secure permissions
 	// The function uses 0755 which is appropriate for directories
 	// This test ensures the constant hasn't been changed to something insecure
-	
+
 	// We can't easily test the actual permissions without creating files,
 	// but we can verify the function doesn't panic
 	err := g.CreateDirIfNotExists("/tmp/test_" + g.RandomString(10))
@@ -346,6 +347,35 @@ func TestFilePermissions(t *testing.T) {
 		// Error is expected if we don't have permissions, but shouldn't be other types
 		if !strings.Contains(err.Error(), "no such file") {
 			t.Errorf("Unexpected error type: %v", err)
+		}
+	}
+}
+
+// TestDecryptRejectsTamperedCiphertext is the property AES-CFB did not have:
+// a modified ciphertext must fail loudly instead of decrypting to attacker-
+// influenced plaintext. See GHSA-44g2-5v2v-xh66.
+func TestDecryptRejectsTamperedCiphertext(t *testing.T) {
+	enc := Encryption{Key: []byte("12345678901234567890123456789012")}
+
+	encrypted, err := enc.Encrypt("bob@corp.com")
+	if err != nil {
+		t.Fatalf("Encrypt failed: %v", err)
+	}
+
+	raw, err := base64.URLEncoding.DecodeString(encrypted)
+	if err != nil {
+		t.Fatalf("decoding own ciphertext failed: %v", err)
+	}
+
+	// Flip a bit in every byte position of the sealed payload in turn; none of
+	// them may produce a plaintext.
+	for i := range raw {
+		tampered := make([]byte, len(raw))
+		copy(tampered, raw)
+		tampered[i] ^= 0x01
+
+		if _, err := enc.Decrypt(base64.URLEncoding.EncodeToString(tampered)); err == nil {
+			t.Fatalf("Decrypt accepted a ciphertext tampered at byte %d", i)
 		}
 	}
 }

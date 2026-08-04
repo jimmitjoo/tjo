@@ -94,30 +94,40 @@ func NewEncryption(key []byte) (*Encryption, error) {
 	return &Encryption{Key: key}, nil
 }
 
+// Encrypt returns an authenticated ciphertext (AES-GCM) as a URL-safe base64
+// string. The nonce is prepended to the sealed output.
+//
+// GCM rather than an unauthenticated mode: without a MAC an attacker can flip
+// bits in the ciphertext and have them land as controlled changes in the
+// plaintext, and Decrypt has no way to notice. Anything treating a decrypted
+// value as trustworthy is then forgeable.
 func (e Encryption) Encrypt(data string) (string, error) {
 	if err := ValidateEncryptionKey(e.Key); err != nil {
 		return "", err
 	}
-
-	plainText := []byte(data)
 
 	block, err := aes.NewCipher(e.Key)
 	if err != nil {
 		return "", err
 	}
 
-	cipherText := make([]byte, aes.BlockSize+len(plainText))
-	iv := cipherText[:aes.BlockSize]
-	if _, err := rand.Read(iv); err != nil {
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
 		return "", err
 	}
 
-	stream := cipher.NewCFBEncrypter(block, iv)
-	stream.XORKeyStream(cipherText[aes.BlockSize:], plainText)
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
 
-	return base64.URLEncoding.EncodeToString(cipherText), nil
+	sealed := gcm.Seal(nonce, nonce, []byte(data), nil)
+
+	return base64.URLEncoding.EncodeToString(sealed), nil
 }
 
+// Decrypt reverses Encrypt. It returns an error if the ciphertext was modified
+// in any way, rather than silently returning altered plaintext.
 func (e Encryption) Decrypt(cryptoText string) (string, error) {
 	if err := ValidateEncryptionKey(e.Key); err != nil {
 		return "", err
@@ -133,16 +143,21 @@ func (e Encryption) Decrypt(cryptoText string) (string, error) {
 		return "", err
 	}
 
-	if len(cipherText) < aes.BlockSize {
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	if len(cipherText) < gcm.NonceSize() {
 		return "", errors.New("ciphertext too short")
 	}
 
-	iv := cipherText[:aes.BlockSize]
-	cipherText = cipherText[aes.BlockSize:]
+	nonce, sealed := cipherText[:gcm.NonceSize()], cipherText[gcm.NonceSize():]
 
-	stream := cipher.NewCFBDecrypter(block, iv)
+	plainText, err := gcm.Open(nil, nonce, sealed, nil)
+	if err != nil {
+		return "", errors.New("ciphertext failed authentication")
+	}
 
-	stream.XORKeyStream(cipherText, cipherText)
-
-	return string(cipherText), nil
+	return string(plainText), nil
 }
