@@ -4,6 +4,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -128,4 +129,63 @@ func TestLoginTemplatesRotateTheSession(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGeneratedGoModMatchesFramework guards the scaffolded go.mod against the
+// drift that shipped two releases. The pin sat at v0.5.4 -- a tag published
+// before the gemquick to tjo rename, so its go.mod declares a different module
+// path and every generated project failed `go mod tidy` with:
+//
+//	module declares its path as: github.com/jimmitjoo/gemquick
+//	but was required as: github.com/jimmitjoo/tjo
+//
+// It stayed there because `make release` used GNU sed syntax that fails on
+// macOS, so the rewrite silently never ran. The real guard is the CI job that
+// scaffolds and builds (#29); this catches the cheap half without a network.
+func TestGeneratedGoModMatchesFramework(t *testing.T) {
+	data, err := templateFS.ReadFile("templates/go.mod.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := string(data)
+
+	t.Run("go directive matches the framework", func(t *testing.T) {
+		root, err := os.ReadFile("../../go.mod")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		want := goDirective(string(root))
+		got := goDirective(tmpl)
+
+		if want == "" {
+			t.Fatal("could not read the framework's go directive")
+		}
+		if got != want {
+			t.Errorf("template targets go %s, framework requires go %s", got, want)
+		}
+	})
+
+	t.Run("does not pin a version that cannot resolve", func(t *testing.T) {
+		// v0.5.4 and earlier declare module github.com/jimmitjoo/gemquick.
+		// v0.6.0 and v0.6.1 require their submodules at 000000000000
+		// placeholders that consumers cannot resolve. See #25 and #26.
+		unresolvable := []string{"v0.5.4", "v0.6.0", "v0.6.1"}
+
+		for _, bad := range unresolvable {
+			if strings.Contains(tmpl, "github.com/jimmitjoo/tjo "+bad) {
+				t.Errorf("template pins %s, which no consumer can resolve", bad)
+			}
+		}
+	})
+}
+
+// goDirective extracts the version from a go.mod's `go` line.
+func goDirective(mod string) string {
+	for _, line := range strings.Split(mod, "\n") {
+		if strings.HasPrefix(line, "go ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "go "))
+		}
+	}
+	return ""
 }
