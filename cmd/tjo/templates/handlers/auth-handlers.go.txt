@@ -434,7 +434,7 @@ func (h *Handlers) ResetPasswordForm(w http.ResponseWriter, r *http.Request) {
 	vars := make(jet.VarMap)
 	vars.Set("signed_url", testUrl)
 
-	err := h.render(w, r, "reset-password", vars, nil)
+	err := h.App.HTTP.Render.Page(w, r, "reset-password", vars, nil)
 	if err != nil {
 		return
 	}
@@ -528,13 +528,6 @@ func (h *Handlers) isAuthenticated(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-}
-
-// render wraps the framework's page renderer so the auth handlers above read
-// the way handlers in this package normally do. Defined here rather than in
-// the skeleton because it is the auth scaffolding that needs it.
-func (h *Handlers) render(w http.ResponseWriter, r *http.Request, view string, variables, data interface{}) error {
-	return h.App.HTTP.Render.Page(w, r, view, variables, data)
 }
 
 // randomString returns a cryptographically random string of the given length.

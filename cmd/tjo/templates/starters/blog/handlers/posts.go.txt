@@ -19,7 +19,7 @@ func (h *Handlers) PostsIndex(w http.ResponseWriter, r *http.Request) {
 	vars := make(map[string]interface{})
 	vars["posts"] = posts
 
-	err = h.render(w, r, "posts/index", vars, nil)
+	err = h.App.HTTP.Render.Page(w, r, "posts/index", vars, nil)
 	if err != nil {
 		h.App.Logging.Error.Println(err)
 	}
@@ -43,7 +43,7 @@ func (h *Handlers) PostsShow(w http.ResponseWriter, r *http.Request) {
 	vars := make(map[string]interface{})
 	vars["post"] = post
 
-	err = h.render(w, r, "posts/show", vars, nil)
+	err = h.App.HTTP.Render.Page(w, r, "posts/show", vars, nil)
 	if err != nil {
 		h.App.Logging.Error.Println(err)
 	}
@@ -51,7 +51,7 @@ func (h *Handlers) PostsShow(w http.ResponseWriter, r *http.Request) {
 
 // PostsNew displays the new post form
 func (h *Handlers) PostsNew(w http.ResponseWriter, r *http.Request) {
-	err := h.render(w, r, "posts/new", nil, nil)
+	err := h.App.HTTP.Render.Page(w, r, "posts/new", nil, nil)
 	if err != nil {
 		h.App.Logging.Error.Println(err)
 	}
@@ -101,7 +101,7 @@ func (h *Handlers) PostsEdit(w http.ResponseWriter, r *http.Request) {
 	vars := make(map[string]interface{})
 	vars["post"] = post
 
-	err = h.render(w, r, "posts/edit", vars, nil)
+	err = h.App.HTTP.Render.Page(w, r, "posts/edit", vars, nil)
 	if err != nil {
 		h.App.Logging.Error.Println(err)
 	}

@@ -88,7 +88,9 @@ func (t *Team) GetUserTeams(userID int) ([]*Team, error) {
 		return []*Team{}, nil
 	}
 
-	teamIDs := make([]int, len(members))
+	// up.In takes ...interface{}, so the ids cannot be collected as []int and
+	// spread -- Go will not convert the slice element type for you.
+	teamIDs := make([]interface{}, len(members))
 	for i, m := range members {
 		teamIDs[i] = m.TeamID
 	}

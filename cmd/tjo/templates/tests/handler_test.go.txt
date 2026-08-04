@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/jimmitjoo/tjo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -103,7 +104,7 @@ func Test$HANDLERNAME$WithJSON(t *testing.T) {
 }
 
 // Helper functions for test setup
-func setupTestApp() *YourAppType {
+func setupTestApp() *tjo.Tjo {
 	// TODO: Setup your test application
 	// This might include:
 	// - Creating a test database
@@ -111,15 +112,16 @@ func setupTestApp() *YourAppType {
 	// - Initializing test dependencies
 	
 	// Example:
-	// app := &YourAppType{}
-	// app.InfoLog = log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
-	// app.ErrorLog = log.New(os.Stdout, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
+	// app := &tjo.Tjo{}
+	// if err := app.New(rootPath); err != nil {
+	//     t.Fatal(err)
+	// }
 	// return app
 	
 	return nil
 }
 
-func teardownTestApp(app *YourAppType) {
+func teardownTestApp(app *tjo.Tjo) {
 	// TODO: Cleanup test resources
 	// This might include:
 	// - Closing database connections

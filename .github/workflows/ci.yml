@@ -52,8 +52,13 @@ jobs:
   # whether that project compiles. Nothing did this until v0.7.0, and six
   # defects shipped through the gap -- see issues #25 through #28.
   scaffold:
-    name: scaffold and build
+    name: scaffold ${{ matrix.template }}
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        template: [default, blog, saas, api]
 
     steps:
       - uses: actions/checkout@v7
@@ -86,7 +91,7 @@ jobs:
 
       - name: Generate a project
         working-directory: ${{ runner.temp }}
-        run: ./tjo new demo -d sqlite
+        run: ./tjo new demo -t ${{ matrix.template }} -d sqlite
 
       - name: Build the generated project
         working-directory: ${{ runner.temp }}/demo
@@ -94,11 +99,18 @@ jobs:
           go build ./...
           go vet ./...
 
-      - name: Add authentication
+      # auth, a resource controller and a plain handler all land in package
+      # handlers alongside whatever the starter template put there. Generating
+      # them together is the combination that actually breaks -- a helper
+      # defined in one and called from another compiles alone and not together.
+      - name: Add authentication and generated code
         working-directory: ${{ runner.temp }}/demo
-        run: $RUNNER_TEMP/tjo make auth
+        run: |
+          $RUNNER_TEMP/tjo make auth
+          $RUNNER_TEMP/tjo make controller Widget
+          $RUNNER_TEMP/tjo make handler Thing
 
-      - name: Build it again with auth
+      - name: Build it again with everything generated
         working-directory: ${{ runner.temp }}/demo
         run: |
           go mod tidy
