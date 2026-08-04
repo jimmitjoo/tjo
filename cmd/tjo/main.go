@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/jimmitjoo/tjo/core"
@@ -30,12 +31,13 @@ func main() {
 
 	switch arg1 {
 	case "new":
-		if arg2 == "" {
-			exitGracefully(errors.New("new requires a project name"))
+		name := projectNameFrom(os.Args[2:])
+		if name == "" {
+			exitGracefully(errors.New("new requires a project name, e.g. tjo new myapp -d sqlite"))
 		}
 		template := parseTemplateFlag()
 		dbType := parseDBFlag()
-		err := doNew(arg2, template, dbType)
+		err := doNew(name, template, dbType)
 		if err != nil {
 			exitGracefully(err)
 		}
@@ -130,6 +132,37 @@ func exitGracefully(err error, msg ...string) {
 	}
 
 	exitCode(0)
+}
+
+// flagsTakingValue are the flags whose next argument is their value, so the
+// project name is not mistaken for one.
+var flagsTakingValue = map[string]bool{
+	"-t": true, "--template": true,
+	"-d": true, "--db": true,
+}
+
+// projectNameFrom picks the project name out of the arguments, stepping over
+// flags and the values they consume.
+//
+// The name used to be read positionally as os.Args[2], so `tjo new -d sqlite
+// myapp` -- flags before the name, which is how most people type it -- created
+// a directory literally called "-d" containing `module -d`, which is not a
+// valid module path and is awkward to delete.
+func projectNameFrom(args []string) string {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		if !strings.HasPrefix(arg, "-") {
+			return arg
+		}
+
+		// --flag=value carries its value inline; --flag takes the next one.
+		if !strings.Contains(arg, "=") && flagsTakingValue[arg] {
+			i++
+		}
+	}
+
+	return ""
 }
 
 func parseTemplateFlag() string {

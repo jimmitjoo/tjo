@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -119,4 +120,39 @@ func TestExitGracefully(t *testing.T) {
 func TestShowHelp(t *testing.T) {
 	// Just test that showHelp doesn't panic
 	showHelp()
+}
+
+// TestProjectNameFrom covers issue #31. The name was read positionally as
+// os.Args[2], so `tjo new -d sqlite myapp` created a directory called "-d"
+// containing `module -d` -- not a valid module path, and awkward to delete.
+func TestProjectNameFrom(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"name only", []string{"myapp"}, "myapp"},
+		{"name then flags", []string{"myapp", "-d", "sqlite"}, "myapp"},
+		{"flags then name", []string{"-d", "sqlite", "myapp"}, "myapp"},
+		{"long flags then name", []string{"--db", "sqlite", "myapp"}, "myapp"},
+		{"equals form then name", []string{"--db=sqlite", "myapp"}, "myapp"},
+		{"both flags before the name", []string{"-t", "blog", "-d", "sqlite", "myapp"}, "myapp"},
+		{"flags on both sides", []string{"-t", "blog", "myapp", "-d", "sqlite"}, "myapp"},
+		{"mixed equals and spaced", []string{"--template=blog", "-d", "sqlite", "myapp"}, "myapp"},
+		{"no name at all", []string{"-d", "sqlite"}, ""},
+		{"nothing", []string{}, ""},
+		{"a value must not be taken as the name", []string{"-d", "sqlite"}, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := projectNameFrom(tt.args)
+			if got != tt.want {
+				t.Errorf("projectNameFrom(%q) = %q, want %q", tt.args, got, tt.want)
+			}
+			if strings.HasPrefix(got, "-") {
+				t.Errorf("returned a flag as the project name: %q", got)
+			}
+		})
+	}
 }
