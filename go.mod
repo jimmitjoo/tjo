@@ -27,9 +27,9 @@ require (
 	github.com/gomodule/redigo v1.8.9
 	github.com/iancoleman/strcase v0.2.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/jimmitjoo/tjo/email v0.7.0
-	github.com/jimmitjoo/tjo/otel v0.7.0
-	github.com/jimmitjoo/tjo/sms v0.7.0
+	github.com/jimmitjoo/tjo/email v0.8.0
+	github.com/jimmitjoo/tjo/otel v0.8.0
+	github.com/jimmitjoo/tjo/sms v0.8.0
 	github.com/joho/godotenv v1.5.1
 	github.com/justinas/nosurf v1.2.0
 	github.com/mattn/go-sqlite3 v1.14.32
