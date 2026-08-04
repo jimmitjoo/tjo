@@ -46,8 +46,10 @@ func (m *Minio) getCredentials() MinioClientInterface {
 
 // Put uploads a file to the Minio bucket
 func (m *Minio) Put(fileName, folder string) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	return m.PutContext(context.Background(), fileName, folder)
+}
+
+func (m *Minio) PutContext(ctx context.Context, fileName, folder string) error {
 
 	objectName := path.Base(fileName)
 	client := m.getCredentials()
@@ -62,14 +64,15 @@ func (m *Minio) Put(fileName, folder string) error {
 }
 
 func (m *Minio) List(prefix string) ([]filesystems.Listing, error) {
+	return m.ListContext(context.Background(), prefix)
+}
+
+func (m *Minio) ListContext(ctx context.Context, prefix string) ([]filesystems.Listing, error) {
 	var listing []filesystems.Listing
 
 	if prefix == "/" {
 		prefix = ""
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	client := m.getCredentials()
 	objects := client.ListObjects(ctx, m.Bucket, minio.ListObjectsOptions{
@@ -99,10 +102,14 @@ func (m *Minio) List(prefix string) ([]filesystems.Listing, error) {
 	return listing, nil
 }
 
+// Delete removes the named items. Unlike the S3 implementation it has always
+// honoured its argument, so DeleteContext is a straight promotion rather than a
+// correction.
 func (m *Minio) Delete(items []string) bool {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	return m.DeleteContext(context.Background(), items) == nil
+}
 
+func (m *Minio) DeleteContext(ctx context.Context, items []string) error {
 	client := m.getCredentials()
 
 	for _, item := range items {
@@ -112,16 +119,18 @@ func (m *Minio) Delete(items []string) bool {
 		if err != nil {
 			// Log error without exposing bucket details
 			log.Printf("Failed to remove file: %s", item)
-			return false
+			return err
 		}
 	}
 
-	return true
+	return nil
 }
 
 func (m *Minio) Get(destination string, items ...string) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	return m.GetContext(context.Background(), destination, items...)
+}
+
+func (m *Minio) GetContext(ctx context.Context, destination string, items ...string) error {
 
 	client := m.getCredentials()
 	for _, item := range items {
@@ -136,3 +145,6 @@ func (m *Minio) Get(destination string, items ...string) error {
 
 	return nil
 }
+
+// Minio must satisfy ContextFS, not only FS.
+var _ filesystems.ContextFS = (*Minio)(nil)
