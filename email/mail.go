@@ -45,9 +45,15 @@ type Result struct {
 	Error   error
 }
 
+// ListenForMail sends queued messages until Jobs is closed.
+//
+// The loop ranges rather than doing a bare `msg := <-m.Jobs`. A closed channel
+// yields the zero Message immediately and forever, so the single-value receive
+// turned Module.Shutdown -- which closes Jobs precisely to stop this goroutine
+// -- into a hot spin that tried to send the empty message millions of times a
+// second instead of returning.
 func (m *Mail) ListenForMail() {
-	for {
-		msg := <-m.Jobs
+	for msg := range m.Jobs {
 		err := m.Send(msg)
 		if err != nil {
 			m.Results <- Result{Success: false, Error: err}

@@ -31,10 +31,13 @@ func TestMain(m *testing.M) {
 	// by `go test ./...` from the root (it is a separate module in go.work), so
 	// nobody noticed it started a container regardless. It also binds host port
 	// 1026 unconditionally and log.Fatals if anything else already has it.
+	//
+	// Skip only the container, not the whole package: the tests that do not
+	// need an SMTP server still run, and call requiresMailServer if they do.
 	flag.Parse()
 	if testing.Short() {
-		log.Println("skipping email tests in short mode: they require Docker")
-		os.Exit(0)
+		log.Println("skipping the Docker SMTP server in short mode")
+		os.Exit(m.Run())
 	}
 
 	// Check if Docker is available
@@ -80,4 +83,13 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
+}
+
+// requiresMailServer skips a test when the Docker-backed SMTP server was not
+// started, which is the case under -short.
+func requiresMailServer(t *testing.T) {
+	t.Helper()
+	if resource == nil {
+		t.Skip("requires the Docker SMTP server; skipped under -short")
+	}
 }

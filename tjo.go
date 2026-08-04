@@ -665,6 +665,13 @@ func (g *Tjo) Shutdown(ctx context.Context) error {
 		g.Background.Scheduler.Stop()
 	}
 
+	// Stop the mail listener started in New(). Nothing closed it before, so
+	// the goroutine outlived every shutdown.
+	if g.Background.Mail.Jobs != nil {
+		close(g.Background.Mail.Jobs)
+		g.Background.Mail.Jobs = nil
+	}
+
 	// Shutdown modules in reverse order
 	if g.Modules != nil {
 		if err := g.Modules.ShutdownAll(ctx); err != nil {

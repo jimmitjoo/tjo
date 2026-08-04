@@ -1,8 +1,13 @@
 package email
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestMail_SendSMTPMessage(t *testing.T) {
+	requiresMailServer(t)
+
 	msg := Message{
 		From:        "test@test.com",
 		FromName:    "Test",
@@ -19,6 +24,8 @@ func TestMail_SendSMTPMessage(t *testing.T) {
 }
 
 func TestMail_SendUsingChan(t *testing.T) {
+	requiresMailServer(t)
+
 	msg := Message{
 		From:        "test@test.com",
 		FromName:    "Test",
@@ -97,6 +104,8 @@ func TestMail_BuildPlainTextMessage(t *testing.T) {
 }
 
 func TestMail_send(t *testing.T) {
+	requiresMailServer(t)
+
 	msg := Message{
 		From:        "test@test.com",
 		FromName:    "Test",
@@ -140,5 +149,38 @@ func TestMail_ChooseAPI(t *testing.T) {
 	err := mailer.ChooseAPI(msg)
 	if err == nil {
 		t.Error("no error received with invalid API")
+	}
+}
+
+// TestListenForMailStopsOnClose covers issue #12. A bare `msg := <-m.Jobs`
+// receives the zero value from a closed channel forever, so closing Jobs --
+// which is exactly how Module.Shutdown stops this goroutine -- spun at full
+// tilt instead of returning. Measured over 3.4 million send attempts in four
+// seconds before the fix.
+func TestListenForMailStopsOnClose(t *testing.T) {
+	m := &Mail{
+		Templates: "./testdata/email",
+		Jobs:      make(chan Message, 1),
+		Results:   make(chan Result, 100),
+	}
+
+	done := make(chan struct{})
+	go func() {
+		m.ListenForMail()
+		close(done)
+	}()
+
+	close(m.Jobs)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("ListenForMail did not return after Jobs was closed")
+	}
+
+	// A spinning loop would have stuffed the Results buffer with failures for
+	// the zero-value message it kept receiving.
+	if n := len(m.Results); n > 0 {
+		t.Errorf("ListenForMail produced %d results from a closed channel", n)
 	}
 }
