@@ -72,11 +72,16 @@ func getDSN() string {
 	}
 
 	if dbType == "sqlite" || dbType == "sqlite3" {
-		// golang-migrate addresses SQLite as sqlite3://<path>. Without this the
-		// call fell through to the MySQL branch below and failed with "default
-		// addr for network ... unknown", so `tjo make auth` and `tjo migrate`
-		// were unusable on a database `tjo new -d sqlite` sets up for you.
-		return "sqlite3://" + cfg.Config.Database.DSN(cfg.RootPath)
+		// golang-migrate needs a scheme. Without one this fell through to the
+		// MySQL branch below and failed with "default addr for network ...
+		// unknown", so `tjo make auth` and `tjo migrate` were unusable on a
+		// database `tjo new -d sqlite` sets up for you.
+		//
+		// The scheme is sqlite:// rather than sqlite3://, because the migrate
+		// driver moved with the SQL driver: database/sqlite3 is mattn and drags
+		// cgo back in through the side door, database/sqlite is modernc. Both
+		// spellings are still accepted as a configured DB type.
+		return "sqlite://" + cfg.Config.Database.DSN(cfg.RootPath)
 	}
 
 	// Build MySQL DSN from config

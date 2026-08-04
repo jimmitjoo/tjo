@@ -1,4 +1,4 @@
-.PHONY: test test-simple cover coverage build_cli build clean release vuln
+.PHONY: test test-simple cover coverage build_cli build clean release release-push vuln
 
 # Get version from git tag (exact match), fallback to "dev"
 VERSION := $(shell git describe --tags --exact-match 2>/dev/null || echo "dev")
@@ -96,16 +96,46 @@ release:
 		echo "  $$m/v$(v)"; \
 	done
 	@echo ""
-	@echo "Release v$(v) created locally. Nothing is published until you push."
+	@echo "Release v$(v) created locally. Nothing is published until you run:"
 	@echo ""
-	@echo "  git push origin main"
-	@echo "  git push origin v$(v) $(foreach m,$(SUBMODULES),$(m)/v$(v))"
+	@echo "  make release-push v=$(v)"
+
+## release-push: pushes the tags and starts the build
+##
+## This exists because the previous instructions were a list of commands to run
+## by hand, and one of them silently did nothing. The release workflow declared
+## a tag trigger that never fired once: GitHub does not create workflow runs
+## when more than three tags are pushed at once, and a release pushes five. The
+## first v0.7.0 and v0.8.0 builds were both skipped that way.
+##
+## The trigger is gone and this dispatches the workflow explicitly, so there is
+## one code path instead of an automation that looks like it works. See #61.
+release-push:
+	@if [ -z "$(v)" ]; then echo "Usage: make release-push v=0.9.0"; exit 1; fi
+	@# The skeleton has to be tagged before the CLI is built, because `tjo new`
+	@# clones the skeleton tag matching its own version. v0.8.0 shipped with
+	@# that tag pointing at a skeleton still requiring v0.7.0, because tagging
+	@# was separated from checking. Verify, then tag.
+	@echo "Checking the skeleton requires v$(v)..."
+	@skel=$$(gh api repos/jimmitjoo/tjo-bare/contents/go.mod --jq '.content' | base64 -d | grep -oE 'jimmitjoo/tjo v[0-9.]+' | head -1); \
+		case "$$skel" in \
+			*"v$(v)") echo "  tjo-bare requires $$skel";; \
+			*) echo "  tjo-bare requires $$skel, not v$(v) -- update and push it first"; exit 1;; \
+		esac
+	@gh api repos/jimmitjoo/tjo-bare/git/refs -f ref=refs/tags/v$(v) \
+		-f sha=$$(gh api repos/jimmitjoo/tjo-bare/git/ref/heads/main --jq .object.sha) >/dev/null \
+		&& echo "  tagged tjo-bare v$(v)"
 	@echo ""
-	@echo "The skeleton needs a matching tag, or tjo new will refuse to clone:"
-	@echo "  gh api repos/jimmitjoo/tjo-bare/git/refs -f ref=refs/tags/v$(v) \\"
-	@echo "    -f sha=\$$(gh api repos/jimmitjoo/tjo-bare/git/ref/heads/main --jq .object.sha)"
+	@echo "Pushing..."
+	@git push origin main
+	@git push origin v$(v) $(foreach m,$(SUBMODULES),$(m)/v$(v))
 	@echo ""
-	@echo "Then, once the tags are live:"
+	@echo "Starting the release build..."
+	@gh workflow run release.yml -f version=v$(v)
+	@echo "  dispatched; watch with: gh run watch"
+	@echo ""
+	@echo "Once it finishes:"
+	@echo "  go mod tidy && git commit -am 'Tidy go.sum now the v$(v) tags are published'"
 	@echo "  make release-check"
 
 ## release-check: verifies every module the way a user sees it

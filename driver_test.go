@@ -1,6 +1,9 @@
 package tjo
 
 import (
+	"database/sql"
+	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -85,5 +88,48 @@ func TestDatabaseTypeConversion(t *testing.T) {
 				t.Error("Expected error with invalid DSN")
 			}
 		})
+	}
+}
+// TestOpenDBResolvesSQLiteUnderBothSpellings pins the driver-name normalisation
+// that the modernc swap depends on.
+//
+// mattn/go-sqlite3 registered as "sqlite3"; modernc.org/sqlite registers as
+// "sqlite". Configuration accepts both spellings and always has, so OpenDB has
+// to map them onto whichever name the linked driver actually registered. Get
+// this wrong and sql.Open returns "unknown driver" at runtime, on the database
+// `tjo new -d sqlite` sets up by default -- a failure no build catches.
+func TestOpenDBResolvesSQLiteUnderBothSpellings(t *testing.T) {
+	g := &Tjo{}
+
+	for _, dbType := range []string{"sqlite", "sqlite3"} {
+		t.Run(dbType, func(t *testing.T) {
+			db, err := g.OpenDB(dbType, filepath.Join(t.TempDir(), "probe.db"))
+			if err != nil {
+				t.Fatalf("OpenDB(%q): %v", dbType, err)
+			}
+			defer db.Close()
+
+			if _, err := db.Exec(`CREATE TABLE t (id INTEGER PRIMARY KEY)`); err != nil {
+				t.Fatalf("the handle does not work: %v", err)
+			}
+		})
+	}
+}
+
+// The binary must not need cgo. `tjo deploy` cross-compiles a Linux binary from
+// whatever the developer is running on, and the release matrix builds every
+// target from one runner; both are impossible with a cgo-linked SQLite driver.
+//
+// This asserts the pure-Go driver is the one registered, which is the property
+// those two depend on. A cgo driver would register "sqlite3" and not "sqlite".
+func TestSQLiteDriverIsPureGo(t *testing.T) {
+	for _, name := range sql.Drivers() {
+		if name == "sqlite3" {
+			t.Error(`a driver registered as "sqlite3" is linked, which means mattn/go-sqlite3 and cgo are back`)
+		}
+	}
+
+	if !slices.Contains(sql.Drivers(), "sqlite") {
+		t.Fatalf(`no "sqlite" driver registered; have %v`, sql.Drivers())
 	}
 }
