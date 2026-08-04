@@ -10,19 +10,35 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/jimmitjoo/tjo/internal/jsonstrict"
 )
+
+// ErrDuplicateJSONKey is returned when a request body names the same object
+// member twice. See internal/jsonstrict for why encoding/json does not.
+var ErrDuplicateJSONKey = jsonstrict.ErrDuplicateKey
 
 func (g *Tjo) ReadJson(w http.ResponseWriter, r *http.Request, data interface{}) error {
 	maxBytes := 1048576 // 1MB
 	r.Body = http.MaxBytesReader(w, r.Body, int64(maxBytes))
-	dec := json.NewDecoder(r.Body)
-	err := dec.Decode(&data)
+
+	// Read once so the body can be checked and decoded. MaxBytesReader still
+	// caps it, so this does not turn a 1MB limit into an unbounded read.
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return err
 	}
 
-	err = dec.Decode(&struct{}{})
-	if err != io.EOF {
+	if err := jsonstrict.RejectDuplicateKeys(body); err != nil {
+		return err
+	}
+
+	dec := json.NewDecoder(strings.NewReader(string(body)))
+	if err := dec.Decode(&data); err != nil {
+		return err
+	}
+
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
 		return errors.New("request body must only contain a single JSON object")
 	}
 
@@ -64,25 +80,25 @@ func (g *Tjo) DownloadFile(w http.ResponseWriter, r *http.Request, pathToFile, f
 	if strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
 		return errors.New("invalid filename")
 	}
-	
+
 	// Clean and validate the base path
 	cleanPath := filepath.Clean(pathToFile)
-	
+
 	// Ensure the path is absolute
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
 		return err
 	}
-	
+
 	// Join with filename and clean again
 	fp := filepath.Join(absPath, filename)
 	fileToServe := filepath.Clean(fp)
-	
+
 	// Verify the final path is still within the intended directory
 	if !strings.HasPrefix(fileToServe, absPath) {
 		return errors.New("invalid file path")
 	}
-	
+
 	// Check if file exists and is not a directory
 	fileInfo, err := os.Stat(fileToServe)
 	if err != nil {
