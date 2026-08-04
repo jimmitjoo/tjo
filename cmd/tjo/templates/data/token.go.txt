@@ -17,8 +17,14 @@ type Token struct {
 	UserID    int       `db:"user_id" json:"user_id"`
 	FirstName string    `db:"first_name" json:"first_name"`
 	Email     string    `db:"email" json:"email"`
-	PlainText string    `db:"token" json:"token"`
-	Hash      []byte    `db:"token_hash" json:"-"`
+	// PlainText is never persisted: db:"-" keeps it out of the tokens table.
+	// It is populated only by GenerateToken, so the caller can hand it to the
+	// user once. A Token loaded from the database has it empty, which is why
+	// serialising one cannot leak a usable bearer token.
+	PlainText string `db:"-" json:"token,omitempty"`
+
+	// Hash is what the database stores and what lookups match on.
+	Hash []byte `db:"token_hash" json:"-"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 	ExpiresAt time.Time `db:"expiry" json:"expires_at"`
@@ -33,7 +39,7 @@ func (t *Token) GetUserForToken(token string) (*User, error) {
 	var theToken Token
 
 	collection := upper.Collection(t.Table())
-	res := collection.Find(up.Cond{"token =": token})
+	res := collection.Find(up.Cond{"token_hash =": hashToken(token)})
 	err := res.One(&theToken)
 
 	if err != nil {
@@ -85,13 +91,21 @@ func (t *Token) Find(id int) (*Token, error) {
 	return &token, nil
 }
 
+// hashToken returns the value stored for a bearer token. Tokens are looked up
+// by hash so that read access to the database -- a backup, a dump, a logged
+// slow query -- does not hand over usable credentials.
+func hashToken(token string) []byte {
+	sum := sha256.Sum256([]byte(token))
+	return sum[:]
+}
+
 // get token by token
 func (t *Token) GetByToken(token string) (*Token, error) {
 	collection := upper.Collection(t.Table())
 
 	var theToken Token
 
-	res := collection.Find(up.Cond{"token =": token})
+	res := collection.Find(up.Cond{"token_hash =": hashToken(token)})
 	err := res.One(&theToken)
 
 	if err != nil {
@@ -114,7 +128,7 @@ func (t *Token) Delete(id int) error {
 func (t *Token) DeleteByToken(token string) error {
 	collection := upper.Collection(t.Table())
 
-	err := collection.Find(up.Cond{"token =": token}).Delete()
+	err := collection.Find(up.Cond{"token_hash =": hashToken(token)}).Delete()
 
 	return err
 }

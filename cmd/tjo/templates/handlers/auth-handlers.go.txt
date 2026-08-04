@@ -262,6 +262,15 @@ func (h *Handlers) ActivateUserAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The signature alone only proves the link was issued by us, not that it
+	// is still current. Without this an activation URL leaked from an old
+	// mailbox stays valid forever.
+	if signer.Expired(testUrl, 60*24) {
+		h.App.ErrorLog.Println("activation link has expired")
+		h.App.ErrorUnauthorized(w, r)
+		return
+	}
+
 	email := r.URL.Query().Get("email")
 
 	user, err := h.Models.Users.ByEmail(email)

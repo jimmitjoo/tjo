@@ -12,7 +12,7 @@ import (
 type CSRFConfig struct {
 	// Token length in bytes
 	TokenLength int
-	
+
 	// Cookie settings
 	CookieName     string
 	CookiePath     string
@@ -21,22 +21,22 @@ type CSRFConfig struct {
 	CookieHttpOnly bool
 	CookieSameSite http.SameSite
 	CookieMaxAge   int
-	
+
 	// Request header name for CSRF token
 	RequestHeader string
-	
+
 	// Form field name for CSRF token
 	FormField string
-	
+
 	// Paths to exempt from CSRF protection
 	ExemptPaths []string
-	
+
 	// Path patterns to exempt (supports wildcards)
 	ExemptGlobs []string
-	
+
 	// Methods to exempt from CSRF protection
 	ExemptMethods []string
-	
+
 	// Custom failure handler
 	FailureHandler http.Handler
 }
@@ -71,21 +71,28 @@ func DevelopmentCSRFConfig() CSRFConfig {
 func CSRFMiddleware(config CSRFConfig, logger interface{}) func(next http.Handler) http.Handler {
 	// Create the nosurf handler with our configuration
 	return func(next http.Handler) http.Handler {
-		csrfHandler := nosurf.New(next)
-		
-		// Configure the CSRF handler
+		// nosurf installs the token into the context of a *new* request value
+		// inside its own ServeHTTP, so nosurf.Token only returns anything from
+		// a handler nosurf wraps. Reading it from a wrapper around nosurf
+		// always yielded "", which left AJAX and SPA clients with no way to
+		// obtain a token at all.
+		csrfHandler := nosurf.New(withCSRFTokenHeader(next))
+
 		configureCSRFHandler(csrfHandler, config)
-		
-		// Wrap with additional security checks
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Add custom CSRF token to response headers for AJAX requests
-			if token := nosurf.Token(r); token != "" {
-				w.Header().Set("X-CSRF-Token", token)
-			}
-			
-			csrfHandler.ServeHTTP(w, r)
-		})
+
+		return csrfHandler
 	}
+}
+
+// withCSRFTokenHeader publishes the request's CSRF token as a response header
+// so AJAX clients can read it. It must be wrapped BY nosurf, not around it.
+func withCSRFTokenHeader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if token := nosurf.Token(r); token != "" {
+			w.Header().Set("X-CSRF-Token", token)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // configureCSRFHandler applies configuration to nosurf handler
@@ -119,7 +126,7 @@ func configureCSRFHandler(handler *nosurf.CSRFHandler, config CSRFConfig) {
 		handler.SetFailureHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Log CSRF failure attempt
 			logCSRFFailure(r)
-			
+
 			// Return appropriate response based on request type
 			if isAJAXRequest(r) {
 				w.Header().Set("Content-Type", "application/json")
@@ -202,21 +209,21 @@ func matchGlob(pattern, path string) bool {
 	if pattern == path {
 		return true
 	}
-	
+
 	// Only support trailing wildcards for security
 	if strings.HasSuffix(pattern, "*") {
 		prefix := strings.TrimSuffix(pattern, "*")
-		
+
 		// Validate that prefix is not empty and doesn't contain suspicious patterns
 		if prefix == "" {
 			return false // Don't allow just "*"
 		}
-		
+
 		// Prevent path traversal attempts
 		if strings.Contains(prefix, "..") || strings.Contains(path, "..") {
 			return false
 		}
-		
+
 		// For directory-style matching, ensure we don't get false positives
 		// "/api/*" should match "/api/users" but not "/apikey"
 		if !strings.HasSuffix(prefix, "/") {
@@ -225,10 +232,10 @@ func matchGlob(pattern, path string) bool {
 				return false
 			}
 		}
-		
+
 		return strings.HasPrefix(path, prefix)
 	}
-	
+
 	// No wildcard matching for other patterns for security
 	return false
 }
@@ -271,13 +278,14 @@ func (h *CSRFTokenHelper) SetTokenCookie(w http.ResponseWriter, token string) {
 // Enhanced CSRF protection with additional security measures
 func EnhancedCSRFMiddleware(config CSRFConfig) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		// Create base CSRF handler
-		csrfHandler := nosurf.New(next)
+		// Create base CSRF handler. See CSRFMiddleware for why the token
+		// header has to be set from inside nosurf rather than around it.
+		csrfHandler := nosurf.New(withCSRFTokenHeader(next))
 		configureCSRFHandler(csrfHandler, config)
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Additional security checks
-			
+
 			// 1. Check referrer header for additional protection
 			if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" || r.Method == "DELETE" {
 				if !isValidReferrer(r) {
@@ -294,11 +302,7 @@ func EnhancedCSRFMiddleware(config CSRFConfig) func(next http.Handler) http.Hand
 				return
 			}
 
-			// Add CSRF token to response headers
-			if token := nosurf.Token(r); token != "" {
-				w.Header().Set("X-CSRF-Token", token)
-				w.Header().Set("X-Frame-Options", "SAMEORIGIN") // Additional protection
-			}
+			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 
 			csrfHandler.ServeHTTP(w, r)
 		})
@@ -339,7 +343,7 @@ func isValidReferrer(r *http.Request) bool {
 // isSuspiciousRequest detects potentially malicious patterns
 func isSuspiciousRequest(r *http.Request) bool {
 	userAgent := strings.ToLower(r.UserAgent())
-	
+
 	// Check for suspicious user agents
 	suspiciousAgents := []string{"bot", "crawler", "spider", "scraper"}
 	for _, agent := range suspiciousAgents {
@@ -348,11 +352,11 @@ func isSuspiciousRequest(r *http.Request) bool {
 		}
 	}
 
-	// Check for suspicious headers
-	if r.Header.Get("X-Forwarded-For") != "" && r.Header.Get("X-Real-IP") != "" {
-		// Multiple IP forwarding headers might indicate proxy manipulation
-		return true
-	}
+	// Deliberately no check on X-Forwarded-For plus X-Real-IP. Rejecting
+	// requests that carry both used to 403 every POST behind the default nginx
+	// reverse-proxy config, which sets exactly those two headers. The presence
+	// of both carries no signal; if proxy trust matters, validate the peer
+	// against a configured list (see getClientIPWithTrustedProxies in utils.go).
 
 	return false
 }
