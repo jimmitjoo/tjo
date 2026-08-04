@@ -5,6 +5,107 @@ All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is 0, breaking changes may land in a minor release.
 
+## [0.10.0] - 2026-08-05
+
+Authentication, as a package you can import without importing the framework.
+
+The reason to build this is architectural rather than featural. Val Town's
+account of leaving Clerk gives three reasons and all of them are structural: a
+5 req/s account-wide read limit, a vendor that wants to own the users table so
+apps that join on users end up with two of them, and session refresh that calls
+the vendor's servers — so **the vendor's outage takes the whole site down, not
+just login**. Auth that runs in your process against your database has none of
+those failure modes, and that is something a Go framework can say without
+qualification.
+
+### Added — `auth`
+
+Storage stays yours throughout. The package provides verbs and declares
+interfaces; it never owns a table. That is what makes it adoptable without
+adopting Tjo.
+
+- **Passwords** — bcrypt with cost upgrade on login, a rune-counted length
+  policy following NIST SP 800-63B rather than composition rules, and a
+  timing-equalised failure path.
+- **Login** — `Authenticate` does the lookup and the comparison
+  unconditionally, in that order.
+- **Password reset** — single-use, database-persisted tokens bound to a user,
+  separated by purpose, with `SQLResetStore` for PostgreSQL, MySQL and SQLite.
+- **Organizations** — memberships, roles, permissions, invitations, and tenant
+  scoping.
+- **Passkey records** — stored in Valsorda's opaque interoperable format.
+- **API tokens** — landed in v0.9.0, unchanged.
+
+### The passkey format is a bet with a date on it
+
+Filippo Valsorda opened [golang/go#80663, `proposal: crypto/passkey`](https://github.com/golang/go/issues/80663)
+on 2026-07-31, targeting **Go 1.28**, alongside a proposal for an opaque record
+format shaped like a PHC password hash:
+
+```
+$webauthn$v=1$transports=hybrid+internal$<base64 authdata>
+```
+
+Records are stored that way here. The application keeps a string and never
+parses it, so the library behind it is replaceable without migrating
+credentials — including replaceable by `crypto/passkey` if the proposal lands.
+
+Ceremonies are not implemented yet. The format is the part with a deadline; the
+flows can follow without the stored rows moving, which is the whole point.
+
+Passkeys are an option, never the only route. The 2026 discourse is genuinely
+negative — one thread ran to 781 comments in July — and account recovery is the
+unsolved part. A framework that made passkeys the only way in would inherit that
+problem on its users' behalf.
+
+### Fixed
+
+- **The scaffolded forgot-password endpoint was a user-enumeration oracle.**
+  `PostForgot` looked the user up and then used `user.Email` regardless, and
+  `ByEmail` returns `ErrUserNotFound` — so an unknown address produced a 500 and
+  a known one a 303. Anyone could ask the form whether a given person had an
+  account. Both now return the same response; verified against a running
+  application.
+- The scaffolded reset flow is rewired onto `auth.ResetPassword`. Generated
+  handlers no longer decide whether a token is valid, how a password is
+  compared, or when tokens are invalidated.
+
+### On tenancy
+
+Multi-tenancy is implemented as organizations inside auth rather than as a
+tenancy layer, because the three questions it actually asks — which organization
+is this request acting as, is this person a member, what may they do — are
+session questions. `stancl/tenancy` and `django-tenants` are complicated because
+they solve database-per-tenant routing; most applications need a WHERE clause.
+
+`ScopeTo` returns an error rather than an unscoped builder when no organization
+is active, because forgetting a tenant filter does not produce an error — it
+produces a query that returns every tenant's rows, looks correct in development
+where there is one tenant, and leaks in production.
+
+Deliberately absent: database-per-tenant, schema-per-tenant, domain routing.
+
+### A note on the tests, because it changed one
+
+The first version of the reset store's concurrency test launched 16 goroutines
+with no coordination, and **passed against a deliberately broken
+SELECT-then-UPDATE implementation on both engines** — goroutine startup is
+staggered enough that the window is never contended.
+
+Rewritten with a start barrier and thirty rounds, it fails on round 1 against
+the naive version with two successful redemptions: two people resetting the same
+account's password. It only discriminates on PostgreSQL, and the comment says
+so — on SQLite the pool is one write connection and the writer is serialised, so
+the naive version is genuinely safe there.
+
+That is the fifth guard this project has found that could not observe the bug it
+was written for.
+
+### Not in this release
+
+Passkey ceremonies, OAuth social login, magic links, email OTP. Login, 2FA and
+remember-me are still generated rather than delegated (#72).
+
 ## [0.9.0] - 2026-08-04
 
 Where v0.8.0 was about being correct, this one is about being shippable: a
