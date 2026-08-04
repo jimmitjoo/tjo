@@ -64,9 +64,13 @@ func NewModule(opts ...Option) *Module {
 			Domain:     os.Getenv("MAIL_DOMAIN"),
 			From:       os.Getenv("MAIL_FROM_ADDRESS"),
 			FromName:   os.Getenv("MAIL_FROM_NAME"),
-			API:        os.Getenv("MAIL_API"),
-			APIKey:     os.Getenv("MAIL_API_KEY"),
-			APIURL:     os.Getenv("MAIL_API_URL"),
+			// MAILER_*, not MAIL_API_*: these are the names the scaffolded
+			// .env ships and the framework's own config reads. The module
+			// used to read a different set, so registering it gave you two
+			// mail paths configured by two spellings of the same setting.
+			API:    os.Getenv("MAILER_API"),
+			APIKey: os.Getenv("MAILER_KEY"),
+			APIURL: os.Getenv("MAILER_URL"),
 		},
 	}
 

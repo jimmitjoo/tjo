@@ -246,13 +246,23 @@ func (g *Tjo) New(rootPath string, modules ...Module) error {
 	// Setup file systems
 	g.createFileSystems()
 
-	// Setup SMS provider (will be removed when SMS module is used)
-	g.Background.SMS = sms.CreateSMSProvider(g.Config.App.SMSProvider)
+	// The core used to build an SMS provider and a mailer unconditionally,
+	// including for apps that had passed the corresponding module -- so
+	// registering the email module gave you two mail pipelines. A registered
+	// module now owns its subsystem outright.
+	registered := make(map[string]bool, len(modules))
+	for _, m := range modules {
+		registered[m.Name()] = true
+	}
 
-	// Setup mail service (will be removed when Email module is used)
-	g.Background.Mail = g.createMailer()
+	if !registered["sms"] {
+		g.Background.SMS = sms.CreateSMSProvider(g.Config.App.SMSProvider)
+	}
 
-	go g.Background.Mail.ListenForMail()
+	if !registered["email"] {
+		g.Background.Mail = g.createMailer()
+		go g.Background.Mail.ListenForMail()
+	}
 
 	// Register and initialize user-provided modules
 	for _, m := range modules {

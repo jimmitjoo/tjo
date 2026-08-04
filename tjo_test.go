@@ -453,3 +453,42 @@ func TestSchedulerActuallyRuns(t *testing.T) {
 		t.Fatal("scheduled cron never fired; the scheduler was never started")
 	}
 }
+
+// TestEmailModuleReplacesBuiltInMailer covers issue #23. New() built an SMS
+// provider and a mailer unconditionally, so registering the email module gave
+// you two mail pipelines -- reading two different spellings of the same
+// settings, which is how MAILER_* and MAIL_API_* drifted apart.
+func TestEmailModuleReplacesBuiltInMailer(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tjo_modmail_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	for _, dir := range []string{"handlers", "migrations", "views", "email", "data", "public", "tmp", "logs", "middleware"} {
+		if err := os.MkdirAll(filepath.Join(tempDir, dir), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	envContent := "\nAPP_NAME=ModMail\nDEBUG=false\nPORT=4000\nSESSION_TYPE=cookie\nCOOKIE_NAME=tjo\nCOOKIE_LIFETIME=1440\nDATABASE_TYPE=\nCACHE=\n"
+	if err := os.WriteFile(filepath.Join(tempDir, ".env"), []byte(envContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	withoutModule := &Tjo{}
+	if err := withoutModule.New(tempDir); err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if withoutModule.Background.Mail.Jobs == nil {
+		t.Error("without the email module the core should provide a mailer")
+	}
+
+	withModule := &Tjo{}
+	if err := withModule.New(tempDir, &testModule{name: "email"}); err != nil {
+		t.Fatalf("New() with the email module failed: %v", err)
+	}
+	if withModule.Background.Mail.Jobs != nil {
+		t.Error("the core built its own mailer even though the email module was registered")
+	}
+}
