@@ -276,6 +276,33 @@ every change. Run it yourself:
 make vuln
 ```
 
+## Authentication
+
+The `auth` package works with `net/http` and your own storage. It declares
+interfaces and provides verbs; it never owns a table, so an application that
+needs to join on users has one users table rather than two.
+
+```go
+// Login. The lookup and the comparison happen unconditionally, in that order,
+// so an unknown address costs the same as a known one.
+account, err := auth.Authenticate(ctx, store, email, password)
+
+// Password reset. Single-use, database-persisted, bound to a user, and
+// consumed atomically.
+token, _ := auth.NewResetToken(userID, auth.PurposePasswordReset, time.Hour)
+resetStore.Save(ctx, token)          // mail token.PlainText; only the hash is stored
+
+userID, hash, err := auth.ResetPassword(ctx, resetStore, policy, submitted, newPassword)
+
+// Organizations, which is where multi-tenancy lives.
+err = auth.Authorize(ctx, orgs, perms, orgID, accountID, auth.PermManageMembers)
+qb, err := auth.ScopeTo(ctx, database.NewQueryBuilder(db).Table("invoices"), "organization_id")
+```
+
+`SQLResetStore` ships for PostgreSQL, MySQL and SQLite because token consumption
+has to be atomic, and a SELECT-then-UPDATE implementation loses that race with
+somebody else's account as the prize.
+
 ## Agent evaluation
 
 Can a coding agent build a working Tjo application? [`evals/`](evals/) measures
