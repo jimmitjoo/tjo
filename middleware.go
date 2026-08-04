@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-
-	"github.com/justinas/nosurf"
 )
 
 func (g *Tjo) SessionLoad(next http.Handler) http.Handler {
@@ -59,19 +57,10 @@ func (g *Tjo) CrossOriginProtection(next http.Handler) http.Handler {
 	return protection.Handler(next)
 }
 
+// NoSurf is retained as an alias for CSRF so applications that mounted it
+// directly keep working. It no longer uses nosurf; see csrf.go.
+//
+// Deprecated: use CSRF.
 func (g *Tjo) NoSurf(next http.Handler) http.Handler {
-	csrfHandler := nosurf.New(next)
-
-	// Exempt API from CSRF protection:
-	csrfHandler.ExemptRegexp("^/api/")
-
-	csrfHandler.SetBaseCookie(http.Cookie{
-		HttpOnly: true,
-		Path:     "/",
-		Secure:   g.Config.Cookie.Secure,
-		SameSite: http.SameSiteStrictMode,
-		Domain:   g.Config.Cookie.Domain,
-	})
-
-	return csrfHandler
+	return g.CSRF(next)
 }

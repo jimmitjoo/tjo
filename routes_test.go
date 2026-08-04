@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/alexedwards/scs/v2"
@@ -249,10 +250,22 @@ func TestCrossOriginProtectionRejectsCrossSitePosts(t *testing.T) {
 	})
 
 	// Not a bug: documented stdlib behaviour, and what keeps curl and
-	// server-to-server clients working. Token CSRF covers this half.
-	t.Run("no fetch metadata and no Origin is allowed through to NoSurf", func(t *testing.T) {
-		if got := post(nil); got == http.StatusForbidden {
+	// server-to-server clients working. The token layer behind it covers this
+	// half, and does reject the request -- so the assertion has to name which
+	// layer answered rather than just checking for a 403.
+	t.Run("no fetch metadata and no Origin passes the origin gate", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/submit", nil)
+		req.Host = "example.test"
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if strings.Contains(rec.Body.String(), "cross-origin request rejected") {
 			t.Error("a request with neither Sec-Fetch-Site nor Origin was rejected by the origin gate")
+		}
+		// It is rejected, by the token check, which is the correct outcome for
+		// a POST carrying no token.
+		if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "CSRF token mismatch") {
+			t.Errorf("status %d body %q; want the token layer to reject it", rec.Code, rec.Body.String())
 		}
 	})
 

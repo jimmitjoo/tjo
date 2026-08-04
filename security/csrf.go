@@ -1,11 +1,12 @@
 package security
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/justinas/nosurf"
 )
 
 // CSRFConfig holds CSRF protection configuration
@@ -67,75 +68,63 @@ func DevelopmentCSRFConfig() CSRFConfig {
 	return config
 }
 
-// CSRFMiddleware creates enhanced CSRF protection middleware
+// CSRFMiddleware creates CSRF protection middleware.
+//
+// Built on the double-submit implementation below rather than on nosurf, which
+// this package used until v0.9.0. nosurf's design predates Sec-Fetch-Site and
+// its same-origin check compared r.URL.Scheme -- empty on a server-side request,
+// so the check never ran (CVE-2025-46721).
+//
+// The framework's own router does not use this. It uses the session-backed
+// tokens in the root package, which need no masking because the token is never
+// exposed to the client. This exists for applications wiring the security
+// package up directly, where no session manager is available.
 func CSRFMiddleware(config CSRFConfig, logger interface{}) func(next http.Handler) http.Handler {
-	// Create the nosurf handler with our configuration
 	return func(next http.Handler) http.Handler {
-		// nosurf installs the token into the context of a *new* request value
-		// inside its own ServeHTTP, so nosurf.Token only returns anything from
-		// a handler nosurf wraps. Reading it from a wrapper around nosurf
-		// always yielded "", which left AJAX and SPA clients with no way to
-		// obtain a token at all.
-		csrfHandler := nosurf.New(withCSRFTokenHeader(next))
-
-		configureCSRFHandler(csrfHandler, config)
-
-		return csrfHandler
+		issue := issueCSRFCookie(config)
+		check := DoubleSubmitCSRFMiddleware(config)
+		return issue(check(next))
 	}
 }
 
-// withCSRFTokenHeader publishes the request's CSRF token as a response header
-// so AJAX clients can read it. It must be wrapped BY nosurf, not around it.
-func withCSRFTokenHeader(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if token := nosurf.Token(r); token != "" {
-			w.Header().Set("X-CSRF-Token", token)
-		}
-		next.ServeHTTP(w, r)
-	})
-}
+// issueCSRFCookie mints a token when the request has none and publishes it both
+// as the cookie the double-submit check reads and as a response header.
+//
+// The header has to be set from inside the chain, not around it. Reading the
+// token from a wrapper outside the CSRF middleware always yielded "", which
+// left AJAX and SPA clients with no way to obtain one at all.
+func issueCSRFCookie(config CSRFConfig) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cookie, err := r.Cookie(config.CookieName)
+			if err != nil || cookie.Value == "" {
+				buf := make([]byte, config.TokenLength)
+				if _, err := rand.Read(buf); err != nil {
+					http.Error(w, "could not generate a CSRF token", http.StatusInternalServerError)
+					return
+				}
+				token := base64.RawURLEncoding.EncodeToString(buf)
 
-// configureCSRFHandler applies configuration to nosurf handler
-func configureCSRFHandler(handler *nosurf.CSRFHandler, config CSRFConfig) {
-	// Set base cookie configuration
-	handler.SetBaseCookie(http.Cookie{
-		Name:     config.CookieName,
-		Path:     config.CookiePath,
-		Domain:   config.CookieDomain,
-		Secure:   config.CookieSecure,
-		HttpOnly: config.CookieHttpOnly,
-		SameSite: config.CookieSameSite,
-		MaxAge:   config.CookieMaxAge,
-	})
-
-	// Exempt specific paths
-	for _, path := range config.ExemptPaths {
-		handler.ExemptPath(path)
-	}
-
-	// Exempt path patterns
-	for _, glob := range config.ExemptGlobs {
-		handler.ExemptGlob(glob)
-	}
-
-	// Set custom failure handler if provided
-	if config.FailureHandler != nil {
-		handler.SetFailureHandler(config.FailureHandler)
-	} else {
-		// Default enhanced failure handler
-		handler.SetFailureHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Log CSRF failure attempt
-			logCSRFFailure(r)
-
-			// Return appropriate response based on request type
-			if isAJAXRequest(r) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusForbidden)
-				w.Write([]byte(`{"error":"CSRF token mismatch","code":"CSRF_ERROR"}`))
+				http.SetCookie(w, &http.Cookie{
+					Name:     config.CookieName,
+					Value:    token,
+					Path:     config.CookiePath,
+					Domain:   config.CookieDomain,
+					Secure:   config.CookieSecure,
+					HttpOnly: config.CookieHttpOnly,
+					SameSite: config.CookieSameSite,
+					MaxAge:   config.CookieMaxAge,
+				})
+				// So the check below sees it on this same request rather than
+				// only on the next one.
+				r.AddCookie(&http.Cookie{Name: config.CookieName, Value: token})
+				w.Header().Set(config.RequestHeader, token)
 			} else {
-				http.Error(w, "CSRF token mismatch", http.StatusForbidden)
+				w.Header().Set(config.RequestHeader, cookie.Value)
 			}
-		}))
+
+			next.ServeHTTP(w, r)
+		})
 	}
 }
 
@@ -250,14 +239,25 @@ func NewCSRFTokenHelper(config CSRFConfig) *CSRFTokenHelper {
 	return &CSRFTokenHelper{config: config}
 }
 
-// GetToken extracts CSRF token from request
+// GetToken extracts the CSRF token from the request's cookie.
 func (h *CSRFTokenHelper) GetToken(r *http.Request) string {
-	return nosurf.Token(r)
+	cookie, err := r.Cookie(h.config.CookieName)
+	if err != nil {
+		return ""
+	}
+	return cookie.Value
 }
 
-// ValidateToken validates a CSRF token against the request
+// ValidateToken reports whether token matches the request's.
+//
+// Constant time: a comparison that returns early on the first differing byte
+// leaks the token one byte at a time to anyone willing to measure.
 func (h *CSRFTokenHelper) ValidateToken(r *http.Request, token string) bool {
-	return nosurf.VerifyToken(nosurf.Token(r), token)
+	expected := h.GetToken(r)
+	if expected == "" || token == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(token)) == 1
 }
 
 // SetTokenCookie sets CSRF token cookie on response
@@ -275,19 +275,15 @@ func (h *CSRFTokenHelper) SetTokenCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, cookie)
 }
 
-// Enhanced CSRF protection with additional security measures
+// EnhancedCSRFMiddleware adds referrer checking and a frame guard on top of
+// CSRFMiddleware.
 func EnhancedCSRFMiddleware(config CSRFConfig) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		// Create base CSRF handler. See CSRFMiddleware for why the token
-		// header has to be set from inside nosurf rather than around it.
-		csrfHandler := nosurf.New(withCSRFTokenHeader(next))
-		configureCSRFHandler(csrfHandler, config)
+		protected := CSRFMiddleware(config, nil)(next)
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Additional security checks
-
-			// 1. Check referrer header for additional protection
-			if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" || r.Method == "DELETE" {
+			switch r.Method {
+			case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 				if !isValidReferrer(r) {
 					logCSRFFailure(r)
 					http.Error(w, "Invalid referrer", http.StatusForbidden)
@@ -295,7 +291,6 @@ func EnhancedCSRFMiddleware(config CSRFConfig) func(next http.Handler) http.Hand
 				}
 			}
 
-			// 2. Check for suspicious patterns
 			if isSuspiciousRequest(r) {
 				logCSRFFailure(r)
 				http.Error(w, "Suspicious request detected", http.StatusForbidden)
@@ -304,7 +299,7 @@ func EnhancedCSRFMiddleware(config CSRFConfig) func(next http.Handler) http.Hand
 
 			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 
-			csrfHandler.ServeHTTP(w, r)
+			protected.ServeHTTP(w, r)
 		})
 	}
 }

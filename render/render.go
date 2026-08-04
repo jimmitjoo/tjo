@@ -10,7 +10,6 @@ import (
 
 	"github.com/CloudyKit/jet/v6"
 	"github.com/alexedwards/scs/v2"
-	"github.com/justinas/nosurf"
 )
 
 type Render struct {
@@ -77,7 +76,12 @@ func (g *Render) defaultData(td *TemplateData, r *http.Request) *TemplateData {
 	td.Secure = g.Secure
 	td.ServerName = g.ServerName
 	td.Port = g.Port
-	td.CSRFToken = nosurf.Token(r)
+	// The token lives in the session, so the renderer reads it from there
+	// rather than from a package-level helper that depends on being inside a
+	// particular middleware. See csrf.go.
+	if g.Session != nil {
+		td.CSRFToken = g.Session.GetString(r.Context(), "_csrf_token")
+	}
 
 	if g.Session != nil {
 		if g.Session.Exists(r.Context(), "userID") {

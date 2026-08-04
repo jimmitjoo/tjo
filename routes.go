@@ -24,7 +24,7 @@ func (g *Tjo) routes() (*chi.Mux, error) {
 		return nil, errors.New("routes: HTTP service is not initialised")
 	}
 	if g.HTTP.Session == nil {
-		return nil, errors.New("routes: session manager is not initialised, so SessionLoad and NoSurf cannot be installed")
+		return nil, errors.New("routes: session manager is not initialised, so SessionLoad and CSRF cannot be installed")
 	}
 
 	mux := chi.NewRouter()
@@ -70,7 +70,7 @@ func (g *Tjo) routes() (*chi.Mux, error) {
 
 	mux.Use(g.SessionLoad)
 	mux.Use(g.CrossOriginProtection)
-	mux.Use(g.NoSurf)
+	mux.Use(g.CSRF)
 
 	return mux, nil
 }

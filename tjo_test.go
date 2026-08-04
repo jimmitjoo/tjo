@@ -542,15 +542,28 @@ func TestRouterHasSessionAndCSRFMiddleware(t *testing.T) {
 	w := httptest.NewRecorder()
 	g.HTTP.Router.ServeHTTP(w, req)
 
-	var sawCSRF bool
+	// Two separate assertions, because the two middlewares fail independently
+	// and GHSA-9m5v-pvgv-cv8j was both of them silently absent at once.
+	//
+	// This used to look for a csrf_token cookie, which was nosurf's mechanism.
+	// Tokens now live in the session, so there is no second cookie to find --
+	// and checking the session cookie plus the token header proves more than
+	// the old assertion did: one shows SessionLoad ran, the other shows CSRF
+	// ran and minted a token.
+	var sawSession bool
 	for _, c := range w.Result().Cookies() {
-		if c.Name == "csrf_token" {
-			sawCSRF = true
+		if c.Name == "tjo" {
+			sawSession = true
 		}
 	}
+	if !sawSession {
+		t.Error("no session cookie: SessionLoad was not installed, so every " +
+			"application runs without session loading")
+	}
 
-	if !sawCSRF {
-		t.Error("the router issued no CSRF cookie: SessionLoad and NoSurf were not installed, " +
-			"so every application runs without session loading or CSRF protection")
+	if w.Header().Get("X-CSRF-Token") == "" {
+		t.Error("no X-CSRF-Token header: the CSRF middleware was not installed, so " +
+			"every application runs without CSRF protection and AJAX clients " +
+			"have no way to obtain a token")
 	}
 }
