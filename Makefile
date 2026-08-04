@@ -29,36 +29,53 @@ build:
 	@go build $(LDFLAGS) -o ./dist/tjo ./cmd/tjo
 	@echo "Built tjo version $(VERSION)"
 
-## release: creates a new release (usage: make release v=0.5.0)
+# Submodules that are tagged in lockstep with the root module.
+SUBMODULES := email otel sms websocket
+
+## release: creates a new release (usage: make release v=0.7.0)
+##
+## This repository is a Go workspace: email, otel, sms and websocket are
+## separate modules with their own tags. Tagging only the root leaves the root
+## go.mod pointing at the previous versions of those modules, so half the
+## release never reaches anyone -- go.work hides that locally.
 release:
-	@if [ -z "$(v)" ]; then echo "Usage: make release v=0.5.0"; exit 1; fi
+	@if [ -z "$(v)" ]; then echo "Usage: make release v=0.7.0"; exit 1; fi
+	@git diff --quiet || { echo "Working tree is dirty; commit first."; exit 1; }
 	@echo "Creating release v$(v)..."
-	@echo "Updating version references in tjo..."
-	@# Update otel/go.mod
-	@sed -i 's|github.com/jimmitjoo/tjo v[0-9.]*|github.com/jimmitjoo/tjo v$(v)|g' otel/go.mod
-	@# Update template go.mod
-	@sed -i 's|github.com/jimmitjoo/tjo v[0-9.]*|github.com/jimmitjoo/tjo v$(v)|g' cmd/tjo/templates/go.mod.txt
-	@# Run go mod tidy in otel to update go.sum
-	@cd otel && go mod tidy 2>/dev/null || true
-	@# Commit changes if any
+	@echo ""
+	@echo "Updating version references..."
+	@# go mod edit rather than sed: portable, and it understands the format.
+	@for m in $(SUBMODULES); do \
+		go mod edit -require=github.com/jimmitjoo/tjo/$$m@v$(v) go.mod 2>/dev/null || true; \
+	done
+	@# The scaffolding template pins the framework version for new projects.
+	@sed -i.bak 's|github.com/jimmitjoo/tjo v[0-9.]*|github.com/jimmitjoo/tjo v$(v)|g' \
+		cmd/tjo/templates/go.mod.txt && rm -f cmd/tjo/templates/go.mod.txt.bak
 	@git add -A
 	@git diff --cached --quiet || git commit -m "Update version references to v$(v)"
+	@echo ""
+	@echo "Tagging..."
 	@git tag -a v$(v) -m "Release v$(v)"
+	@for m in $(SUBMODULES); do \
+		git tag -a $$m/v$(v) -m "Release $$m/v$(v)"; \
+		echo "  $$m/v$(v)"; \
+	done
 	@echo ""
-	@echo "Updating tjo-bare..."
-	@if [ -d "../tjo-bare" ]; then \
-		sed -i 's|github.com/jimmitjoo/tjo v[0-9.]*|github.com/jimmitjoo/tjo v$(v)|g' ../tjo-bare/go.mod; \
-		cd ../tjo-bare && go mod tidy 2>/dev/null || true; \
-		git add -A; \
-		git diff --cached --quiet || git commit -m "Update tjo to v$(v)"; \
-		echo "tjo-bare updated"; \
-	else \
-		echo "Warning: ../tjo-bare not found, skipping"; \
-	fi
+	@echo "Release v$(v) created locally. Nothing is published until you push."
 	@echo ""
-	@echo "Release v$(v) created!"
-	@echo "Push tjo:      git push && git push origin v$(v)"
-	@echo "Push tjo-bare: cd ../tjo-bare && git push"
+	@echo "  git push origin main"
+	@echo "  git push origin v$(v) $(foreach m,$(SUBMODULES),$(m)/v$(v))"
+	@echo ""
+	@echo "Then verify a consumer sees it, which go.work would otherwise mask:"
+	@echo "  GOWORK=off go build ./..."
+
+## release-check: verifies the module resolves the way a user sees it
+release-check:
+	@echo "Building without the workspace (as an external consumer would)..."
+	@GOWORK=off go build ./... && echo "  root module OK"
+	@for m in $(SUBMODULES); do \
+		(cd $$m && GOWORK=off go build ./... >/dev/null 2>&1 && echo "  $$m OK") || echo "  $$m FAILED"; \
+	done
 
 clean:
 	@rm -rf ./dist/*
