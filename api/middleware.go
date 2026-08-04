@@ -1,15 +1,18 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	rdebug "runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jimmitjoo/tjo/internal/jsonstrict"
 )
 
 // contextKey is a custom type for context keys
@@ -163,9 +166,24 @@ func JSONRequest(dst interface{}) func(next http.Handler) http.Handler {
 				return
 			}
 			
-			decoder := json.NewDecoder(r.Body)
+			// Read once so the body can be checked for duplicate member names
+			// before decoding. encoding/json silently takes the last one, which
+			// means this middleware and anything else parsing the same body can
+			// disagree about what the request said. See internal/jsonstrict.
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Could not read request body", nil)
+				return
+			}
+
+			if err := jsonstrict.RejectDuplicateKeys(body); err != nil {
+				Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error(), nil)
+				return
+			}
+
+			decoder := json.NewDecoder(bytes.NewReader(body))
 			decoder.DisallowUnknownFields()
-			
+
 			if err := decoder.Decode(dst); err != nil {
 				details := map[string]interface{}{
 					"parse_error": err.Error(),

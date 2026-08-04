@@ -76,6 +76,29 @@ jobs:
           TJO_TEST_POSTGRES_DSN: ${{ matrix.module == '.' && 'postgres://tjo:secret@localhost:5432/tjotest?sslmode=disable' || '' }}
         run: go test -short -race -timeout 5m ./...
 
+  # Go 1.27 makes encoding/json/v2 the implementation behind encoding/json.
+  # It deliberately keeps v1's semantics, so this is a canary rather than a
+  # migration: measured before it was written, the v1 API under jsonv2 still
+  # accepts duplicate object names and still substitutes replacement characters
+  # for invalid UTF-8, exactly as it does today. If that ever stops being true
+  # this job goes red before a Go release makes it everyone's problem.
+  jsonv2:
+    name: jsonv2 canary
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Test under GOEXPERIMENT=jsonv2
+        env:
+          GOEXPERIMENT: jsonv2
+        run: go test -short -timeout 10m ./...
+
   # v0.7.0 shipped with 71 vulnerabilities that had a call path from this
   # repository's own code -- an unpatchable SQL injection among them -- and CI
   # was green the whole time, because nothing ran govulncheck. The findings were
