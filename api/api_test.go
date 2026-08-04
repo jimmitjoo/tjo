@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -502,5 +503,44 @@ func TestRouterRoute(t *testing.T) {
 				t.Errorf("Route() %s %s response = %v, want %v", tt.method, tt.path, body, tt.want)
 			}
 		})
+	}
+}
+// TestRateLimiterKeysOnThePeerNotAForgedHeader pins the fix for a rate-limit
+// bypass that survived GHSA-hm83-wmj9-52fm.
+//
+// The limiter keys requests with IPKeyFunc, which calls GetClientIP(r, nil),
+// which documents itself as "If no trusted proxies defined, only use
+// RemoteAddr for security". setupMiddleware then mounted chi's
+// middleware.RealIP above it, which rewrites RemoteAddr from X-Forwarded-For
+// with no check that the peer is entitled to set it -- so the field the
+// limiter deliberately keys on was attacker-controlled.
+//
+// One client could therefore mint a fresh bucket per request by varying a
+// header. The budget here is 2 requests per minute; without the fix, ten
+// requests from one peer with ten different forged headers all pass.
+func TestRateLimiterKeysOnThePeerNotAForgedHeader(t *testing.T) {
+	api := New(&APIConfig{Version: "v1", RateLimitPerMin: 2})
+	api.Router.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	const peer = "192.0.2.10:44321"
+
+	var allowed int
+	for i := 0; i < 10; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+		req.RemoteAddr = peer
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("10.0.0.%d", i))
+
+		rec := httptest.NewRecorder()
+		api.Router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusTooManyRequests {
+			allowed++
+		}
+	}
+
+	if allowed > 2 {
+		t.Errorf("%d of 10 requests from one peer were allowed with a rotating X-Forwarded-For; the limit is 2", allowed)
 	}
 }

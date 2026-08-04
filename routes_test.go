@@ -155,3 +155,48 @@ func TestStaticFileServing(t *testing.T) {
 		t.Errorf("Expected status 404 for non-existent file, got %v", status)
 	}
 }
+
+// TestRouterDoesNotTrustForwardedHeadersForRemoteAddr pins the fix for a bypass
+// that survived GHSA-hm83-wmj9-52fm.
+//
+// v0.7.0 corrected IPThrottler.getRealIP so that proxy headers are consulted
+// only when the peer is a configured trusted proxy. But routes() mounted chi's
+// middleware.RealIP two lines above, and that middleware rewrites
+// r.RemoteAddr from X-Forwarded-For unconditionally. getRealIP therefore
+// inspected a peer address the attacker had chosen, found it was not a trusted
+// proxy, and returned it -- one fresh rate-limit bucket, penalty record and
+// blacklist entry per forged header value.
+//
+// Without the fix this test sees RemoteAddr rewritten to 1.2.3.4.
+func TestRouterDoesNotTrustForwardedHeadersForRemoteAddr(t *testing.T) {
+	g := newRoutableApp(false)
+	g.Config = &config.Config{}
+
+	mux, err := g.routes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const peer = "192.0.2.10:44321"
+
+	var seen string
+	mux.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		seen = r.RemoteAddr
+	})
+
+	for _, header := range []string{"X-Forwarded-For", "X-Real-IP"} {
+		t.Run(header, func(t *testing.T) {
+			seen = ""
+
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.RemoteAddr = peer
+			req.Header.Set(header, "1.2.3.4")
+
+			mux.ServeHTTP(httptest.NewRecorder(), req)
+
+			if seen != peer {
+				t.Errorf("RemoteAddr = %q, want %q -- a client-supplied %s reached the handler as the peer address", seen, peer, header)
+			}
+		})
+	}
+}

@@ -3,9 +3,12 @@ package tjo
 import (
 	"database/sql"
 
-	_ "github.com/jackc/pgconn"
-	_ "github.com/jackc/pgx/v4"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	// Only stdlib performs the sql.Register call, so pgconn and pgx itself do
+	// not need blank-importing alongside it. pgx v4 was a dead end: GO-2026-5004
+	// is a SQL injection with no fix in the v4 line, and pgproto3/v2 carries
+	// GO-2026-4518 on the same terms. v5/stdlib registers under the same "pgx"
+	// driver name, so the string dispatch elsewhere is unaffected.
+	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/mattn/go-sqlite3"
 )
 
