@@ -75,15 +75,21 @@ func NewJobManager(config *ManagerConfig) *JobManager {
 		cancel:       cancel,
 	}
 
-	defaultQueue := queueManager.GetOrCreateQueue(config.DefaultQueue)
-	for i := 0; i < config.DefaultWorkers; i++ {
-		workerPool.AddWorker(config.DefaultQueue, defaultQueue)
-	}
+	jm.startDefaultWorkers()
 
 	deadLetterQueue := queueManager.GetOrCreateQueue("dead_letter")
 	processor.SetDeadLetterQueue(deadLetterQueue)
 
 	return jm
+}
+
+// startDefaultWorkers staffs the default queue. Called from NewJobManager and
+// again from Start when a previous Stop emptied the pool.
+func (jm *JobManager) startDefaultWorkers() {
+	defaultQueue := jm.queueManager.GetOrCreateQueue(jm.config.DefaultQueue)
+	for i := 0; i < jm.config.DefaultWorkers; i++ {
+		jm.workerPool.AddWorker(jm.config.DefaultQueue, defaultQueue)
+	}
 }
 
 func (jm *JobManager) Start() error {
@@ -94,13 +100,24 @@ func (jm *JobManager) Start() error {
 		return fmt.Errorf("job manager is already running")
 	}
 
+	// Rebuild the context. Stop cancels the one built in NewJobManager and
+	// nothing recreated it, so a Stop/Start cycle spawned goroutines that
+	// returned immediately on the already-cancelled context while running was
+	// set to true -- a manager that reported healthy and scheduled nothing.
+	jm.ctx, jm.cancel = context.WithCancel(context.Background())
+
+	// Stop drains the worker pool, so a restart needs its workers back.
+	if jm.workerPool.GetActiveWorkers() == 0 {
+		jm.startDefaultWorkers()
+	}
+
 	jm.scheduler.Start()
 
 	if jm.config.EnablePersistence && jm.persistence != nil {
-		go jm.runPersistence()
+		go jm.runPersistence(jm.ctx)
 	}
 
-	go jm.runScheduledJobProcessor()
+	go jm.runScheduledJobProcessor(jm.ctx)
 
 	jm.running = true
 	log.Println("Job manager started")
@@ -287,13 +304,16 @@ func (jm *JobManager) ResumeQueue(queueName string, workerCount int) error {
 	return jm.ScaleQueue(queueName, workerCount)
 }
 
-func (jm *JobManager) runScheduledJobProcessor() {
+// runScheduledJobProcessor takes ctx as a parameter rather than reading
+// jm.ctx: Start reassigns that field on restart, which raced with the
+// goroutines a previous Start had left reading it.
+func (jm *JobManager) runScheduledJobProcessor(ctx context.Context) {
 	ticker := time.NewTicker(jm.config.SchedulerPollInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-jm.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			jm.processScheduledJobs()
@@ -314,13 +334,14 @@ func (jm *JobManager) processScheduledJobs() {
 	}
 }
 
-func (jm *JobManager) runPersistence() {
+// runPersistence takes ctx for the same reason as runScheduledJobProcessor.
+func (jm *JobManager) runPersistence(ctx context.Context) {
 	ticker := time.NewTicker(jm.persistence.interval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-jm.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			jm.savePersistentJobs()

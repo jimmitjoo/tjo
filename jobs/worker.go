@@ -4,22 +4,27 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 	"time"
 )
 
 type Worker struct {
-	id          string
-	queue       Queue
-	processor   *JobProcessor
-	ctx         context.Context
-	cancel      context.CancelFunc
-	status      WorkerStatus
-	currentJob  *Job
-	startedAt   time.Time
+	id            string
+	queue         Queue
+	processor     *JobProcessor
+	ctx           context.Context
+	cancel        context.CancelFunc
+	status        WorkerStatus
+	currentJob    *Job
+	startedAt     time.Time
 	completedJobs int
 	failedJobs    int
-	mutex       sync.RWMutex
+	mutex         sync.RWMutex
+
+	// done is closed when run returns, so StopAll can tell the difference
+	// between "cancelled" and "actually finished".
+	done chan struct{}
 }
 
 type WorkerStatus string
@@ -40,11 +45,25 @@ func NewWorker(id string, queue Queue, processor *JobProcessor) *Worker {
 		cancel:    cancel,
 		status:    WorkerStatusIdle,
 		startedAt: time.Now(),
+		done:      make(chan struct{}),
 	}
 }
 
 func (w *Worker) Start() {
-	go w.run()
+	go func() {
+		defer close(w.done)
+		w.run()
+	}()
+}
+
+// Wait blocks until the worker's run loop has returned, or ctx expires.
+func (w *Worker) Wait(ctx context.Context) error {
+	select {
+	case <-w.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (w *Worker) Stop() {
@@ -78,7 +97,7 @@ func (w *Worker) processNextJob() {
 	w.setStatus(WorkerStatusBusy)
 
 	err = w.processor.ProcessJob(w.ctx, job)
-	
+
 	w.mutex.Lock()
 	if err != nil {
 		w.failedJobs++
@@ -118,7 +137,7 @@ func (w *Worker) GetCurrentJob() *Job {
 func (w *Worker) GetStats() WorkerStats {
 	w.mutex.RLock()
 	defer w.mutex.RUnlock()
-	
+
 	return WorkerStats{
 		ID:            w.id,
 		Status:        w.status,
@@ -146,6 +165,21 @@ type WorkerPool struct {
 	workers   map[string]*Worker
 	processor *JobProcessor
 	mutex     sync.RWMutex
+
+	// nextID is monotonic and never reused. IDs used to be derived from
+	// len(workers)+1 or a loop index, which collided with live workers during
+	// scale-down/scale-up and overwrote them in the map without stopping them.
+	nextID int
+}
+
+// workerStopTimeout bounds how long StopAll waits for a worker that is inside
+// a user handler. The handler's context is already cancelled by then.
+const workerStopTimeout = 10 * time.Second
+
+// nextWorkerID returns an unused worker ID. The caller must hold wp.mutex.
+func (wp *WorkerPool) nextWorkerID(queueName string) string {
+	wp.nextID++
+	return fmt.Sprintf("%s-worker-%d", queueName, wp.nextID)
 }
 
 func NewWorkerPool(processor *JobProcessor) *WorkerPool {
@@ -159,7 +193,7 @@ func (wp *WorkerPool) AddWorker(queueName string, queue Queue) string {
 	wp.mutex.Lock()
 	defer wp.mutex.Unlock()
 
-	workerID := fmt.Sprintf("%s-worker-%d", queueName, len(wp.workers)+1)
+	workerID := wp.nextWorkerID(queueName)
 	worker := NewWorker(workerID, queue, wp.processor)
 	wp.workers[workerID] = worker
 	worker.Start()
@@ -217,15 +251,31 @@ func (wp *WorkerPool) GetAllWorkerStats() []WorkerStats {
 	return stats
 }
 
+// StopAll cancels every worker and waits for them to return.
+//
+// It used to cancel and return immediately, so a worker mid-handler kept
+// running after "Job manager stopped" was logged -- and Tjo.Shutdown then
+// closed the database pool underneath it.
 func (wp *WorkerPool) StopAll() {
 	wp.mutex.Lock()
-	defer wp.mutex.Unlock()
-
+	stopping := make([]*Worker, 0, len(wp.workers))
 	for _, worker := range wp.workers {
 		worker.Stop()
+		stopping = append(stopping, worker)
 	}
-
 	wp.workers = make(map[string]*Worker)
+	wp.mutex.Unlock()
+
+	// Wait outside the lock: a worker finishing a job must not have to
+	// contend for wp.mutex in order to exit.
+	ctx, cancel := context.WithTimeout(context.Background(), workerStopTimeout)
+	defer cancel()
+
+	for _, worker := range stopping {
+		if err := worker.Wait(ctx); err != nil {
+			log.Printf("Worker %s did not stop within %s", worker.id, workerStopTimeout)
+		}
+	}
 }
 
 func (wp *WorkerPool) GetActiveWorkers() int {
@@ -262,7 +312,7 @@ func (wp *WorkerPool) ScaleQueue(queueName string, queue Queue, targetWorkers in
 
 	currentWorkers := 0
 	var queueWorkers []string
-	
+
 	for id, worker := range wp.workers {
 		if worker.queue.Name() == queueName {
 			queueWorkers = append(queueWorkers, id)
@@ -272,9 +322,14 @@ func (wp *WorkerPool) ScaleQueue(queueName string, queue Queue, targetWorkers in
 		}
 	}
 
+	// Sort so scale-down picks the same victims every time. queueWorkers is
+	// built by ranging a map, so without this it stopped an arbitrary subset
+	// and the surviving IDs were unpredictable.
+	sort.Strings(queueWorkers)
+
 	if currentWorkers < targetWorkers {
 		for i := currentWorkers; i < targetWorkers; i++ {
-			workerID := fmt.Sprintf("%s-worker-%d", queueName, i+1)
+			workerID := wp.nextWorkerID(queueName)
 			worker := NewWorker(workerID, queue, wp.processor)
 			wp.workers[workerID] = worker
 			worker.Start()
