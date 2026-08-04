@@ -21,12 +21,23 @@ type MemoryQueue struct {
 	name  string
 	jobs  []*Job
 	mutex sync.RWMutex
+
+	// notify wakes a waiting Pop as soon as something is pushed, instead of
+	// making it sit out the remainder of a 100ms sleep. Buffered by one: it is
+	// a wakeup signal, not a job handoff.
+	notify chan struct{}
 }
+
+// scheduledPollInterval bounds how long Pop waits when nothing was pushed.
+// Scheduled jobs become ready with the passage of time rather than on a push,
+// so the wait cannot be indefinite.
+const scheduledPollInterval = 100 * time.Millisecond
 
 func NewMemoryQueue(name string) *MemoryQueue {
 	return &MemoryQueue{
-		name: name,
-		jobs: make([]*Job, 0),
+		name:   name,
+		jobs:   make([]*Job, 0),
+		notify: make(chan struct{}, 1),
 	}
 }
 
@@ -43,6 +54,13 @@ func (mq *MemoryQueue) Push(job *Job) error {
 	queued := job.Clone()
 	mq.jobs = append(mq.jobs, queued)
 
+	// Non-blocking: if a signal is already pending, a waiting Pop will scan
+	// anyway and find both jobs.
+	select {
+	case mq.notify <- struct{}{}:
+	default:
+	}
+
 	sort.Slice(mq.jobs, func(i, j int) bool {
 		if mq.jobs[i].Priority != mq.jobs[j].Priority {
 			return getQueuePriority(mq.jobs[i].Priority) > getQueuePriority(mq.jobs[j].Priority)
@@ -54,23 +72,36 @@ func (mq *MemoryQueue) Push(job *Job) error {
 }
 
 func (mq *MemoryQueue) Pop(ctx context.Context) (*Job, error) {
+	timer := time.NewTimer(scheduledPollInterval)
+	defer timer.Stop()
+
 	for {
+		mq.mutex.Lock()
+		for i, job := range mq.jobs {
+			if job.IsReady() {
+				mq.jobs = append(mq.jobs[:i], mq.jobs[i+1:]...)
+				mq.mutex.Unlock()
+				return job, nil
+			}
+		}
+		mq.mutex.Unlock()
+
+		// Previously an unconditional 100ms sleep, which put up to that much
+		// latency between enqueueing a job and a worker starting it, and made
+		// every idle worker wake ten times a second for nothing.
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(scheduledPollInterval)
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		default:
-			mq.mutex.Lock()
-
-			for i, job := range mq.jobs {
-				if job.IsReady() {
-					mq.jobs = append(mq.jobs[:i], mq.jobs[i+1:]...)
-					mq.mutex.Unlock()
-					return job, nil
-				}
-			}
-
-			mq.mutex.Unlock()
-			time.Sleep(100 * time.Millisecond)
+		case <-mq.notify:
+		case <-timer.C:
 		}
 	}
 }

@@ -16,6 +16,7 @@ type JobProcessor struct {
 	mutex           sync.RWMutex
 	metrics         *ProcessorMetrics
 	metricsMu       sync.RWMutex
+	dispatchMu      sync.Mutex
 }
 
 type RetryConfig struct {
@@ -233,8 +234,20 @@ func (jp *JobProcessor) emitEvent(eventType string, job *Job, err error, metadat
 	copy(listeners, jp.eventListeners)
 	jp.mutex.RUnlock()
 
+	// Serialised on purpose. This used to be `go listener.OnEvent(event)`, one
+	// goroutine per listener per event, which meant a single listener could run
+	// concurrently with itself whenever two workers emitted at once, events
+	// arrived out of order, and nothing bounded the goroutine count under load.
+	// The obvious listener -- append to a slice -- was therefore racy, and the
+	// framework's own tests were written that way.
+	//
+	// The cost is that a listener now blocks the worker that emitted the event,
+	// so listeners must be quick; hand slow work to a channel of your own.
+	jp.dispatchMu.Lock()
+	defer jp.dispatchMu.Unlock()
+
 	for _, listener := range listeners {
-		go listener.OnEvent(event)
+		listener.OnEvent(event)
 	}
 }
 

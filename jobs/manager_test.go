@@ -105,12 +105,6 @@ func TestJobManagerScheduleCron(t *testing.T) {
 }
 
 func TestJobManagerEventListeners(t *testing.T) {
-	// job.started and job.completed never arrive within the sleep: the job is
-	// queued but not reliably picked up. Failed 5/5 runs before the event
-	// recorder was made race-free, 2/5 after, so the flakiness is in dispatch,
-	// not in the assertion. Unskip when the listener contract is settled.
-	t.Skip("skipped: job dispatch does not reliably emit job.started, see issue #4")
-
 	manager := NewJobManager(nil)
 
 	rec := &eventRecorder{}
@@ -130,11 +124,14 @@ func TestJobManagerEventListeners(t *testing.T) {
 	err = manager.Enqueue(job)
 	require.NoError(t, err)
 
-	time.Sleep(100 * time.Millisecond)
-
-	assert.Contains(t, rec.all(), EventJobQueued)
-	assert.Contains(t, rec.all(), EventJobStarted)
-	assert.Contains(t, rec.all(), EventJobCompleted)
+	// Wait on the condition rather than a fixed sleep. The old 100ms sleep
+	// exactly matched the queue's poll interval, so this test sat right on the
+	// boundary of whether a worker had woken up yet.
+	assert.Eventually(t, func() bool {
+		events := rec.all()
+		return assert.ObjectsAreEqual(true, containsAll(events,
+			EventJobQueued, EventJobStarted, EventJobCompleted))
+	}, 2*time.Second, 10*time.Millisecond, "expected queued/started/completed, got %v", rec.all())
 }
 
 func TestJobManagerScaleQueue(t *testing.T) {
@@ -329,4 +326,66 @@ func (r *eventRecorder) all() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]string(nil), r.events...)
+}
+
+func containsAll(haystack []string, needles ...string) bool {
+	for _, needle := range needles {
+		found := false
+		for _, got := range haystack {
+			if got == needle {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// TestEventListenerIsNeverConcurrentWithItself pins the dispatch contract.
+// Events used to be delivered as `go listener.OnEvent(event)`, so a single
+// listener ran concurrently with itself as soon as two workers emitted at
+// once -- which is why appending to a slice, the obvious listener, was racy.
+func TestEventListenerIsNeverConcurrentWithItself(t *testing.T) {
+	manager := NewJobManager(nil)
+
+	var (
+		mu       sync.Mutex
+		inside   int
+		overlaps int
+	)
+
+	manager.AddEventListenerFunc(func(event *JobEvent) {
+		mu.Lock()
+		inside++
+		if inside > 1 {
+			overlaps++
+		}
+		mu.Unlock()
+
+		time.Sleep(time.Millisecond) // widen the window
+
+		mu.Lock()
+		inside--
+		mu.Unlock()
+	})
+
+	manager.RegisterHandlerFunc("test", func(ctx context.Context, job *Job) error {
+		return nil
+	})
+
+	require.NoError(t, manager.Start())
+	defer manager.Stop()
+
+	for i := 0; i < 30; i++ {
+		require.NoError(t, manager.Enqueue(NewJob("test", "default", nil)))
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Zero(t, overlaps, "listener was invoked concurrently with itself %d times", overlaps)
 }

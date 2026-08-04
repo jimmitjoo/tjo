@@ -289,3 +289,37 @@ func TestJobStatusReadDuringProcessingIsRaceFree(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestPopWakesOnPush covers the dispatch latency fix in issue #4. Pop used to
+// sleep a flat 100ms between scans, so a job pushed just after a scan waited
+// out the remainder of that sleep before any worker started it.
+func TestPopWakesOnPush(t *testing.T) {
+	q := NewMemoryQueue("default")
+
+	popped := make(chan time.Duration, 1)
+	go func() {
+		start := time.Now()
+		if _, err := q.Pop(context.Background()); err != nil {
+			return
+		}
+		popped <- time.Since(start)
+	}()
+
+	// Let Pop scan the empty queue and settle into its wait.
+	time.Sleep(20 * time.Millisecond)
+
+	pushedAt := time.Now()
+	if err := q.Push(NewJob("test", "default", nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-popped:
+		latency := time.Since(pushedAt)
+		if latency > scheduledPollInterval/2 {
+			t.Errorf("Pop took %v after push; it is waiting out the poll interval rather than waking on the signal", latency)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Pop never returned")
+	}
+}
