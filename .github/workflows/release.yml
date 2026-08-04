@@ -69,6 +69,9 @@ jobs:
       # The same -ldflags the Makefile uses, so `tjo version` reports the
       # release rather than "dev".
       - name: Build
+        # bash, because the default shell on the Windows runner is PowerShell,
+        # which does not understand backslash line continuations or ${VAR}.
+        shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
