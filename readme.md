@@ -20,7 +20,7 @@ macOS binaries are unsigned, so Gatekeeper will ask before the first run.
 
 ## Requirements
 
-- Go 1.24+ (to build applications; not needed to run the CLI)
+- Go 1.25+ (to build applications; not needed to run the CLI)
 
 ## Features
 

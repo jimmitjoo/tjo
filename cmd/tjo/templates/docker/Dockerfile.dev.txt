@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine
+FROM golang:1.26-alpine
 
 # Install development tools
 RUN apk update && apk add --no-cache git ca-certificates tzdata curl
