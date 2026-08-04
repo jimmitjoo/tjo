@@ -252,22 +252,47 @@ OTEL_ENDPOINT=localhost:4317
 
 ## Security
 
-- CSRF protection middleware
-- Rate limiting and throttling
+- Cross-origin request protection (`net/http.CrossOriginProtection`) and CSRF tokens
+- Rate limiting and throttling, with trusted-proxy-aware client IP resolution
 - Input validation and sanitization
 - SQL injection prevention
 - XSS protection
 - Secure password hashing (bcrypt)
 - Two-Factor Authentication (TOTP)
 
+To report a vulnerability, see [SECURITY.md](SECURITY.md). Reports go through
+GitHub private vulnerability reporting, not public issues.
+
+Four advisories have been published and fixed, all explained in the
+[changelog](CHANGELOG.md) with what was measured rather than only what changed.
+Generated code is in scope: a flaw in what `tjo make auth` produces is a flaw in
+the framework.
+
+`govulncheck` gates every build across all five modules, weekly as well as on
+every change. Run it yourself:
+
+```bash
+make vuln
+```
+
 ## Testing
 
 ```bash
 make test              # Run all tests
+make vuln              # Known vulnerabilities reachable from our code
 ./run-tests -p ./pkg   # Test specific package
 ./run-tests -c         # With coverage
 ./run-tests -s         # Skip Docker tests
 make cover             # Coverage report
+```
+
+Some tests need a service and skip without one:
+
+```bash
+# PostgreSQL integration tests (database/postgres_integration_test.go)
+docker run -d --name tjo-pg -e POSTGRES_PASSWORD=secret -e POSTGRES_USER=tjo \
+  -e POSTGRES_DB=tjotest -p 5432:5432 postgres:16-alpine
+TJO_TEST_POSTGRES_DSN='postgres://tjo:secret@localhost:5432/tjotest?sslmode=disable' go test ./database/...
 ```
 
 ## Documentation

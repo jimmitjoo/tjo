@@ -45,6 +45,11 @@ SUBMODULES := email otel sms websocket
 
 ## release: creates a new release (usage: make release v=0.7.0)
 ##
+## If this release fixes a vulnerability, file the advisory to BOTH GitHub
+## Security Advisories and golang.org/x/vulndb. govulncheck reads vuln.go.dev,
+## so a GHSA-only advisory is invisible to the exact tool Go users run to find
+## it. This step is routinely missed; see SECURITY.md.
+##
 ## This repository is a Go workspace: email, otel, sms and websocket are
 ## separate modules with their own tags. Tagging only the root leaves the root
 ## go.mod pointing at the previous versions of those modules, so half the
@@ -105,6 +110,9 @@ release:
 ## local directories. That is not what a consumer gets. This builds and tests
 ## each one with GOWORK=off, against the published versions of everything else.
 release-check:
+	@echo "Checking for known vulnerabilities..."
+	@$(MAKE) --no-print-directory vuln >/dev/null 2>&1 && echo "  vuln      OK" || { echo "  vuln      FAILED -- run 'make vuln'"; exit 1; }
+	@echo ""
 	@echo "Building and testing without the workspace (as a consumer resolves it)..."
 	@GOWORK=off go build ./... && echo "  root      build OK"
 	@GOWORK=off go test -short ./... >/dev/null 2>&1 && echo "  root      test OK" || echo "  root      TEST FAILED"
