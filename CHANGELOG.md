@@ -5,6 +5,140 @@ All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is 0, breaking changes may land in a minor release.
 
+## [0.8.0] - 2026-08-04
+
+A dependency and security release. It closes 71 known vulnerabilities that had a
+call path from this repository's own code, and one that nothing had reported yet.
+
+If you are running 0.7.0 or earlier, upgrade. Three of the findings had **no
+patched version available upstream** — they required replacing the dependency,
+not bumping it — and one was a live bypass of a fix 0.7.0 had already published.
+
+### The defect behind the release
+
+`govulncheck` did not run in CI. It still does not exist in most Go projects'
+pipelines, so this is not unusual, but it is the whole story here: v0.7.0
+shipped with 71 reachable vulnerabilities and a green build. The findings were
+the symptom. The missing gate was the defect.
+
+It runs now, across all five modules, on every change and weekly on a schedule so
+advisories that land against unchanged code are still caught. `make
+release-check` — already the last step before tagging — refuses to pass if
+anything is reachable. Run it yourself with `make vuln`.
+
+### Security
+
+- **The rate limiter and the IP blacklist were bypassable by anyone**
+  (no advisory issued yet; see below). Both routers mounted chi's
+  `middleware.RealIP`, which overwrites `r.RemoteAddr` from `X-Forwarded-For`
+  with no check that the peer is entitled to set it.
+
+  This defeated GHSA-hm83-wmj9-52fm, which 0.7.0 published as fixed.
+  `IPThrottler.getRealIP` consults proxy headers only for trusted peers — but
+  the "peer" it inspected was already the forged header, so it concluded the
+  address was untrusted and returned it as the client IP. `api.IPKeyFunc` calls
+  `GetClientIP(r, nil)`, whose own comment reads *"If no trusted proxies
+  defined, only use RemoteAddr for security"*; that stopped being true two lines
+  above it.
+
+  Measured at a limit of 2 requests per minute: **10 of 10 requests from a
+  single peer were allowed** while varying only `X-Forwarded-For`. Users who
+  upgraded to 0.7.0 believing this fixed were still exposed.
+
+- **The CSRF origin check never executed** (GO-2025-3683 / CVE-2025-46721).
+  `nosurf` v1.1.1 compared `r.URL.Scheme`, which is empty on a server-side
+  request — a server-side `http.Request` carries the request-target, not an
+  absolute URL — so the comparison never matched.
+
+  0.7.0 fixed the framework so that `NoSurf` is actually installed on the router
+  (GHSA-9m5v-pvgv-cv8j). This is the other half: the middleware that now runs was
+  delegating its origin check to a library where the check was a no-op.
+
+- **An unpatchable SQL injection in the PostgreSQL driver** (GO-2026-5004),
+  reachable through `QueryBuilder.ChunkByID`. `jackc/pgx/v4`'s advisory records
+  `Fixed in: N/A`; the fix exists only in v5. `jackc/pgproto3/v2` carries
+  GO-2026-4518 on the same terms.
+
+- **CVSS 8.7 in `golang-jwt/jwt` v3** (GO-2025-3553), with no fix in the v3 line,
+  arriving through `vonage-go-sdk` — whose latest release still pins it.
+
+- 15 findings in the `go-git` chain, every one reachable through
+  `git.PlainClone` in `tjo new` — the first command a new user runs.
+
+- Three 2026 advisories in chi's `middleware.RealIP`, four in the MCP SDK, and 30
+  in the standard library.
+
+### Added
+
+- `http.CrossOriginProtection` in front of the token CSRF layer. The two cover
+  different halves: tokens only protect a form somebody remembered to
+  instrument, while the origin gate protects every state-changing request
+  regardless. Conversely the origin gate deliberately allows requests carrying
+  neither `Sec-Fetch-Site` nor `Origin`, since those are same-origin or not from
+  a browser — which is what keeps curl and server-to-server clients working, and
+  why it does not replace tokens. Trusted origins come from
+  `CORS_ALLOWED_ORIGINS`.
+- `SECURITY.md`, with a reporting channel, response times one person can
+  sustain, a supported-version policy, and two deliberate positions: generated
+  code is in scope, and reports without a reproducer are closed.
+- `make vuln`, and PostgreSQL integration tests that run when
+  `TJO_TEST_POSTGRES_DSN` is set.
+
+### Changed
+
+- **Go 1.25 is now the minimum.** `go.mod` declares `go 1.25.0` with
+  `toolchain go1.26.5`. Go 1.24 leaves support the moment 1.27 ships, which is
+  imminent, and both `pgx/v5` and `net/http.CrossOriginProtection` require 1.25.
+  The scaffold template and the generated Dockerfiles moved with it — the latter
+  pinned `golang:1.21-alpine`, which cannot build a `go 1.25` module at all.
+- `jackc/pgx` v4 → v5, `dgraph-io/badger` v3 → v4, `aws/aws-sdk-go` v1 →
+  `aws-sdk-go-v2`, `go-git` v5.11.0 → v5.19.1, chi → v5.3.1, MCP SDK v1.1.0 →
+  v1.7.0, `nosurf` → v1.2.0, plus `x/crypto`, `x/net`, `x/text`, `grpc` and
+  `otel`.
+- Vonage SMS now posts directly to the API instead of using the SDK. That code
+  was already in the file — it was reached only when a client was injected,
+  which happened only in tests. The shipped path and the covered path were
+  different code. It also surfaces Vonage's `error-text`, which the SDK branch
+  discarded.
+
+### Removed
+
+`aws/aws-sdk-go` (v1, EOL 2025-07-31), `dgraph-io/badger/v3` (no release since
+December 2022), `vonage/vonage-go-sdk`, `golang-jwt/jwt` v3, `jackc/pgconn`,
+`jackc/pgproto3/v2`, `jackc/pgtype`, `jackc/pgio`, `jackc/chunkreader/v2`.
+
+### Fixed tests that were not testing anything
+
+Three guards passed against code they were written to reject:
+
+- `TestBadgerCache_EmptyByMatch` kept passing under badger v4 with the
+  `KeyCopy` fix from #21 removed. Three short keys is too few iterations to force
+  badger to reuse its key buffer. The replacement interleaves 200 keys with
+  varying-length suffixes and fails with entries surviving deletion, because the
+  delete list pointed at whatever the buffer held last.
+- `TestS3_ErrorHandling` constructed `awserr` values and asserted they had a
+  code and a message — a property of the SDK, not of any code in this package.
+  It would have passed against an empty implementation. Its replacement pins
+  `UsePathStyle`, the one v1-to-v2 difference that fails silently: v1 inferred
+  path-style addressing from a custom endpoint and v2 infers nothing, so without
+  it every request to MinIO or another S3-compatible server goes to a
+  virtual-host URL that resolves nowhere.
+- `TestVonage_ProductionPath` and its Twilio counterpart make live API calls and
+  assert only that something failed — which is also what happens with no
+  network. Both skip under `-short`, which is what CI runs.
+
+Every fix in this release has a regression test that was run against the unfixed
+code and observed to fail.
+
+### Verified
+
+- All five modules report zero reachable vulnerabilities.
+- pgx v5 against PostgreSQL 16: driver registration and `$1` placeholder
+  rewriting.
+- s3filesystem against MinIO: `Put`, `List`, `Get` and `Delete` end to end.
+- All four starter templates scaffold, build and vet, then still do so after
+  `make auth`, `make controller` and `make handler`.
+
 ## [0.7.0] - 2026-08-04
 
 A correctness and security release. Every fix below has a regression test that
