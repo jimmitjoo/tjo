@@ -63,26 +63,30 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
+      # The generated go.mod must point at this checkout before the CLI is
+      # built, because the template is embedded at build time and `tjo new`
+      # runs `go mod tidy` itself as its last step. Adding the replace
+      # afterwards is too late: tidy has already tried to resolve a released
+      # version, which during a release window does not exist yet.
+      #
+      # Without this the job would validate the published framework rather
+      # than the branch under test, which is the wrong thing entirely.
+      - name: Point the scaffold template at this checkout
+        run: |
+          {
+            echo ""
+            echo "replace github.com/jimmitjoo/tjo => $GITHUB_WORKSPACE"
+            for m in email otel sms websocket; do
+              echo "replace github.com/jimmitjoo/tjo/$m => $GITHUB_WORKSPACE/$m"
+            done
+          } >> cmd/tjo/templates/go.mod.txt
+
       - name: Build the CLI
         run: go build -o "$RUNNER_TEMP/tjo" ./cmd/tjo
 
       - name: Generate a project
         working-directory: ${{ runner.temp }}
         run: ./tjo new demo -d sqlite
-
-      # Point the generated project at this checkout. Without it the job
-      # resolves the published framework and validates the wrong code -- and
-      # the submodules need the same treatment, because between `make release`
-      # bumping the pins and the tags being pushed those versions do not exist
-      # yet.
-      - name: Build against this checkout, not the published release
-        working-directory: ${{ runner.temp }}/demo
-        run: |
-          go mod edit -replace github.com/jimmitjoo/tjo=$GITHUB_WORKSPACE
-          for m in email otel sms websocket; do
-            go mod edit -replace github.com/jimmitjoo/tjo/$m=$GITHUB_WORKSPACE/$m
-          done
-          go mod tidy
 
       - name: Build the generated project
         working-directory: ${{ runner.temp }}/demo
