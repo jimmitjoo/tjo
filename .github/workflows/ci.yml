@@ -76,6 +76,36 @@ jobs:
           TJO_TEST_POSTGRES_DSN: ${{ matrix.module == '.' && 'postgres://tjo:secret@localhost:5432/tjotest?sslmode=disable' || '' }}
         run: go test -short -race -timeout 5m ./...
 
+  # Scorecard rates the repository against automated supply-chain checks and
+  # publishes the result. Several of them -- Signed-Releases, Pinned-Dependencies,
+  # Token-Permissions, Vulnerabilities, Security-Policy -- are things v0.8.0 and
+  # v0.9.0 already do, so this reports work already done rather than adding any.
+  scorecard:
+    name: scorecard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@v2.4.1
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+
   # Go 1.27 makes encoding/json/v2 the implementation behind encoding/json.
   # It deliberately keeps v1's semantics, so this is a canary rather than a
   # migration: measured before it was written, the v1 API under jsonv2 still

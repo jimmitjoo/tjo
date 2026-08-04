@@ -68,16 +68,17 @@ reproducer.
 The major version is 0, so the API may still break in a minor release.
 
 **Only the most recent minor line receives security fixes.** There is no LTS
-branch and there will not be one at this size. As of this file: **v0.8.x**.
+branch and there will not be one at this size. As of this file: **v0.9.x**.
 
 | Version | Security fixes |
 |---|---|
-| 0.8.x | Yes |
-| 0.7.x and earlier | No — upgrade |
+| 0.9.x | Yes |
+| 0.8.x and earlier | No — upgrade |
 
-Users of v0.7.0 and earlier should upgrade. v0.8.0 fixes an unpatchable SQL
-injection reachable through the query builder, a CSRF origin check that never
-executed, and a rate-limit bypass. See the changelog.
+Users of v0.7.0 and earlier should upgrade urgently. v0.8.0 fixes an unpatchable
+SQL injection reachable through the query builder, a CSRF origin check that never
+executed, and a rate-limit bypass that defeated a fix v0.7.0 had already
+published. See the changelog.
 
 ## Scope of this policy
 
@@ -111,6 +112,43 @@ All five modules in this repository, each versioned separately:
   until it was noticed and corrected. See #67.
 - Published advisories are explained in the changelog with what was measured,
   not just what was changed.
+
+## Cyber Resilience Act
+
+**This project is out of scope for the CRA**, and that is worth stating plainly
+rather than leaving people to guess.
+
+The regulation reaches software placed on the market *in the course of a
+commercial activity*. An **open source steward** — the lighter category in
+Article 24 — must be a *legal person*: a foundation or a company. This framework
+is maintained by an individual, takes no fees, and sells nothing. Article 2 is
+explicit that the CRA does not apply to developers contributing to free and open
+source software that is not under their responsibility.
+
+Consequently this project does not, and will not, produce CE markings,
+Declarations of Conformity or Annex VII technical files. Stewards are told not
+to, and out-of-scope projects producing them would be asserting something untrue.
+
+**What this means if you are building a commercial product on Tjo.** You are the
+manufacturer. Article 13 requires due diligence on every integrated third-party
+component, including non-commercial open source ones, and that responsibility
+cannot be passed upstream. What we can give you toward it:
+
+| You need | Where it is |
+|---|---|
+| SBOM | CycloneDX 1.6 attached to every release since v0.9.0 |
+| Build provenance | SLSA attestation per artifact; `gh attestation verify <file> --repo jimmitjoo/tjo` |
+| Vulnerability disclosure process | this document |
+| Known vulnerabilities | `make vuln`, gating every build and run weekly |
+| Support and EOL policy | "Supported versions" above |
+| Secure development practices | OpenSSF Scorecard badge in the README |
+
+If you need something else for your technical file, open an issue. Answering
+once in public is better for both of us than answering the same questionnaire
+repeatedly in email.
+
+Full application of the CRA is **2027-12-11**; reporting obligations for
+in-scope parties started 2026-09-11.
 
 ## Past advisories
 
