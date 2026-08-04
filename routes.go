@@ -1,14 +1,32 @@
 package tjo
 
 import (
-	"net/http"
+	"errors"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jimmitjoo/tjo/logging"
 )
 
-func (g *Tjo) routes() http.Handler {
+// routes builds the application router.
+//
+// It returns an error rather than quietly producing a router without the
+// session and CSRF middleware. That silent path is what GHSA-9m5v-pvgv-cv8j
+// was: New() called this before assigning g.HTTP.Session, the guard below
+// evaluated false, and every application served every request unprotected
+// with nothing failing and nothing logged.
+//
+// "Misconfigured" and "unprotected" are not the same outcome, and a security
+// control that removes itself when a dependency is missing has chosen the
+// wrong one.
+func (g *Tjo) routes() (*chi.Mux, error) {
+	if g.HTTP == nil {
+		return nil, errors.New("routes: HTTP service is not initialised")
+	}
+	if g.HTTP.Session == nil {
+		return nil, errors.New("routes: session manager is not initialised, so SessionLoad and NoSurf cannot be installed")
+	}
+
 	mux := chi.NewRouter()
 	mux.Use(middleware.RequestID)
 	mux.Use(middleware.RealIP)
@@ -35,13 +53,10 @@ func (g *Tjo) routes() http.Handler {
 
 	mux.Use(middleware.Recoverer)
 
-	// Only add session and CSRF middleware if HTTP service is configured
-	if g.HTTP != nil && g.HTTP.Session != nil {
-		mux.Use(g.SessionLoad)
-		mux.Use(g.NoSurf)
-	}
+	mux.Use(g.SessionLoad)
+	mux.Use(g.NoSurf)
 
-	return mux
+	return mux, nil
 }
 
 // AddMonitoringRoutes adds health and metrics endpoints.

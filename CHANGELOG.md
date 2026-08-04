@@ -204,7 +204,19 @@ If you set session keys yourself, either go through `LoginUser` or set
 under `user_id` while the scaffolded auth handlers use `userID`; the two have
 never interoperated, which is now documented on the type.
 
-**12. PostgreSQL requires `WithDialect`**
+**12. `routes()` refuses to build an unprotected router**
+
+It used to skip `SessionLoad` and `NoSurf` when the session manager was
+missing and return a router anyway. That silent path is what made
+GHSA-9m5v-pvgv-cv8j possible. It now returns an error, and `New()` propagates
+it, so a misconfiguration fails startup instead of quietly producing an
+application with no CSRF protection.
+
+Only relevant if you call the unexported `routes()` yourself, which you cannot
+from outside the package — listed because it changes what a broken
+configuration does: it stops rather than starts.
+
+**13. PostgreSQL requires `WithDialect`**
 
 Not a signature change, but required to make PostgreSQL work at all:
 

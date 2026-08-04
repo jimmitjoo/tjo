@@ -13,7 +13,6 @@ import (
 
 	"github.com/CloudyKit/jet/v6"
 	"github.com/dgraph-io/badger/v3"
-	"github.com/go-chi/chi/v5"
 	"github.com/gomodule/redigo/redis"
 	"github.com/jimmitjoo/tjo/cache"
 	"github.com/jimmitjoo/tjo/config"
@@ -227,7 +226,10 @@ func (g *Tjo) New(rootPath string, modules ...Module) error {
 	// Setup HTTP router. Must come after InitSession: routes() gates
 	// SessionLoad and NoSurf behind a non-nil g.HTTP.Session, so building the
 	// router first silently ships every app without session or CSRF middleware.
-	g.HTTP.Router = g.routes().(*chi.Mux)
+	g.HTTP.Router, err = g.routes()
+	if err != nil {
+		return err
+	}
 
 	// Setup Jet template engine
 	var views *jet.Set

@@ -12,16 +12,52 @@ import (
 	"github.com/jimmitjoo/tjo/config"
 )
 
-func TestRoutes(t *testing.T) {
-	g := &Tjo{
+// newRoutableApp returns a Tjo with just enough wired up for routes() to
+// succeed: a session manager, which is what SessionLoad and NoSurf need.
+func newRoutableApp(debug bool) *Tjo {
+	return &Tjo{
 		HTTP: &HTTPService{
-			Router: chi.NewRouter(),
+			Router:  chi.NewRouter(),
+			Session: scs.New(),
 		},
-		Debug: false,
+		Debug: debug,
 	}
+}
 
-	// Get routes
-	routes := g.routes()
+// TestRoutesRequiresASessionManager pins the contract that replaced a silent
+// degradation. routes() used to skip SessionLoad and NoSurf when the session
+// manager was missing and return a router anyway, which is how every
+// application ended up serving requests with no CSRF protection at all --
+// GHSA-9m5v-pvgv-cv8j. It refuses now.
+func TestRoutesRequiresASessionManager(t *testing.T) {
+	t.Run("no HTTP service", func(t *testing.T) {
+		g := &Tjo{}
+		if _, err := g.routes(); err == nil {
+			t.Error("expected an error rather than an unprotected router")
+		}
+	})
+
+	t.Run("no session manager", func(t *testing.T) {
+		g := &Tjo{HTTP: &HTTPService{Router: chi.NewRouter()}}
+		if _, err := g.routes(); err == nil {
+			t.Error("expected an error rather than a router missing SessionLoad and NoSurf")
+		}
+	})
+
+	t.Run("session manager present", func(t *testing.T) {
+		if _, err := newRoutableApp(false).routes(); err != nil {
+			t.Errorf("expected success, got %v", err)
+		}
+	})
+}
+
+func TestRoutes(t *testing.T) {
+	g := newRoutableApp(false)
+
+	routes, err := g.routes()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Test that routes is not nil
 	if routes == nil {
@@ -41,14 +77,12 @@ func TestRoutes(t *testing.T) {
 }
 
 func TestRoutesWithDebug(t *testing.T) {
-	g := &Tjo{
-		HTTP: &HTTPService{
-			Router: chi.NewRouter(),
-		},
-		Debug: true, // Enable debug mode
-	}
+	g := newRoutableApp(true)
 
-	routes := g.routes()
+	routes, err := g.routes()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if routes == nil {
 		t.Error("Expected routes to be initialized in debug mode")
@@ -74,7 +108,10 @@ func TestRoutesMiddleware(t *testing.T) {
 	}
 
 	// Get the router with middleware
-	router := g.routes().(*chi.Mux)
+	router, err := g.routes()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Add a test route
 	router.Get("/test", func(w http.ResponseWriter, r *http.Request) {
@@ -99,15 +136,13 @@ func TestRoutesMiddleware(t *testing.T) {
 }
 
 func TestStaticFileServing(t *testing.T) {
-	g := &Tjo{
-		HTTP: &HTTPService{
-			Router: chi.NewRouter(),
-		},
-		Debug:    false,
-		RootPath: "./",
-	}
+	g := newRoutableApp(false)
+	g.RootPath = "./"
 
-	routes := g.routes()
+	routes, err := g.routes()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Test static file route
 	req := httptest.NewRequest("GET", "/public/test.css", nil)
