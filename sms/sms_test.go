@@ -370,22 +370,37 @@ func TestMockHTTPClient(t *testing.T) {
 }
 
 func TestVonage_ProductionPath(t *testing.T) {
-	// Test that production path is used when httpClient is nil
+	// Reaches rest.nexmo.com for real. It asserts only that *something* went
+	// wrong with deliberately invalid credentials, which is a weak claim that
+	// also fails with no network at all -- so it is skipped under -short, which
+	// is what CI runs.
+	if testing.Short() {
+		t.Skip("makes a live request to the Vonage API")
+	}
+
 	v := &Vonage{
 		APIKey:     "test",
 		APISecret:  "test",
 		FromNumber: "+123",
 		httpClient: nil,
 	}
-	
-	// This will use the production SDK path which will fail with test credentials
-	// We're just testing that it attempts to use the SDK
+
+	// A nil httpClient must fall back to defaultHTTPClient rather than
+	// panicking. Before v0.8.0 this branch called vonage-go-sdk instead, so the
+	// code that shipped to users was the one path nothing else in this file
+	// covered.
 	err := v.Send("+456", "test", false)
-	assert.Error(t, err) // Expected to fail with test credentials
+	assert.Error(t, err)
 }
 
 func TestTwilio_ProductionPath(t *testing.T) {
-	// Test that production path is used when httpClient is nil
+	// Same as TestVonage_ProductionPath: a live call asserting only that it
+	// failed. Twilio still routes production through its SDK, so this remains
+	// the one test touching that branch -- see the note on Twilio.Send.
+	if testing.Short() {
+		t.Skip("makes a live request to the Twilio API")
+	}
+
 	tw := &Twilio{
 		AccountSid: "AC123",
 		APIKey:     "test",
