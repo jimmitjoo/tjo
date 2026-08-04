@@ -114,7 +114,19 @@ All five modules in this repository, each versioned separately:
 
 ## Past advisories
 
-- GHSA-9m5v-pvgv-cv8j — session and CSRF middleware were never installed
-- GHSA-2w6x-c7q3-qcgr — the Go renderer used `text/template`, so no output escaping
-- GHSA-44g2-5v2v-xh66 — scaffolded password reset performed no authorisation check
-- GHSA-hm83-wmj9-52fm — rate limiter trusted `X-Forwarded-For` from any peer
+| Advisory | CVSS v3.1 | Affected | Fixed in |
+|---|---|---|---|
+| [GHSA-44g2-5v2v-xh66](https://github.com/jimmitjoo/tjo/security/advisories/GHSA-44g2-5v2v-xh66) — scaffolded password reset performed no authorisation check | 9.1 Critical | ≤ 0.6.1 | 0.7.0 |
+| [GHSA-hm83-wmj9-52fm](https://github.com/jimmitjoo/tjo/security/advisories/GHSA-hm83-wmj9-52fm) — rate limiter trusted `X-Forwarded-For` from any peer | 8.2 High | ≤ 0.7.0 | 0.8.0 |
+| [GHSA-9m5v-pvgv-cv8j](https://github.com/jimmitjoo/tjo/security/advisories/GHSA-9m5v-pvgv-cv8j) — session and CSRF middleware were never installed | 6.5 Medium | ≤ 0.6.1 | 0.7.0 |
+| [GHSA-2w6x-c7q3-qcgr](https://github.com/jimmitjoo/tjo/security/advisories/GHSA-2w6x-c7q3-qcgr) — the Go renderer used `text/template`, so no output escaping | 6.1 Medium | ≤ 0.6.1 | 0.7.0 |
+
+All four were originally labelled by impression rather than scored. CVSS
+vectors were added on 2026-08-04 alongside the CVE requests, and two came out
+lower than their original label. Nothing was retracted and no finding changed —
+the scores reflect what each report actually demonstrates. Each advisory carries
+a note explaining its own.
+
+Note that GHSA-hm83-wmj9-52fm's affected range originally read `≤ 0.6.1`. It was
+corrected to `≤ 0.7.0` because v0.7.0's fix was defeated by a middleware mounted
+ahead of it — see the advisory's second correction.
