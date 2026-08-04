@@ -36,6 +36,14 @@ below lived in exactly that blind spot.
   it. Note that the generated code did not compile before this release, which
   limited real-world exposure.
 
+- **Scaffolded login did not rotate the session ID.** `tjo make auth`
+  generated a login handler that wrote `userID` into the existing session
+  without renewing the token — on both the plain path and after 2FA
+  verification. Logout renewed it; login did not. An attacker able to fix a
+  session ID on the victim's browser beforehand therefore still held a valid,
+  now-authenticated session. Both paths renew before establishing the session,
+  and a test asserts it for each.
+
 - **Rate limiter was trivially bypassed** (GHSA-hm83-wmj9-52fm, high).
   `IPThrottler.getRealIP` trusted `X-Forwarded-For` without checking that the
   peer was a proxy, so rotating a forged header minted a fresh bucket per
@@ -161,7 +169,20 @@ expecting `config` to act on it configured nothing. CORS is owned by the
 `security.LoadFromEnv()` and applies it in `CORSMiddleware`. The duplicate
 struct is gone; the environment variable is unchanged.
 
-**10. `ValidateSession` rejects sessions it cannot age**
+**10. `AuthSessionHandler` uses the framework's session keys**
+
+It wrote the user under `user_id` while everything else in the framework —
+`render.defaultData`, the scaffolded auth middleware, the TOTP handlers, the
+remember-me middleware — reads `userID`. The two mechanisms could not see each
+other's sessions, so an application using `LoginUser` appeared logged out to
+every template and middleware in the same application.
+
+It now writes `userID`. The keys are exported as `session.KeyUserID`,
+`KeyAuthTime`, `KeyCreatedAt` and `KeyFingerprint` so they cannot drift apart
+again. Any session established by the previous release is not recognised by
+this one; users log in again.
+
+**11. `ValidateSession` rejects sessions it cannot age**
 
 `AuthSessionHandler.ValidateSession` skipped its `MaxLifetime` check entirely
 when `auth_time` was missing, so a session carrying `user_id` but no
@@ -174,7 +195,7 @@ If you set session keys yourself, either go through `LoginUser` or set
 under `user_id` while the scaffolded auth handlers use `userID`; the two have
 never interoperated, which is now documented on the type.
 
-**11. PostgreSQL requires `WithDialect`**
+**12. PostgreSQL requires `WithDialect`**
 
 Not a signature change, but required to make PostgreSQL work at all:
 

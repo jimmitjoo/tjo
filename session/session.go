@@ -32,6 +32,21 @@ type Session struct {
 	RedisPool      *redis.Pool
 }
 
+// Session keys written by AuthSessionHandler.
+//
+// KeyUserID is "userID" to match the rest of the framework: render.defaultData
+// derives IsAuthenticated from it, and the scaffolded auth middleware, TOTP
+// handlers and remember-me middleware all read it. This handler used to write
+// "user_id" instead, so the two mechanisms could never see each other's
+// sessions -- an application using LoginUser appeared logged out to every
+// template and middleware in the same app.
+const (
+	KeyUserID      = "userID"
+	KeyAuthTime    = "auth_time"
+	KeyCreatedAt   = "created_at"
+	KeyFingerprint = "fingerprint"
+)
+
 // SecureSessionConfig holds secure session configuration
 type SecureSessionConfig struct {
 	EnableRotation   bool
@@ -186,23 +201,23 @@ func SecureSessionRotationMiddleware(sessionManager *scs.SessionManager, config 
 // shouldRotateSession determines if session should be rotated
 func shouldRotateSession(sessionManager *scs.SessionManager, r *http.Request, config SecureSessionConfig) bool {
 	// Check if session exists
-	if !sessionManager.Exists(r.Context(), "created_at") {
+	if !sessionManager.Exists(r.Context(), KeyCreatedAt) {
 		// Set creation time for new sessions
-		sessionManager.Put(r.Context(), "created_at", time.Now().Unix())
+		sessionManager.Put(r.Context(), KeyCreatedAt, time.Now().Unix())
 		return false
 	}
 
 	// Get session creation time
-	createdAt := sessionManager.GetInt64(r.Context(), "created_at")
+	createdAt := sessionManager.GetInt64(r.Context(), KeyCreatedAt)
 	if createdAt == 0 {
-		sessionManager.Put(r.Context(), "created_at", time.Now().Unix())
+		sessionManager.Put(r.Context(), KeyCreatedAt, time.Now().Unix())
 		return false
 	}
 
 	// Check if session is older than regeneration time
 	sessionAge := time.Since(time.Unix(createdAt, 0))
 	if sessionAge > config.RegenerationTime {
-		sessionManager.Put(r.Context(), "created_at", time.Now().Unix())
+		sessionManager.Put(r.Context(), KeyCreatedAt, time.Now().Unix())
 		return true
 	}
 
@@ -219,11 +234,8 @@ func AuthenticationSessionHandler(sessionManager *scs.SessionManager, config Sec
 
 // AuthSessionHandler handles authentication-related session operations.
 //
-// Note that this stores the user under "user_id", while the handlers generated
-// by `tjo make auth` write "userID" directly through the session manager. The
-// two do not interoperate: an application either goes through LoginUser and
-// ValidateSession, or manages the session keys itself. Mixing them means
-// ValidateSession never sees a user.
+// It writes the keys declared above, which are the same ones the rest of the
+// framework reads, so LoginUser and hand-rolled session handling can coexist.
 type AuthSessionHandler struct {
 	sessionManager *scs.SessionManager
 	config         SecureSessionConfig
@@ -237,14 +249,14 @@ func (ash *AuthSessionHandler) LoginUser(w http.ResponseWriter, r *http.Request,
 	}
 
 	// Set user session data
-	ash.sessionManager.Put(r.Context(), "user_id", userID)
-	ash.sessionManager.Put(r.Context(), "auth_time", time.Now().Unix())
-	ash.sessionManager.Put(r.Context(), "created_at", time.Now().Unix())
+	ash.sessionManager.Put(r.Context(), KeyUserID, userID)
+	ash.sessionManager.Put(r.Context(), KeyAuthTime, time.Now().Unix())
+	ash.sessionManager.Put(r.Context(), KeyCreatedAt, time.Now().Unix())
 
 	// Generate and store session fingerprint for additional security
 	fingerprint, err := generateSessionFingerprint(r)
 	if err == nil {
-		ash.sessionManager.Put(r.Context(), "fingerprint", fingerprint)
+		ash.sessionManager.Put(r.Context(), KeyFingerprint, fingerprint)
 	}
 
 	return nil
@@ -259,13 +271,13 @@ func (ash *AuthSessionHandler) LogoutUser(w http.ResponseWriter, r *http.Request
 // ValidateSession validates session integrity and security
 func (ash *AuthSessionHandler) ValidateSession(r *http.Request) bool {
 	// Check if user is authenticated
-	if !ash.sessionManager.Exists(r.Context(), "user_id") {
+	if !ash.sessionManager.Exists(r.Context(), KeyUserID) {
 		return false
 	}
 
 	// Validate session fingerprint if enabled
-	if ash.sessionManager.Exists(r.Context(), "fingerprint") {
-		storedFingerprint := ash.sessionManager.GetString(r.Context(), "fingerprint")
+	if ash.sessionManager.Exists(r.Context(), KeyFingerprint) {
+		storedFingerprint := ash.sessionManager.GetString(r.Context(), KeyFingerprint)
 		currentFingerprint, err := generateSessionFingerprint(r)
 		if err != nil || storedFingerprint != currentFingerprint {
 			// Session hijacking attempt detected
@@ -283,7 +295,7 @@ func (ash *AuthSessionHandler) ValidateSession(r *http.Request) bool {
 	// MaxLifetime said. An age check that cannot determine the age has to fail
 	// closed.
 	if ash.config.MaxLifetime > 0 {
-		authTime := ash.sessionManager.GetInt64(r.Context(), "auth_time")
+		authTime := ash.sessionManager.GetInt64(r.Context(), KeyAuthTime)
 		if authTime <= 0 {
 			ash.sessionManager.Destroy(r.Context())
 			return false

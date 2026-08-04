@@ -7,6 +7,7 @@ import (
 	"image/png"
 	"$APPURL$/data"
 	"net/http"
+	"time"
 
 	"github.com/CloudyKit/jet/v6"
 	"github.com/pquerna/otp/totp"
@@ -252,7 +253,16 @@ func (h *Handlers) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Complete the login
+	// Same session fixation defence as the non-2FA login path: this is where
+	// authentication actually completes for a 2FA user.
+	if err := h.App.Session.RenewToken(r.Context()); err != nil {
+		h.App.ErrorLog.Println("error renewing session token after 2FA:", err)
+		h.App.ErrorStatus(w, http.StatusInternalServerError)
+		return
+	}
+
 	h.App.Session.Put(r.Context(), "userID", user.ID)
+	h.App.Session.Put(r.Context(), "auth_time", time.Now().Unix())
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

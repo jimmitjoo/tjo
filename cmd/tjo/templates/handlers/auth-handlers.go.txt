@@ -238,7 +238,18 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 		h.App.Session.Put(r.Context(), "remember_token", sha)
 	}
 
+	// Rotate the session ID now that the user is authenticated. Without this an
+	// attacker who managed to fix a session ID on the victim's browser before
+	// login still holds a valid, now-authenticated session afterwards. Logout
+	// already did this; login did not.
+	if err := h.App.Session.RenewToken(r.Context()); err != nil {
+		h.App.ErrorLog.Println("error renewing session token on login:", err)
+		h.App.ErrorStatus(w, http.StatusInternalServerError)
+		return
+	}
+
 	h.App.Session.Put(r.Context(), "userID", user.ID)
+	h.App.Session.Put(r.Context(), "auth_time", time.Now().Unix())
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

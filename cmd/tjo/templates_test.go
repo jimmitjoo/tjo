@@ -90,3 +90,42 @@ func TestMiddlewareTemplatesCallNext(t *testing.T) {
 		})
 	}
 }
+
+// TestLoginTemplatesRotateTheSession guards against session fixation in
+// generated code. Logout renewed the session token; login did not, so an
+// attacker who fixed a session ID on the victim's browser beforehand still
+// held a valid authenticated session afterwards. Both places where
+// authentication completes -- the plain login and the 2FA verification --
+// must rotate before writing userID.
+func TestLoginTemplatesRotateTheSession(t *testing.T) {
+	files := map[string]string{
+		"auth-handlers.go.txt": "templates/handlers/auth-handlers.go.txt",
+		"totp-handlers.go.txt": "templates/handlers/totp-handlers.go.txt",
+	}
+
+	for name, path := range files {
+		t.Run(name, func(t *testing.T) {
+			data, err := templateFS.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			src := string(data)
+
+			idx := strings.Index(src, `Session.Put(r.Context(), "userID"`)
+			if idx < 0 {
+				t.Skip("this template does not establish a session")
+			}
+
+			// Look back a short way for the renewal that must precede it.
+			start := idx - 600
+			if start < 0 {
+				start = 0
+			}
+
+			if !strings.Contains(src[start:idx], "RenewToken") {
+				t.Error("userID is written without renewing the session token first; " +
+					"a fixed session ID would survive login")
+			}
+		})
+	}
+}
