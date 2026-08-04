@@ -3,8 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/jimmitjoo/tjo/core"
+	"github.com/joho/godotenv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -146,6 +150,42 @@ func doMCP() error {
 		Name:    "tjo",
 		Version: core.Version,
 	}, nil)
+
+	registerTools(server)
+
+	return server.Run(context.Background(), &mcp.StdioTransport{})
+}
+
+// registerTools installs every tool on server.
+//
+// Separate from doMCP so the registration can be exercised without starting a
+// stdio server -- which is how the tool list is checked for stable ordering,
+// the property a client relies on to notice a server redefining a tool.
+func registerTools(server *mcp.Server) {
+	// Tell clients how long a tool list stays fresh.
+	//
+	// The 2026-07-28 revision made caching first-class, and it is worth setting
+	// rather than leaving to the default of "immediately stale". The tool list
+	// changes only when this binary changes, so an hour is conservative.
+	//
+	// It pairs with ordering: tools are registered in a fixed sequence with no
+	// map iteration anywhere in the path, so tools/list is byte-identical
+	// across calls. That is what lets a client cache the list and diff it to
+	// notice a server quietly redefining a tool -- a cached list that reorders
+	// itself every call makes that check useless.
+	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			res, err := next(ctx, method, req)
+			if err != nil {
+				return res, err
+			}
+			if list, ok := res.(*mcp.ListToolsResult); ok {
+				list.TTLMs = int(time.Hour / time.Millisecond)
+				list.CacheScope = "private"
+			}
+			return res, nil
+		}
+	})
 
 	// Tool 1: Create new project
 	type CreateProjectArgs struct {
@@ -305,5 +345,75 @@ func doMCP() error {
 		return textResult(info), nil, nil
 	})
 
-	return server.Run(context.Background(), &mcp.StdioTransport{})
+	// Tools 13-15: introspection over the user's actual application.
+	//
+	// These answer questions about *this* project that an agent cannot answer
+	// without reading every file, which is the failure mode worth attacking.
+	// Documentation retrieval is not: the one published controlled A/B of a
+	// docs-retrieval MCP server improved zero of ten questions, and Astro
+	// deleted its llms.txt after measuring that nobody fetched it.
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "tjo_routes_list",
+		Description: "List the HTTP routes this application registers, with method, pattern, handler and line number. " +
+			"Parses routes.go statically, so it works while the project does not compile.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args EmptyArgs) (*mcp.CallToolResult, any, error) {
+		root, err := os.Getwd()
+		if err != nil {
+			return errorResult(err.Error()), nil, nil
+		}
+		routes, err := findRoutes(root)
+		if err != nil {
+			return errorResult(err.Error()), nil, nil
+		}
+		if len(routes) == 0 {
+			return textResult("No routes registered in routes.go."), nil, nil
+		}
+
+		var b strings.Builder
+		for _, r := range routes {
+			fmt.Fprintf(&b, "%-7s %-30s %-28s routes.go:%d\n", r.Method, r.Pattern, r.Handler, r.Line)
+		}
+		return textResult(b.String()), nil, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "tjo_schema_describe",
+		Description: "List the tables and columns in this application's database, read from the live database rather than " +
+			"from migration files -- so it reflects what was actually applied.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args EmptyArgs) (*mcp.CallToolResult, any, error) {
+		// setup() populates the package-level cfg from .env, the same way every
+		// other command reaches configuration.
+		if err := godotenv.Load(); err != nil {
+			return errorResult("no .env in the working directory: " + err.Error()), nil, nil
+		}
+		conf, err := core.LoadCLIConfig()
+		if err != nil {
+			return errorResult(err.Error()), nil, nil
+		}
+		out, err := describeSchema(conf.Config.Database.Type, conf.Config.Database.DSN(conf.RootPath))
+		if err != nil {
+			return errorResult(err.Error()), nil, nil
+		}
+		return textResult(out), nil, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "tjo_config_describe",
+		Description: "Report which environment variables this project sets, which the framework recognises, and which are " +
+			"missing. Secrets are redacted.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args EmptyArgs) (*mcp.CallToolResult, any, error) {
+		root, err := os.Getwd()
+		if err != nil {
+			return errorResult(err.Error()), nil, nil
+		}
+		out, err := describeConfig(root)
+		if err != nil {
+			return errorResult(err.Error()), nil, nil
+		}
+		return textResult(out), nil, nil
+	})
 }
+
+// EmptyArgs is the argument struct for tools that take none.
+type EmptyArgs struct{}
