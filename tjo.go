@@ -301,13 +301,35 @@ func (g *Tjo) Init(p initPaths) error {
 // waiting for in-flight requests to complete before shutting down.
 // Returns an error if the server fails to start or encounters a fatal error.
 func (g *Tjo) ListenAndServe() error {
+	// HTTP/2 including h2c, so Server-Sent Events are usable.
+	//
+	// Under HTTP/1.1 browsers cap concurrent connections to an origin at six,
+	// and an SSE response never completes -- so six open streams deadlock every
+	// other request to that origin, including stylesheets and form posts. Under
+	// HTTP/2 one connection multiplexes hundreds of streams.
+	//
+	// UnencryptedHTTP2 matters because the common deployment is TLS terminated
+	// at a proxy, which then speaks cleartext to this server. Without it that
+	// hop falls back to HTTP/1.1 and the six-connection limit returns, having
+	// looked correctly configured the whole time. Added in Go 1.24; no
+	// third-party h2c wrapper needed.
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetHTTP2(true)
+	protocols.SetUnencryptedHTTP2(true)
+
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", g.Config.Server.Port),
-		ErrorLog:     g.Logging.Error,
-		Handler:      g.HTTP.Router,
-		IdleTimeout:  30 * time.Second,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 600 * time.Second,
+		Addr:        fmt.Sprintf(":%d", g.Config.Server.Port),
+		ErrorLog:    g.Logging.Error,
+		Handler:     g.HTTP.Router,
+		Protocols:   protocols,
+		IdleTimeout: 30 * time.Second,
+		ReadTimeout: 30 * time.Second,
+		// No WriteTimeout: it is an absolute deadline from the start of the
+		// request, not an idle timeout, so it cuts every stream at ten minutes
+		// regardless of activity. Streams bound individual writes with
+		// Stream.SetWriteDeadline instead; ReadTimeout and IdleTimeout still
+		// cover the slow-client cases this was reaching for.
 	}
 
 	// Channel for shutdown signals
