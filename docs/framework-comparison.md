@@ -11,7 +11,7 @@
 | **GitHub Stars** | New | 81k+ | 30k | 35k+ | 8k | 28k | 13k | 26k |
 | **Type** | Full-stack | Minimalist | Minimalist | Minimalist | Full-stack | Full-stack | Full-stack | Feature-rich |
 | **Philosophy** | Laravel for Go | Express for Go | Balanced | Express for Go | Rails for Go | Django for Go | Play for Go | All-in-one |
-| **Go Version** | 1.24+ | 1.20+ | 1.18+ | 1.25+ | Latest 2 | 1.20+ | 1.18+ | 1.20+ |
+| **Go Version** | 1.25+ | 1.20+ | 1.18+ | 1.25+ | Latest 2 | 1.20+ | 1.18+ | 1.20+ |
 | **HTTP Engine** | net/http (Chi) | net/http | net/http | fasthttp | net/http | net/http | net/http | net/http |
 | **Last Release** | Active | Active | Active | Active | 2022? | Active | 2022 | Active |
 
@@ -148,7 +148,7 @@
 - **AI-native** - MCP integration = AI can build your app for you
 - **Security first** - CSRF, rate limiting, validation, XSS built-in
 - **OpenTelemetry built-in** - Observability without extra work
-- **Modern stack** - Go 1.24, latest best practices
+- **Modern stack** - Go 1.25, latest best practices
 
 **Cons:**
 - **New** - Small community, fewer Stack Overflow answers

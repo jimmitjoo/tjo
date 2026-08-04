@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # New advisories land against unchanged code, so a PR-only gate never sees
+  # them. The vuln job below is the reason this schedule exists.
+  schedule:
+    - cron: '17 6 * * 1'
 
 permissions:
   contents: read
@@ -46,6 +50,40 @@ jobs:
       - name: Test
         working-directory: ${{ matrix.module }}
         run: go test -short -race -timeout 5m ./...
+
+  # v0.7.0 shipped with 71 vulnerabilities that had a call path from this
+  # repository's own code -- an unpatchable SQL injection among them -- and CI
+  # was green the whole time, because nothing ran govulncheck. The findings were
+  # the symptom; this missing job was the defect.
+  #
+  # Matrixed over the same five modules for the same reason the test job is:
+  # `govulncheck ./...` from the root reaches the root module only.
+  #
+  # govulncheck exits 3 when a vulnerable symbol is reachable and 0 when clean,
+  # so failing the build is the default behaviour. Do not add continue-on-error.
+  #
+  # Pinned by version rather than run through a third-party action: `go run` on a
+  # pinned module path is verified by the checksum database, which is one fewer
+  # supply chain dependency for the job whose whole purpose is supply chain.
+  vuln:
+    name: vuln ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ['.', 'email', 'otel', 'sms', 'websocket']
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: govulncheck
+        working-directory: ${{ matrix.module }}
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 
   # Everything above tests the framework's own packages. This tests the thing
   # users actually receive: the CLI binary, the project it generates, and

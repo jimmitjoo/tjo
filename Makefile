@@ -1,4 +1,4 @@
-.PHONY: test test-simple cover coverage build_cli build clean release
+.PHONY: test test-simple cover coverage build_cli build clean release vuln
 
 # Get version from git tag (exact match), fallback to "dev"
 VERSION := $(shell git describe --tags --exact-match 2>/dev/null || echo "dev")
@@ -11,6 +11,17 @@ test:
 ## test-simple: runs all tests without colors
 test-simple:
 	@go test -v ./...
+
+## vuln: reports known vulnerabilities with a call path from our own code
+#
+# Same module list as the CI matrix, and for the same reason: this is a
+# workspace, so `./...` from the root never reaches the four submodules.
+# Mirrors the `vuln` job in .github/workflows/ci.yml -- keep them in step.
+vuln:
+	@for m in . email otel sms websocket; do \
+		echo "==> $$m"; \
+		(cd $$m && go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...) || exit 1; \
+	done
 
 ## cover: open coverage in browser
 cover:
