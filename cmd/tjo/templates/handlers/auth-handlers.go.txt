@@ -1,17 +1,20 @@
 package handlers
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
+	"strconv"
+	"sync"
 	"$APPURL$/data"
 	"time"
 
 	"github.com/CloudyKit/jet/v6"
 	"github.com/jimmitjoo/tjo"
+	"github.com/jimmitjoo/tjo/auth"
 	"github.com/jimmitjoo/tjo/email"
 	"github.com/jimmitjoo/tjo/urlsigner"
 )
@@ -354,181 +357,169 @@ func (h *Handlers) PostForgot(w http.ResponseWriter, r *http.Request) {
 
 	h.isAuthenticated(w, r)
 
-	err := r.ParseForm()
-	if err != nil {
+	if err := r.ParseForm(); err != nil {
 		h.App.Logging.Error.Println("error parsing forgot form:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
 
-	// verify that supplied email exists
-	var user *data.User
 	emailAddress := r.Form.Get("email")
-	user, err = user.ByEmail(emailAddress)
+
+	// Every outcome below is identical from the outside, whether or not the
+	// address has an account. The previous version looked the user up and then
+	// used user.Email regardless, so an unknown address produced a different
+	// response from a known one -- which answers "does this person have an
+	// account here" to anyone who asks.
+	//
+	// The work still happens for a known address; it is only the response that
+	// is constant.
+	var user *data.User
+	found, err := user.ByEmail(emailAddress)
+	if err == nil && found != nil {
+		h.sendPasswordResetLink(found)
+	}
+
+	h.App.HTTP.Session.Put(r.Context(), "flash", "If that address has an account, a reset link is on its way.")
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+// sendPasswordResetLink mints a single-use token and mails it.
+//
+// The token carries no identity. GHSA-44g2-5v2v-xh66 was a reset flow where the
+// artifact presented to the server *was* the identity, encrypted with malleable
+// AES-CFB, so flipping bits in it changed whose password was reset. The token is
+// now an unguessable lookup key; the identity lives in the row its hash points
+// at, and it is consumed atomically when spent.
+func (h *Handlers) sendPasswordResetLink(user *data.User) {
+	ctx := context.Background()
+
+	token, err := auth.NewResetToken(
+		strconv.Itoa(user.ID), auth.PurposePasswordReset, 1*time.Hour)
 	if err != nil {
-		h.App.Logging.Error.Println("error getting user by email:", err)
-		h.App.ErrorStatus(w, http.StatusInternalServerError)
+		h.App.Logging.Error.Println("error creating reset token:", err)
 		return
 	}
 
-	// create a link to reset password form
-	link := fmt.Sprintf("%s/reset-password?email=%s", h.App.Server.URL, user.Email)
-	sign := urlsigner.Signer{
-		Secret: []byte(h.App.EncryptionKey),
+	if err := h.ResetTokens().Save(ctx, token); err != nil {
+		h.App.Logging.Error.Println("error saving reset token:", err)
+		return
 	}
 
-	// sign the link
-	signedLink := sign.GenerateTokenFromString(link)
+	var body struct{ Link string }
+	body.Link = fmt.Sprintf("%s/reset-password?token=%s", h.App.Server.URL, token.PlainText)
 
-	var data struct {
-		Link string
-	}
-	data.Link = signedLink
-
-	// send email to user with link
 	msg := email.Message{
 		To:       user.Email,
 		Subject:  "Reset Password",
 		Template: "password-reset",
-		Data:     data,
+		Data:     body,
 		From:     os.Getenv("MAIL_FROM_ADDRESS"),
 	}
 
 	h.App.Background.Mail.Jobs <- msg
-	res := <-h.App.Background.Mail.Results
-	if res.Error != nil {
+	if res := <-h.App.Background.Mail.Results; res.Error != nil {
 		h.App.Logging.Error.Println("error sending email:", res.Error)
-		h.App.ErrorStatus(w, http.StatusInternalServerError)
-		return
 	}
-
-	h.App.HTTP.Session.Put(r.Context(), "flash", "An email has been sent to you with a link to reset your password.")
-
-	// redirect to login page
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
+var (
+	resetStore     *auth.SQLResetStore
+	resetStoreOnce sync.Once
+)
+
+// ResetTokens returns the reset-token store, preparing its table on first use.
+//
+// The implementation is the framework's rather than this project's, because
+// Consume has to be atomic and that is exactly what an application writing it
+// by hand gets wrong: a SELECT to check the token followed by an UPDATE to mark
+// it used lets two concurrent requests both see it as unused, and the prize for
+// winning that race is somebody else's account.
+func (h *Handlers) ResetTokens() *auth.SQLResetStore {
+	resetStoreOnce.Do(func() {
+		resetStore = auth.NewSQLResetStore(h.App.Data.DB.Pool, resetDialect(h.App.Config.Database.Type))
+		if err := resetStore.Migrate(context.Background()); err != nil {
+			h.App.Logging.Error.Println("error preparing the reset token table:", err)
+		}
+	})
+	return resetStore
+}
+
+func resetDialect(dbType string) auth.Dialect {
+	switch dbType {
+	case "postgres", "postgresql", "pgx":
+		return auth.DialectPostgres
+	case "mysql", "mariadb":
+		return auth.DialectMySQL
+	default:
+		return auth.DialectSQLite
+	}
+}
+
+// ResetPasswordForm renders the form. It deliberately does not validate the
+// token: doing so would tell someone holding a guess whether it was right,
+// before they had to commit to using it, and the token is single-use so probing
+// it here would also burn it.
 func (h *Handlers) ResetPasswordForm(w http.ResponseWriter, r *http.Request) {
 
 	h.isAuthenticated(w, r)
 
-	// get the form values
-	theUrl := r.RequestURI
-	testUrl := fmt.Sprintf("%s%s", h.App.Server.URL, theUrl)
-
-	// validate the url
-	signer := urlsigner.Signer{
-		Secret: []byte(h.App.EncryptionKey),
-	}
-
-	valid := signer.VerifyToken(testUrl)
-	if !valid {
-		h.App.Logging.Error.Println("error validating url")
-		h.App.ErrorUnauthorized(w, r)
-		return
-	}
-
-	// make sure it is not expired
-	expired := signer.Expired(testUrl, 60)
-	if expired {
-		h.App.Logging.Error.Println("reset password link has expired")
-		h.App.ErrorUnauthorized(w, r)
-		return
-	}
-
-	// Carry the signed link into the form so the POST handler can verify it
-	// again. The signature is what authorises the reset; the email address is
-	// read back out of the verified URL rather than trusted from the form.
 	vars := make(jet.VarMap)
-	vars.Set("signed_url", testUrl)
+	vars.Set("token", r.URL.Query().Get("token"))
 
-	err := h.App.HTTP.Render.Page(w, r, "reset-password", vars, nil)
-	if err != nil {
-		return
+	if err := h.App.HTTP.Render.Page(w, r, "reset-password", vars, nil); err != nil {
+		h.App.Logging.Error.Println("error rendering:", err)
 	}
 }
 
+// PostResetPassword changes the password.
+//
+// Everything that decides whether this is allowed lives in the framework's auth
+// package: the token is consumed atomically, checked for purpose and expiry,
+// the new password is validated against the policy, and every other outstanding
+// reset token for the user is invalidated. This handler parses a form and
+// writes a row.
+//
+// The previous version of this function verified nothing at all. See
+// GHSA-44g2-5v2v-xh66.
 func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 
 	h.isAuthenticated(w, r)
 
-	// parse the form
-	err := r.ParseForm()
-	if err != nil {
-		h.App.Logging.Error.Println("error parsing reset password form:", err)
+	if err := r.ParseForm(); err != nil {
+		h.App.Logging.Error.Println("error parsing reset form:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
 
-	// Re-verify the signed link. This is the only thing authorising the reset,
-	// so it has to be checked here and not merely on the GET that rendered the
-	// form -- this is the handler that actually changes the password.
-	signedURL := r.Form.Get("signed_url")
-	signer := urlsigner.Signer{
-		Secret: []byte(h.App.EncryptionKey),
-	}
+	ctx := r.Context()
 
-	if !signer.VerifyToken(signedURL) {
-		h.App.Logging.Error.Println("error validating url on password reset")
-		h.App.ErrorUnauthorized(w, r)
-		return
-	}
-
-	if signer.Expired(signedURL, 60) {
-		h.App.Logging.Error.Println("reset password link has expired")
-		h.App.ErrorUnauthorized(w, r)
-		return
-	}
-
-	// Take the address from the verified URL, never from the submitted form.
-	parsedURL, err := url.Parse(signedURL)
+	userID, hash, err := auth.ResetPassword(
+		ctx, h.ResetTokens(), auth.DefaultPasswordPolicy(),
+		r.Form.Get("token"), r.Form.Get("password"))
 	if err != nil {
-		h.App.Logging.Error.Println("error parsing signed url:", err)
+		// One message for an invalid token and for a password that fails the
+		// policy. Separating them would say whether the token was good.
+		h.App.HTTP.Session.Put(ctx, "error", "That reset link is invalid or has expired, or the password is too short.")
+		http.Redirect(w, r, "/forgot-password", http.StatusSeeOther)
+		return
+	}
+
+	id, err := strconv.Atoi(userID)
+	if err != nil {
+		h.App.Logging.Error.Println("reset token has an unusable user id:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
 
-	emailAddress := parsedURL.Query().Get("email")
-	if emailAddress == "" {
-		h.App.Logging.Error.Println("signed url carries no email address")
-		h.App.ErrorUnauthorized(w, r)
-		return
-	}
-
-	// get the user
 	var user *data.User
-	user, err = user.ByEmail(emailAddress)
-	if err != nil {
-		h.App.Logging.Error.Println("error getting user by email:", err)
+	if err := user.SetPasswordHash(id, hash); err != nil {
+		h.App.Logging.Error.Println("error storing the new password:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
 
-	// check if passwords are the same
-	if r.Form.Get("password") != r.Form.Get("verify_password") {
-		// set flash message
-		h.App.HTTP.Session.Put(r.Context(), "flash", "Passwords do not match.")
-
-		// Send them back to the signed link, which is still valid. The POST
-		// URI carries no signature and would fail verification on the way in.
-		http.Redirect(w, r, signedURL, http.StatusSeeOther)
-		return
-	}
-
-	// reset the password
-	err = user.ResetPassword(user.ID, r.Form.Get("password"))
-	if err != nil {
-		h.App.Logging.Error.Println("error resetting password:", err)
-		h.App.ErrorStatus(w, http.StatusInternalServerError)
-		return
-	}
-
-	// add a flash message
-	h.App.HTTP.Session.Put(r.Context(), "flash", "Your password has been reset. You can now login with your new password.")
-
-	// redirect to login page
+	h.App.HTTP.Session.Put(ctx, "flash", "Password reset. You can now log in.")
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
-
 }
 
 func (h *Handlers) isAuthenticated(w http.ResponseWriter, r *http.Request) {
