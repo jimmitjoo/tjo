@@ -26,8 +26,21 @@ func (m *Middleware) CheckRemember(next http.Handler) http.Handler {
 			if len(key) > 0 {
 				// cookie has some data, so lets validate it
 				split := strings.Split(key, "|")
+				if len(split) != 2 {
+					// malformed cookie; without this check the index below
+					// panics on any value a client cares to send
+					m.deleteRememberCookie(w, r)
+					next.ServeHTTP(w, r)
+					return
+				}
+
 				uid, hash := split[0], split[1]
-				id, _ := strconv.Atoi(uid)
+				id, err := strconv.Atoi(uid)
+				if err != nil {
+					m.deleteRememberCookie(w, r)
+					next.ServeHTTP(w, r)
+					return
+				}
 				validHash := u.CheckForRememberToken(id, hash)
 				if !validHash {
 					// cookie is invalid, so lets delete it

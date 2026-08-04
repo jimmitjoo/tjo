@@ -116,10 +116,19 @@ func (g *Render) GoPage(w http.ResponseWriter, r *http.Request, view string, dat
 
 	td := &TemplateData{}
 	if data != nil {
-		td = data.(*TemplateData)
+		var ok bool
+		td, ok = data.(*TemplateData)
+		if !ok {
+			return fmt.Errorf("render: data must be *TemplateData, got %T", data)
+		}
 	}
 
-	err = tmpl.Execute(w, &td)
+	// JetPage has always done this; GoPage did not, so .CSRFToken was the
+	// empty string in every Go template -- including the hidden input this
+	// package's own doc comment tells users to put in their forms.
+	td = g.defaultData(td, r)
+
+	err = tmpl.Execute(w, td)
 
 	if err != nil {
 		return err
@@ -140,7 +149,11 @@ func (g *Render) JetPage(w http.ResponseWriter, r *http.Request, templateName st
 
 	td := &TemplateData{}
 	if data != nil {
-		td = data.(*TemplateData)
+		var ok bool
+		td, ok = data.(*TemplateData)
+		if !ok {
+			return fmt.Errorf("render: data must be *TemplateData, got %T", data)
+		}
 	}
 
 	td = g.defaultData(td, r)

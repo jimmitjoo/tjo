@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var pageData = []struct {
@@ -112,4 +114,50 @@ func TestRender_GoPageEscapesOutput(t *testing.T) {
 	if !strings.Contains(body, "&lt;script&gt;") {
 		t.Errorf("expected HTML-escaped payload, got: %s", body)
 	}
+}
+
+// TestRender_RejectsWrongDataType covers issue #15. Both renderers did an
+// unchecked type assertion on data, so passing anything other than
+// *TemplateData panicked the request instead of returning an error.
+func TestRender_RejectsWrongDataType(t *testing.T) {
+	for _, renderer := range []string{"go", "jet"} {
+		t.Run(renderer, func(t *testing.T) {
+			r, err := http.NewRequest("GET", "/some-url", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := httptest.NewRecorder()
+
+			testRenderer.Renderer = renderer
+			testRenderer.RootPath = "./testdata"
+
+			assert.NotPanics(t, func() {
+				err = testRenderer.Page(w, r, "home", nil, map[string]string{"nope": "x"})
+			})
+			assert.Error(t, err, "wrong data type should be an error, not a panic")
+		})
+	}
+}
+
+// TestRender_GoPagePopulatesDefaultData covers the other half of #15: GoPage
+// never called defaultData, so .CSRFToken was empty in every Go template and
+// the documented hidden form input rendered blank.
+func TestRender_GoPagePopulatesDefaultData(t *testing.T) {
+	r, err := http.NewRequest("GET", "/some-url", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+
+	testRenderer.Renderer = "go"
+	testRenderer.RootPath = "./testdata"
+	testRenderer.ServerName = "probe-server"
+
+	td := &TemplateData{}
+	if err := testRenderer.Page(w, r, "home", nil, td); err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, "probe-server", td.ServerName,
+		"GoPage did not run defaultData over the template data")
 }
