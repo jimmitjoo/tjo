@@ -1,0 +1,124 @@
+name: Release
+
+# Only the framework's own version tags. Submodule tags look like
+# email/v0.7.0, which do not match this pattern and must not trigger a
+# CLI release of their own.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+
+    # Native runners per target, because the SQLite driver is mattn/go-sqlite3
+    # and needs cgo. Built with CGO_ENABLED=0 the binaries compile fine and
+    # then fail at runtime with "go-sqlite3 requires cgo to work. This is a
+    # stub" -- which would break `tjo make auth` and `tjo migrate` on exactly
+    # the zero-configuration database people reach for first.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+          - goos: darwin
+            goarch: amd64
+            runner: macos-13
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-24.04-arm
+          - goos: windows
+            goarch: amd64
+            runner: windows-latest
+            ext: .exe
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      # The same -ldflags the Makefile uses, so `tjo version` reports the
+      # release rather than "dev".
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '1'
+        run: |
+          go build \
+            -ldflags "-s -w \
+              -X github.com/jimmitjoo/tjo/core.Version=${GITHUB_REF_NAME} \
+              -X github.com/jimmitjoo/tjo.version=${GITHUB_REF_NAME}" \
+            -o "tjo${{ matrix.ext }}" \
+            ./cmd/tjo
+
+      # A stubbed SQLite driver only shows up at runtime, so a successful
+      # build is not evidence the binary works. Running it is the cheapest
+      # check that it starts at all on its target; the SQLite guarantee comes
+      # from CGO_ENABLED=1 on a native runner rather than from this step.
+      - name: Verify the binary runs
+        shell: bash
+        run: ./tjo${{ matrix.ext }} version
+
+      - name: Archive
+        if: matrix.goos != 'windows'
+        run: tar czf "tjo_${GITHUB_REF_NAME}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" tjo LICENSE readme.md
+
+      # zip is not reliably on PATH in the Windows runner's bash, so use
+      # PowerShell, which is.
+      - name: Archive (windows)
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path tjo.exe, LICENSE, readme.md `
+            -DestinationPath "tjo_${env:GITHUB_REF_NAME}_windows_amd64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tjo-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            *.tar.gz
+            *.zip
+          if-no-files-found: error
+
+  publish:
+    name: publish
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # One checksum file over every archive, so a download can be verified
+      # without trusting the transport.
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum *.tar.gz *.zip > checksums.txt
+
+      - name: Publish to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md)." \
+            --verify-tag \
+            dist/* \
+          || gh release upload "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --clobber

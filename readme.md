@@ -6,9 +6,21 @@
 
 Tjo is a modern, full-featured web application framework for Go that provides everything you need to build scalable web applications quickly and securely.
 
+## Installation
+
+Download a prebuilt CLI for macOS, Linux or Windows from the
+[latest release](https://github.com/jimmitjoo/tjo/releases/latest), or build
+from source:
+
+```bash
+go install github.com/jimmitjoo/tjo/cmd/tjo@latest
+```
+
+macOS binaries are unsigned, so Gatekeeper will ask before the first run.
+
 ## Requirements
 
-- Go 1.24+
+- Go 1.24+ (to build applications; not needed to run the CLI)
 
 ## Features
 
@@ -28,9 +40,7 @@ Tjo is a modern, full-featured web application framework for Go that provides ev
 - CLI Tools - Project scaffolding and code generation
 - AI-Native Development - MCP server for AI assistants
 
-## Installation
-
-### From Source
+### Building the CLI from a checkout
 
 ```bash
 git clone https://github.com/jimmitjoo/tjo
