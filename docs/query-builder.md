@@ -2,6 +2,33 @@
 
 Tjo includes a fluent, SQL-injection-safe query builder for building database queries without writing raw SQL.
 
+
+## Database dialects
+
+The builder emits `?` placeholders, which MySQL, MariaDB and SQLite accept.
+PostgreSQL does not: its wire protocol takes `$1, $2, ...` only, and a `?`
+comes back as a syntax error.
+
+Tell the builder which one you are on:
+
+```go
+qb := database.NewQueryBuilder(db).WithDialect(database.DialectDollar)
+
+// or derive it from your DATABASE_TYPE
+qb := database.NewQueryBuilder(db).WithDialect(database.DialectFor(cfg.Database.Type))
+```
+
+Models take the same option, and pass it to every query they build:
+
+```go
+var UserModel = database.NewModel("users").WithDialect(database.DialectDollar)
+```
+
+The default is `DialectQuestion`, so MySQL and SQLite users need no change.
+
+`Raw` and `RawExec` are passed through untouched — write those in your own
+database's placeholder syntax.
+
 ## Quick Start
 
 ```go
@@ -597,7 +624,11 @@ import (
     _ "github.com/lib/pq"
 )
 
-var UserModel = database.NewModel("users").WithSoftDelete()
+// WithDialect is required for PostgreSQL: its wire protocol accepts only
+// $1, $2, ... and rejects the ? placeholders the builder emits by default.
+var UserModel = database.NewModel("users").
+    WithSoftDelete().
+    WithDialect(database.DialectDollar)
 
 func main() {
     db, _ := sql.Open("postgres", "...")

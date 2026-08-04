@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -89,13 +90,64 @@ type QueryBuilder struct {
 	unionAll       bool
 	err            error // Stores validation errors
 	includeTrashed bool  // For soft delete support
+	dialect        Dialect
+}
+
+// Dialect selects the placeholder syntax the builder emits.
+type Dialect int
+
+const (
+	// DialectQuestion uses ? placeholders: MySQL, MariaDB, SQLite.
+	DialectQuestion Dialect = iota
+	// DialectDollar uses $1, $2, ... placeholders: PostgreSQL.
+	DialectDollar
+)
+
+// DialectFor maps a DATABASE_TYPE value to the placeholder syntax its driver
+// expects. Unknown values get ? -- the majority of drivers -- rather than an
+// error, so an unrecognised name degrades to the previous behaviour.
+func DialectFor(databaseType string) Dialect {
+	switch strings.ToLower(databaseType) {
+	case "postgres", "postgresql", "pgx":
+		return DialectDollar
+	default:
+		return DialectQuestion
+	}
+}
+
+// rebind rewrites ? placeholders into the dialect's own syntax.
+//
+// The builder always emits ?, and this converts at the end. That is safe here
+// because every ? it writes is a placeholder: values are never interpolated
+// into the SQL, and identifiers go through isValidIdentifier, which rejects a
+// literal question mark. Raw() bypasses the builder and is not rewritten.
+func (d Dialect) rebind(query string) string {
+	if d != DialectDollar {
+		return query
+	}
+
+	var b strings.Builder
+	b.Grow(len(query) + 8)
+
+	n := 0
+	for i := 0; i < len(query); i++ {
+		if query[i] == '?' {
+			n++
+			b.WriteString("$")
+			b.WriteString(strconv.Itoa(n))
+			continue
+		}
+		b.WriteByte(query[i])
+	}
+
+	return b.String()
 }
 
 type whereCondition struct {
 	column   string
 	operator string
 	value    interface{}
-	logic    string // AND or OR
+	logic    string        // AND or OR
 	params   []interface{} // For complex conditions like BETWEEN and IN
 }
 
@@ -105,7 +157,10 @@ type joinClause struct {
 	on       string
 }
 
-// NewQueryBuilder creates a new query builder instance
+// NewQueryBuilder creates a new query builder emitting ? placeholders.
+//
+// Use WithDialect for PostgreSQL: its wire protocol only accepts $1, $2, ...
+// and rejects ? outright.
 func NewQueryBuilder(db *sql.DB) *QueryBuilder {
 	return &QueryBuilder{
 		db:         db,
@@ -133,6 +188,12 @@ func newQueryBuilderWithDB(db DB, rawDB *sql.DB) *QueryBuilder {
 	}
 }
 
+// WithDialect sets the placeholder syntax for this builder and returns it.
+func (qb *QueryBuilder) WithDialect(dialect Dialect) *QueryBuilder {
+	qb.dialect = dialect
+	return qb
+}
+
 // Transaction executes a function within a database transaction.
 // If the function returns an error, the transaction is rolled back.
 // If the function returns nil, the transaction is committed.
@@ -147,7 +208,7 @@ func (qb *QueryBuilder) Transaction(fn func(tx *QueryBuilder) error) error {
 	}
 
 	// Create a new QueryBuilder that uses the transaction
-	txQB := newQueryBuilderWithDB(tx, qb.rawDB)
+	txQB := newQueryBuilderWithDB(tx, qb.rawDB).WithDialect(qb.dialect)
 
 	// Execute the function
 	if err := fn(txQB); err != nil {
@@ -484,7 +545,7 @@ func (qb *QueryBuilder) ToSQL() (string, []interface{}, error) {
 			if i > 0 {
 				query.WriteString(fmt.Sprintf(" %s ", cond.logic))
 			}
-			
+
 			switch cond.operator {
 			case "IS NULL", "IS NOT NULL":
 				query.WriteString(fmt.Sprintf("%s %s", cond.column, cond.operator))
@@ -539,17 +600,17 @@ func (qb *QueryBuilder) ToSQL() (string, []interface{}, error) {
 		if err != nil {
 			return "", nil, err
 		}
-		
+
 		unionType := "UNION"
 		if qb.unionAll {
 			unionType = "UNION ALL"
 		}
-		
+
 		query.WriteString(fmt.Sprintf(" %s %s", unionType, unionSQL))
 		params = append(params, unionParams...)
 	}
 
-	return query.String(), params, nil
+	return qb.dialect.rebind(query.String()), params, nil
 }
 
 // Get executes the query and returns all rows
@@ -558,7 +619,7 @@ func (qb *QueryBuilder) Get() (*sql.Rows, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return qb.db.Query(query, params...)
 }
 
@@ -566,7 +627,7 @@ func (qb *QueryBuilder) Get() (*sql.Rows, error) {
 func (qb *QueryBuilder) First() *sql.Row {
 	qb.Limit(1)
 	query, params, _ := qb.ToSQL()
-	
+
 	return qb.db.QueryRow(query, params...)
 }
 
@@ -574,15 +635,15 @@ func (qb *QueryBuilder) First() *sql.Row {
 func (qb *QueryBuilder) Count() (int64, error) {
 	originalSelect := qb.selectCols
 	qb.selectCols = []string{"COUNT(*)"}
-	
+
 	query, params, err := qb.ToSQL()
 	if err != nil {
 		return 0, err
 	}
-	
+
 	// Restore original select
 	qb.selectCols = originalSelect
-	
+
 	var count int64
 	err = qb.db.QueryRow(query, params...).Scan(&count)
 	return count, err
@@ -605,7 +666,7 @@ func (qb *QueryBuilder) Paginate(page, perPage int) *QueryBuilder {
 	if perPage < 1 {
 		perPage = 15
 	}
-	
+
 	offset := (page - 1) * perPage
 	return qb.Limit(perPage).Offset(offset)
 }
@@ -637,7 +698,9 @@ func (qb *QueryBuilder) Insert(data map[string]interface{}) (sql.Result, error) 
 		strings.Join(columns, ", "),
 		strings.Join(placeholders, ", "))
 
-	return qb.db.Exec(query, values...)
+	// Insert, Update and Delete build their SQL directly rather than going
+	// through ToSQL, so each needs its own rebind.
+	return qb.db.Exec(qb.dialect.rebind(query), values...)
 }
 
 // Update builds and executes an UPDATE query
@@ -685,7 +748,7 @@ func (qb *QueryBuilder) Update(data map[string]interface{}) (sql.Result, error) 
 		}
 	}
 
-	return qb.db.Exec(query, params...)
+	return qb.db.Exec(qb.dialect.rebind(query), params...)
 }
 
 // Delete builds and executes a DELETE query
@@ -723,7 +786,7 @@ func (qb *QueryBuilder) Delete() (sql.Result, error) {
 		}
 	}
 
-	return qb.db.Exec(query, params...)
+	return qb.db.Exec(qb.dialect.rebind(query), params...)
 }
 
 // Raw executes a raw SQL query
@@ -780,7 +843,7 @@ func (qb *QueryBuilder) OnlyTrashed() *QueryBuilder {
 // HasMany returns a query builder for a one-to-many relationship.
 // Example: user.HasMany("posts", "user_id", userID) returns all posts for a user.
 func (qb *QueryBuilder) HasMany(relatedTable, foreignKey string, id interface{}) *QueryBuilder {
-	return newQueryBuilderWithDB(qb.db, qb.rawDB).
+	return newQueryBuilderWithDB(qb.db, qb.rawDB).WithDialect(qb.dialect).
 		Table(relatedTable).
 		Where(foreignKey, "=", id)
 }
@@ -788,7 +851,7 @@ func (qb *QueryBuilder) HasMany(relatedTable, foreignKey string, id interface{})
 // BelongsTo returns a query builder for the parent in a one-to-many relationship.
 // Example: post.BelongsTo("users", "user_id", post.UserID) returns the user for a post.
 func (qb *QueryBuilder) BelongsTo(relatedTable, foreignKey string, fkValue interface{}) *QueryBuilder {
-	return newQueryBuilderWithDB(qb.db, qb.rawDB).
+	return newQueryBuilderWithDB(qb.db, qb.rawDB).WithDialect(qb.dialect).
 		Table(relatedTable).
 		Where("id", "=", fkValue)
 }

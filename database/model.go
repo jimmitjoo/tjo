@@ -12,6 +12,7 @@ type Model struct {
 	table      string
 	primaryKey string
 	softDelete bool
+	dialect    Dialect
 }
 
 // NewModel creates a new Model for the given table name.
@@ -22,6 +23,15 @@ func NewModel(table string) *Model {
 		primaryKey: "id",
 		softDelete: false,
 	}
+}
+
+// WithDialect selects the placeholder syntax for queries this model builds.
+// Required for PostgreSQL, whose wire protocol rejects ? placeholders.
+//
+//	model := NewModel("users").WithDialect(DialectFor(cfg.Database.Type))
+func (m *Model) WithDialect(dialect Dialect) *Model {
+	m.dialect = dialect
+	return m
 }
 
 // WithPrimaryKey sets a custom primary key column name.
@@ -57,12 +67,12 @@ func (m *Model) HasSoftDelete() bool {
 // If soft delete is enabled, it automatically adds WHERE deleted_at IS NULL.
 func (m *Model) Query(db *sql.DB) *QueryBuilder {
 	if !isValidIdentifier(m.table) {
-		qb := NewQueryBuilder(db)
+		qb := NewQueryBuilder(db).WithDialect(m.dialect)
 		qb.err = fmt.Errorf("invalid table name: %q", m.table)
 		return qb
 	}
 
-	qb := NewQueryBuilder(db).Table(m.table)
+	qb := NewQueryBuilder(db).WithDialect(m.dialect).Table(m.table)
 
 	// Automatically exclude soft-deleted records if enabled
 	if m.softDelete {
@@ -84,16 +94,16 @@ func (m *Model) All(db *sql.DB) (*sql.Rows, error) {
 
 // Create inserts a new record and returns the result.
 func (m *Model) Create(db *sql.DB, data map[string]interface{}) (sql.Result, error) {
-	return NewQueryBuilder(db).Table(m.table).Insert(data)
+	return NewQueryBuilder(db).WithDialect(m.dialect).Table(m.table).Insert(data)
 }
 
 // Update updates records matching the given ID.
 func (m *Model) Update(db *sql.DB, id interface{}, data map[string]interface{}) (sql.Result, error) {
-	return NewQueryBuilder(db).Table(m.table).Where(m.primaryKey, "=", id).Update(data)
+	return NewQueryBuilder(db).WithDialect(m.dialect).Table(m.table).Where(m.primaryKey, "=", id).Update(data)
 }
 
 // Delete performs a hard delete for the given ID.
 // For soft delete, use SoftDelete instead.
 func (m *Model) Delete(db *sql.DB, id interface{}) (sql.Result, error) {
-	return NewQueryBuilder(db).Table(m.table).Where(m.primaryKey, "=", id).Delete()
+	return NewQueryBuilder(db).WithDialect(m.dialect).Table(m.table).Where(m.primaryKey, "=", id).Delete()
 }

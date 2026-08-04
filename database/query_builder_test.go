@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,14 +11,14 @@ import (
 
 func TestQueryBuilder_Select(t *testing.T) {
 	qb := NewQueryBuilder(nil)
-	
+
 	t.Run("select all", func(t *testing.T) {
 		sql, params, err := qb.Table("users").ToSQL()
 		require.NoError(t, err)
 		assert.Equal(t, "SELECT * FROM users", sql)
 		assert.Empty(t, params)
 	})
-	
+
 	t.Run("select specific columns", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").Select("id", "name", "email").ToSQL()
@@ -29,14 +30,14 @@ func TestQueryBuilder_Select(t *testing.T) {
 
 func TestQueryBuilder_Where(t *testing.T) {
 	qb := NewQueryBuilder(nil)
-	
+
 	t.Run("single where condition", func(t *testing.T) {
 		sql, params, err := qb.Table("users").Where("id", "=", 1).ToSQL()
 		require.NoError(t, err)
 		assert.Equal(t, "SELECT * FROM users WHERE id = ?", sql)
 		assert.Equal(t, []interface{}{1}, params)
 	})
-	
+
 	t.Run("multiple where conditions", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").
@@ -47,7 +48,7 @@ func TestQueryBuilder_Where(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users WHERE id > ? AND status = ?", sql)
 		assert.Equal(t, []interface{}{1, "active"}, params)
 	})
-	
+
 	t.Run("or where condition", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").
@@ -58,7 +59,7 @@ func TestQueryBuilder_Where(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users WHERE id = ? OR id = ?", sql)
 		assert.Equal(t, []interface{}{1, 2}, params)
 	})
-	
+
 	t.Run("where in", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").
@@ -68,7 +69,7 @@ func TestQueryBuilder_Where(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users WHERE id IN (?, ?, ?)", sql)
 		assert.Equal(t, []interface{}{1, 2, 3}, params) // Parameters now properly handled
 	})
-	
+
 	t.Run("where between", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").
@@ -78,7 +79,7 @@ func TestQueryBuilder_Where(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users WHERE age BETWEEN ? AND ?", sql)
 		assert.Equal(t, []interface{}{18, 65}, params) // Parameters now properly handled for security
 	})
-	
+
 	t.Run("where null", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").
@@ -88,7 +89,7 @@ func TestQueryBuilder_Where(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users WHERE deleted_at IS NULL", sql)
 		assert.Empty(t, params)
 	})
-	
+
 	t.Run("where not null", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").
@@ -102,7 +103,7 @@ func TestQueryBuilder_Where(t *testing.T) {
 
 func TestQueryBuilder_Joins(t *testing.T) {
 	qb := NewQueryBuilder(nil)
-	
+
 	t.Run("inner join", func(t *testing.T) {
 		sql, params, err := qb.Table("users").
 			Join("profiles", "users.id = profiles.user_id").
@@ -111,7 +112,7 @@ func TestQueryBuilder_Joins(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users INNER JOIN profiles ON users.id = profiles.user_id", sql)
 		assert.Empty(t, params)
 	})
-	
+
 	t.Run("left join", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").
@@ -121,7 +122,7 @@ func TestQueryBuilder_Joins(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users LEFT JOIN profiles ON users.id = profiles.user_id", sql)
 		assert.Empty(t, params)
 	})
-	
+
 	t.Run("right join", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").
@@ -131,7 +132,7 @@ func TestQueryBuilder_Joins(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users RIGHT JOIN profiles ON users.id = profiles.user_id", sql)
 		assert.Empty(t, params)
 	})
-	
+
 	t.Run("multiple joins", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").
@@ -147,7 +148,7 @@ func TestQueryBuilder_Joins(t *testing.T) {
 
 func TestQueryBuilder_OrderGroupBy(t *testing.T) {
 	qb := NewQueryBuilder(nil)
-	
+
 	t.Run("order by ascending", func(t *testing.T) {
 		sql, params, err := qb.Table("users").
 			OrderBy("name", "ASC").
@@ -156,7 +157,7 @@ func TestQueryBuilder_OrderGroupBy(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users ORDER BY name ASC", sql)
 		assert.Empty(t, params)
 	})
-	
+
 	t.Run("order by descending", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").
@@ -166,7 +167,7 @@ func TestQueryBuilder_OrderGroupBy(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users ORDER BY created_at DESC", sql)
 		assert.Empty(t, params)
 	})
-	
+
 	t.Run("multiple order by", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").
@@ -177,7 +178,7 @@ func TestQueryBuilder_OrderGroupBy(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users ORDER BY status ASC, created_at DESC", sql)
 		assert.Empty(t, params)
 	})
-	
+
 	t.Run("group by", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("orders").
@@ -188,7 +189,7 @@ func TestQueryBuilder_OrderGroupBy(t *testing.T) {
 		assert.Equal(t, "SELECT user_id, COUNT(*) FROM orders GROUP BY user_id", sql)
 		assert.Empty(t, params)
 	})
-	
+
 	t.Run("having", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("orders").
@@ -204,14 +205,14 @@ func TestQueryBuilder_OrderGroupBy(t *testing.T) {
 
 func TestQueryBuilder_LimitOffset(t *testing.T) {
 	qb := NewQueryBuilder(nil)
-	
+
 	t.Run("limit", func(t *testing.T) {
 		sql, params, err := qb.Table("users").Limit(10).ToSQL()
 		require.NoError(t, err)
 		assert.Equal(t, "SELECT * FROM users LIMIT 10", sql)
 		assert.Empty(t, params)
 	})
-	
+
 	t.Run("limit with offset", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").Limit(10).Offset(20).ToSQL()
@@ -219,7 +220,7 @@ func TestQueryBuilder_LimitOffset(t *testing.T) {
 		assert.Equal(t, "SELECT * FROM users LIMIT 10 OFFSET 20", sql)
 		assert.Empty(t, params)
 	})
-	
+
 	t.Run("paginate", func(t *testing.T) {
 		qb = NewQueryBuilder(nil)
 		sql, params, err := qb.Table("users").Paginate(2, 15).ToSQL()
@@ -231,7 +232,7 @@ func TestQueryBuilder_LimitOffset(t *testing.T) {
 
 func TestQueryBuilder_Complex(t *testing.T) {
 	qb := NewQueryBuilder(nil)
-	
+
 	t.Run("complex query", func(t *testing.T) {
 		sql, params, err := qb.Table("users").
 			Select("users.id", "users.name", "profiles.bio").
@@ -242,7 +243,7 @@ func TestQueryBuilder_Complex(t *testing.T) {
 			OrderBy("users.created_at", "DESC").
 			Limit(50).
 			ToSQL()
-		
+
 		require.NoError(t, err)
 		expected := "SELECT users.id, users.name, profiles.bio FROM users INNER JOIN profiles ON users.id = profiles.user_id WHERE users.status = ? AND users.age >= ? OR users.role = ? ORDER BY users.created_at DESC LIMIT 50"
 		assert.Equal(t, expected, sql)
@@ -252,7 +253,7 @@ func TestQueryBuilder_Complex(t *testing.T) {
 
 func TestQueryBuilder_Errors(t *testing.T) {
 	qb := NewQueryBuilder(nil)
-	
+
 	t.Run("missing table", func(t *testing.T) {
 		_, _, err := qb.Where("id", "=", 1).ToSQL()
 		assert.Error(t, err)
@@ -264,7 +265,7 @@ func TestQueryBuilder_InsertUpdateDelete(t *testing.T) {
 	// Create a test database connection for real operations
 	db := setupTestDB(t)
 	defer db.Close()
-	
+
 	// Create a test table
 	_, err := db.Exec(`CREATE TABLE test_operations (
 		id INTEGER PRIMARY KEY,
@@ -273,42 +274,42 @@ func TestQueryBuilder_InsertUpdateDelete(t *testing.T) {
 		age INTEGER
 	)`)
 	require.NoError(t, err)
-	
+
 	qb := NewQueryBuilder(db)
-	
+
 	t.Run("insert data structure", func(t *testing.T) {
 		data := map[string]interface{}{
 			"name":  "John Doe",
 			"email": "john@example.com",
 			"age":   30,
 		}
-		
+
 		result, err := qb.Table("test_operations").Insert(data)
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		
+
 		id, err := result.LastInsertId()
 		require.NoError(t, err)
 		assert.Greater(t, id, int64(0))
 	})
-	
+
 	t.Run("update data structure", func(t *testing.T) {
 		data := map[string]interface{}{
 			"name": "Jane Doe",
 			"age":  25,
 		}
-		
+
 		result, err := qb.Table("test_operations").
 			Where("id", "=", 1).
 			Update(data)
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		
+
 		rowsAffected, err := result.RowsAffected()
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), rowsAffected)
 	})
-	
+
 	t.Run("delete structure", func(t *testing.T) {
 		result, err := qb.Table("test_operations").
 			Where("id", "=", 1).
@@ -527,4 +528,87 @@ func TestChunk(t *testing.T) {
 		err := qb.Chunk(-1, func(rows *sql.Rows) bool { return true })
 		assert.Error(t, err)
 	})
+}
+
+// TestPostgresPlaceholders covers issue #1. The builder emitted ? everywhere
+// with no conversion, so every query failed on PostgreSQL -- whose wire
+// protocol accepts only $1, $2, ... -- despite the readme advertising it and
+// docs/query-builder.md opening a Postgres connection in its own example.
+// Nothing caught it because every test path was SQLite.
+func TestPostgresPlaceholders(t *testing.T) {
+	tests := []struct {
+		name    string
+		build   func(*QueryBuilder) *QueryBuilder
+		wantSQL string
+	}{
+		{
+			name:    "single where",
+			build:   func(qb *QueryBuilder) *QueryBuilder { return qb.Where("id", "=", 1) },
+			wantSQL: "SELECT * FROM users WHERE id = $1",
+		},
+		{
+			name: "several conditions are numbered in order",
+			build: func(qb *QueryBuilder) *QueryBuilder {
+				return qb.Where("id", "=", 1).Where("name", "=", "bob").Where("age", ">", 30)
+			},
+			wantSQL: "SELECT * FROM users WHERE id = $1 AND name = $2 AND age > $3",
+		},
+		{
+			name:    "where in",
+			build:   func(qb *QueryBuilder) *QueryBuilder { return qb.WhereIn("id", []interface{}{1, 2, 3}) },
+			wantSQL: "SELECT * FROM users WHERE id IN ($1, $2, $3)",
+		},
+		{
+			name: "between",
+			build: func(qb *QueryBuilder) *QueryBuilder {
+				return qb.WhereBetween("age", 18, 65)
+			},
+			wantSQL: "SELECT * FROM users WHERE age BETWEEN $1 AND $2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			qb := NewQueryBuilder(nil).WithDialect(DialectDollar).Table("users")
+			sql, _, err := tt.build(qb).ToSQL()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if sql != tt.wantSQL {
+				t.Errorf("got  %s\nwant %s", sql, tt.wantSQL)
+			}
+			if strings.Contains(sql, "?") {
+				t.Errorf("a ? survived into PostgreSQL SQL: %s", sql)
+			}
+		})
+	}
+}
+
+// TestQuestionDialectUnchanged pins the MySQL/SQLite behaviour.
+func TestQuestionDialectUnchanged(t *testing.T) {
+	qb := NewQueryBuilder(nil).Table("users").Where("id", "=", 1).Where("name", "=", "bob")
+
+	sql, _, err := qb.ToSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := "SELECT * FROM users WHERE id = ? AND name = ?"
+	if sql != want {
+		t.Errorf("got  %s\nwant %s", sql, want)
+	}
+}
+
+func TestDialectFor(t *testing.T) {
+	for _, name := range []string{"postgres", "postgresql", "pgx", "POSTGRES"} {
+		if DialectFor(name) != DialectDollar {
+			t.Errorf("DialectFor(%q) should be DialectDollar", name)
+		}
+	}
+	for _, name := range []string{"mysql", "mariadb", "sqlite", "sqlite3", ""} {
+		if DialectFor(name) != DialectQuestion {
+			t.Errorf("DialectFor(%q) should be DialectQuestion", name)
+		}
+	}
 }
