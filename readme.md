@@ -276,6 +276,22 @@ every change. Run it yourself:
 make vuln
 ```
 
+## Agent evaluation
+
+Can a coding agent build a working Tjo application? [`evals/`](evals/) measures
+it with the compiler as the grader — a task passes if the project builds, vets
+and passes its own tests.
+
+```bash
+make build
+go run ./evals -cli $(pwd)/dist/tjo              # deterministic baseline
+go run ./evals -cli $(pwd)/dist/tjo -agent '...' # with a model in the loop
+```
+
+The deterministic baseline is 5/5. No generative number has been published yet;
+see [evals/README.md](evals/README.md) for why one without a named model, prompt
+and date is worse than none.
+
 ## Testing
 
 ```bash
