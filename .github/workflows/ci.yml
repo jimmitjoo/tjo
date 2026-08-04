@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # One job per Go module. This repo is a workspace (see go.work): `go test
+    # ./...` from the root covers the root module ONLY and silently skips
+    # email, otel, sms and websocket entirely. Running them separately is the
+    # whole point of this matrix.
+    name: ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ['.', 'email', 'otel', 'sms', 'websocket']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: Build
+        working-directory: ${{ matrix.module }}
+        run: go build ./...
+
+      - name: Vet
+        working-directory: ${{ matrix.module }}
+        run: go vet ./...
+
+      # -short skips the tests that need Docker; -race is why this workflow
+      # earns its keep, since several of the bugs it guards were data races.
+      - name: Test
+        working-directory: ${{ matrix.module }}
+        run: go test -short -race -timeout 5m ./...

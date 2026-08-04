@@ -230,8 +230,13 @@ func (l *Logger) log(level LogLevel, message string, fields map[string]interface
 
 // writeEntry writes the log entry to the output
 func (l *Logger) writeEntry(entry LogEntry) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	// A full Lock, not RLock: the read lock only guarded reading l.writer,
+	// leaving every concurrent caller to write to it at the same time. Writers
+	// are not required to be safe for concurrent use, so log lines interleaved
+	// and corrupted. stdlib's log.Logger holds an exclusive lock here for the
+	// same reason.
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	if l.enableJSON {
 		data, _ := json.Marshal(entry)

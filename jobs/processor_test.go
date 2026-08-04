@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,18 +13,18 @@ import (
 
 func TestJobProcessor(t *testing.T) {
 	processor := NewJobProcessor(DefaultRetryConfig())
-	
-	handlerCalled := false
+
+	var handlerCalled atomic.Bool
 	processor.RegisterHandlerFunc("test", func(ctx context.Context, job *Job) error {
-		handlerCalled = true
+		handlerCalled.Store(true)
 		return nil
 	})
-	
+
 	job := NewJob("test", "default", nil)
 	err := processor.ProcessJob(context.Background(), job)
-	
+
 	require.NoError(t, err)
-	assert.True(t, handlerCalled)
+	assert.True(t, handlerCalled.Load())
 	assert.Equal(t, JobStatusCompleted, job.Status)
 	assert.NotNil(t, job.StartedAt)
 	assert.NotNil(t, job.CompletedAt)
@@ -31,15 +32,15 @@ func TestJobProcessor(t *testing.T) {
 
 func TestJobProcessorWithError(t *testing.T) {
 	processor := NewJobProcessor(DefaultRetryConfig())
-	
+
 	testError := errors.New("test error")
 	processor.RegisterHandlerFunc("test", func(ctx context.Context, job *Job) error {
 		return testError
 	})
-	
+
 	job := NewJob("test", "default", nil)
 	job.MaxAttempts = 2
-	
+
 	err := processor.ProcessJob(context.Background(), job)
 	// When job is scheduled for retry, ProcessJob returns nil (not error)
 	assert.NoError(t, err)
@@ -50,19 +51,19 @@ func TestJobProcessorWithError(t *testing.T) {
 
 func TestJobProcessorMaxAttemptsReached(t *testing.T) {
 	processor := NewJobProcessor(DefaultRetryConfig())
-	
+
 	deadLetterQueue := NewMemoryQueue("dead_letter")
 	processor.SetDeadLetterQueue(deadLetterQueue)
-	
+
 	testError := errors.New("test error")
 	processor.RegisterHandlerFunc("test", func(ctx context.Context, job *Job) error {
 		return testError
 	})
-	
+
 	job := NewJob("test", "default", nil)
 	job.MaxAttempts = 1
 	job.Attempts = 1
-	
+
 	err := processor.ProcessJob(context.Background(), job)
 	assert.Error(t, err)
 	assert.Equal(t, JobStatusFailed, job.Status)
@@ -71,30 +72,30 @@ func TestJobProcessorMaxAttemptsReached(t *testing.T) {
 
 func TestJobProcessorNoHandler(t *testing.T) {
 	processor := NewJobProcessor(DefaultRetryConfig())
-	
+
 	job := NewJob("nonexistent", "default", nil)
 	err := processor.ProcessJob(context.Background(), job)
-	
+
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no handler registered")
 }
 
 func TestJobProcessorTimeout(t *testing.T) {
 	processor := NewJobProcessor(DefaultRetryConfig())
-	
+
 	processor.RegisterHandlerFunc("slow", func(ctx context.Context, job *Job) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(200 * time.Millisecond):  // Increased delay to ensure timeout
+		case <-time.After(200 * time.Millisecond): // Increased delay to ensure timeout
 			return nil
 		}
 	})
-	
+
 	job := NewJob("slow", "default", map[string]interface{}{
-		"timeout": "50ms",  // Short timeout to ensure it triggers
+		"timeout": "50ms", // Short timeout to ensure it triggers
 	})
-	
+
 	err := processor.ProcessJob(context.Background(), job)
 	// When timeout occurs and job is retried, ProcessJob returns nil
 	// The actual timeout error is handled internally
@@ -108,73 +109,73 @@ func TestJobProcessorTimeout(t *testing.T) {
 
 func TestJobProcessorEventListeners(t *testing.T) {
 	processor := NewJobProcessor(DefaultRetryConfig())
-	
-	events := make([]string, 0)
-	
+
+	rec := &eventRecorder{}
+
 	processor.AddEventListenerFunc(func(event *JobEvent) {
-		events = append(events, event.Type)
+		rec.record(event.Type)
 	})
-	
+
 	processor.RegisterHandlerFunc("test", func(ctx context.Context, job *Job) error {
 		return nil
 	})
-	
+
 	job := NewJob("test", "default", nil)
 	err := processor.ProcessJob(context.Background(), job)
-	
+
 	require.NoError(t, err)
-	
+
 	time.Sleep(10 * time.Millisecond)
-	
-	assert.Contains(t, events, EventJobStarted)
-	assert.Contains(t, events, EventJobCompleted)
+
+	assert.Contains(t, rec.all(), EventJobStarted)
+	assert.Contains(t, rec.all(), EventJobCompleted)
 }
 
 func TestJobProcessorEventListenersWithError(t *testing.T) {
 	processor := NewJobProcessor(DefaultRetryConfig())
-	
-	events := make([]string, 0)
-	
+
+	rec := &eventRecorder{}
+
 	processor.AddEventListenerFunc(func(event *JobEvent) {
-		events = append(events, event.Type)
+		rec.record(event.Type)
 	})
-	
+
 	processor.RegisterHandlerFunc("test", func(ctx context.Context, job *Job) error {
 		return errors.New("test error")
 	})
-	
+
 	job := NewJob("test", "default", nil)
 	job.MaxAttempts = 1
 	job.Attempts = 1
-	
+
 	err := processor.ProcessJob(context.Background(), job)
 	assert.Error(t, err)
-	
+
 	time.Sleep(10 * time.Millisecond)
-	
-	assert.Contains(t, events, EventJobStarted)
-	assert.Contains(t, events, EventJobFailed)
+
+	assert.Contains(t, rec.all(), EventJobStarted)
+	assert.Contains(t, rec.all(), EventJobFailed)
 }
 
 func TestJobProcessorMetrics(t *testing.T) {
 	processor := NewJobProcessor(DefaultRetryConfig())
-	
+
 	processor.RegisterHandlerFunc("success", func(ctx context.Context, job *Job) error {
 		return nil
 	})
-	
+
 	processor.RegisterHandlerFunc("failure", func(ctx context.Context, job *Job) error {
 		return errors.New("test error")
 	})
-	
+
 	successJob := NewJob("success", "default", nil)
 	failureJob := NewJob("failure", "default", nil)
 	failureJob.MaxAttempts = 1
 	failureJob.Attempts = 1
-	
+
 	processor.ProcessJob(context.Background(), successJob)
 	processor.ProcessJob(context.Background(), failureJob)
-	
+
 	metrics := processor.GetMetrics()
 	assert.Equal(t, int64(2), metrics.JobsProcessed)
 	assert.Equal(t, int64(1), metrics.JobsCompleted)
@@ -185,19 +186,19 @@ func TestJobProcessorMetrics(t *testing.T) {
 
 func TestJobProcessorResetMetrics(t *testing.T) {
 	processor := NewJobProcessor(DefaultRetryConfig())
-	
+
 	processor.RegisterHandlerFunc("test", func(ctx context.Context, job *Job) error {
 		return nil
 	})
-	
+
 	job := NewJob("test", "default", nil)
 	processor.ProcessJob(context.Background(), job)
-	
+
 	metrics := processor.GetMetrics()
 	assert.Equal(t, int64(1), metrics.JobsProcessed)
-	
+
 	processor.ResetMetrics()
-	
+
 	metrics = processor.GetMetrics()
 	assert.Equal(t, int64(0), metrics.JobsProcessed)
 	assert.Equal(t, int64(0), metrics.JobsCompleted)
@@ -208,17 +209,17 @@ func TestJobProcessorResetMetrics(t *testing.T) {
 
 func TestJobProcessorUnregisterHandler(t *testing.T) {
 	processor := NewJobProcessor(DefaultRetryConfig())
-	
+
 	processor.RegisterHandlerFunc("test", func(ctx context.Context, job *Job) error {
 		return nil
 	})
-	
+
 	job := NewJob("test", "default", nil)
 	err := processor.ProcessJob(context.Background(), job)
 	require.NoError(t, err)
-	
+
 	processor.UnregisterHandler("test")
-	
+
 	err = processor.ProcessJob(context.Background(), job)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no handler registered")

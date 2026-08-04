@@ -15,14 +15,15 @@ type JobProcessor struct {
 	deadLetterQueue Queue
 	mutex           sync.RWMutex
 	metrics         *ProcessorMetrics
+	metricsMu       sync.RWMutex
 }
 
 type RetryConfig struct {
-	BaseDelay      time.Duration
-	MaxDelay       time.Duration
-	MaxAttempts    int
-	BackoffFactor  float64
-	EnableJitter   bool
+	BaseDelay     time.Duration
+	MaxDelay      time.Duration
+	MaxAttempts   int
+	BackoffFactor float64
+	EnableJitter  bool
 }
 
 type EventListener interface {
@@ -35,6 +36,10 @@ func (f EventListenerFunc) OnEvent(event *JobEvent) {
 	f(event)
 }
 
+// ProcessorMetrics is a plain value type on purpose: GetMetrics and
+// ManagerStats hand copies of it to callers, and a struct carrying a
+// sync.RWMutex cannot be copied safely. The lock guarding it lives on
+// JobProcessor as metricsMu.
 type ProcessorMetrics struct {
 	JobsProcessed   int64
 	JobsCompleted   int64
@@ -42,7 +47,6 @@ type ProcessorMetrics struct {
 	JobsRetried     int64
 	TotalDuration   time.Duration
 	AverageDuration time.Duration
-	mutex           sync.RWMutex
 }
 
 func DefaultRetryConfig() RetryConfig {
@@ -98,28 +102,28 @@ func (jp *JobProcessor) SetDeadLetterQueue(queue Queue) {
 
 func (jp *JobProcessor) ProcessJob(ctx context.Context, job *Job) error {
 	startTime := time.Now()
-	
+
 	jp.emitEvent(EventJobStarted, job, nil, nil)
-	jp.metrics.incrementProcessed()
-	
+	jp.incrementProcessed()
+
 	job.MarkRunning()
-	
+
 	err := jp.executeJob(ctx, job)
-	
+
 	duration := time.Since(startTime)
-	jp.metrics.updateDuration(duration)
-	
+	jp.updateDuration(duration)
+
 	if err != nil {
 		if job.Status != JobStatusFailed {
 			return jp.handleJobFailure(job, err)
 		}
 		return err
 	}
-	
+
 	job.MarkCompleted(nil)
 	jp.emitEvent(EventJobCompleted, job, nil, nil)
-	jp.metrics.incrementCompleted()
-	
+	jp.incrementCompleted()
+
 	return nil
 }
 
@@ -127,12 +131,12 @@ func (jp *JobProcessor) executeJob(ctx context.Context, job *Job) error {
 	jp.mutex.RLock()
 	handler, exists := jp.handlers[job.Type]
 	jp.mutex.RUnlock()
-	
+
 	if !exists {
 		job.MarkFailed(fmt.Errorf("no handler registered for job type: %s", job.Type))
 		return fmt.Errorf("no handler registered for job type: %s", job.Type)
 	}
-	
+
 	timeout := 30 * time.Minute
 	if timeoutValue, exists := job.GetPayloadValue("timeout"); exists {
 		if timeoutStr, ok := timeoutValue.(string); ok {
@@ -141,27 +145,27 @@ func (jp *JobProcessor) executeJob(ctx context.Context, job *Job) error {
 			}
 		}
 	}
-	
+
 	jobCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	return handler.Handle(jobCtx, job)
 }
 
 func (jp *JobProcessor) handleJobFailure(job *Job, err error) error {
-	jp.metrics.incrementFailed()
-	
+	jp.incrementFailed()
+
 	if jp.shouldRetryJob(job) {
 		return jp.scheduleRetry(job, err)
 	}
-	
+
 	job.MarkFailed(err)
 	jp.emitEvent(EventJobFailed, job, err, nil)
-	
+
 	if jp.deadLetterQueue != nil {
 		jp.moveToDeadLetter(job)
 	}
-	
+
 	return err
 }
 
@@ -178,24 +182,24 @@ func (jp *JobProcessor) getMaxAttempts(job *Job) int {
 
 func (jp *JobProcessor) scheduleRetry(job *Job, err error) error {
 	job.MarkRetrying(err)
-	jp.metrics.incrementRetried()
-	
+	jp.incrementRetried()
+
 	nextRetryAt := jp.calculateNextRetryTime(job)
 	job.ScheduledAt = &nextRetryAt
 	job.Status = JobStatusScheduled
-	
+
 	jp.emitEvent(EventJobRetrying, job, err, map[string]interface{}{
 		"next_retry_at": nextRetryAt,
 		"attempt":       job.Attempts,
 	})
-	
+
 	return nil
 }
 
 func (jp *JobProcessor) calculateNextRetryTime(job *Job) time.Time {
 	baseDelay := jp.retryConfig.BaseDelay
 	maxDelay := jp.retryConfig.MaxDelay
-	
+
 	if customDelay, exists := job.GetPayloadValue("retry_delay"); exists {
 		if delayStr, ok := customDelay.(string); ok {
 			if parsedDelay, err := time.ParseDuration(delayStr); err == nil {
@@ -203,7 +207,7 @@ func (jp *JobProcessor) calculateNextRetryTime(job *Job) time.Time {
 			}
 		}
 	}
-	
+
 	return calculateNextRetryAt(job.Attempts, baseDelay, maxDelay)
 }
 
@@ -223,26 +227,26 @@ func (jp *JobProcessor) emitEvent(eventType string, job *Job, err error, metadat
 		Timestamp: time.Now(),
 		Metadata:  metadata,
 	}
-	
+
 	jp.mutex.RLock()
 	listeners := make([]EventListener, len(jp.eventListeners))
 	copy(listeners, jp.eventListeners)
 	jp.mutex.RUnlock()
-	
+
 	for _, listener := range listeners {
 		go listener.OnEvent(event)
 	}
 }
 
 func (jp *JobProcessor) GetMetrics() ProcessorMetrics {
-	jp.metrics.mutex.RLock()
-	defer jp.metrics.mutex.RUnlock()
+	jp.metricsMu.RLock()
+	defer jp.metricsMu.RUnlock()
 	return *jp.metrics
 }
 
 func (jp *JobProcessor) ResetMetrics() {
-	jp.metrics.mutex.Lock()
-	defer jp.metrics.mutex.Unlock()
+	jp.metricsMu.Lock()
+	defer jp.metricsMu.Unlock()
 	jp.metrics.JobsProcessed = 0
 	jp.metrics.JobsCompleted = 0
 	jp.metrics.JobsFailed = 0
@@ -251,35 +255,35 @@ func (jp *JobProcessor) ResetMetrics() {
 	jp.metrics.AverageDuration = 0
 }
 
-func (m *ProcessorMetrics) incrementProcessed() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.JobsProcessed++
+func (jp *JobProcessor) incrementProcessed() {
+	jp.metricsMu.Lock()
+	defer jp.metricsMu.Unlock()
+	jp.metrics.JobsProcessed++
 }
 
-func (m *ProcessorMetrics) incrementCompleted() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.JobsCompleted++
+func (jp *JobProcessor) incrementCompleted() {
+	jp.metricsMu.Lock()
+	defer jp.metricsMu.Unlock()
+	jp.metrics.JobsCompleted++
 }
 
-func (m *ProcessorMetrics) incrementFailed() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.JobsFailed++
+func (jp *JobProcessor) incrementFailed() {
+	jp.metricsMu.Lock()
+	defer jp.metricsMu.Unlock()
+	jp.metrics.JobsFailed++
 }
 
-func (m *ProcessorMetrics) incrementRetried() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.JobsRetried++
+func (jp *JobProcessor) incrementRetried() {
+	jp.metricsMu.Lock()
+	defer jp.metricsMu.Unlock()
+	jp.metrics.JobsRetried++
 }
 
-func (m *ProcessorMetrics) updateDuration(duration time.Duration) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.TotalDuration += duration
-	if m.JobsProcessed > 0 {
-		m.AverageDuration = m.TotalDuration / time.Duration(m.JobsProcessed)
+func (jp *JobProcessor) updateDuration(duration time.Duration) {
+	jp.metricsMu.Lock()
+	defer jp.metricsMu.Unlock()
+	jp.metrics.TotalDuration += duration
+	if jp.metrics.JobsProcessed > 0 {
+		jp.metrics.AverageDuration = jp.metrics.TotalDuration / time.Duration(jp.metrics.JobsProcessed)
 	}
 }

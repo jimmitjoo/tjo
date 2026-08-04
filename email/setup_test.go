@@ -1,6 +1,7 @@
 package email
 
 import (
+	"flag"
 	"log"
 	"os"
 	"testing"
@@ -26,6 +27,16 @@ var mailer = Mail{
 }
 
 func TestMain(m *testing.M) {
+	// Honour -short like the rest of the repo does. This module is not covered
+	// by `go test ./...` from the root (it is a separate module in go.work), so
+	// nobody noticed it started a container regardless. It also binds host port
+	// 1026 unconditionally and log.Fatals if anything else already has it.
+	flag.Parse()
+	if testing.Short() {
+		log.Println("skipping email tests in short mode: they require Docker")
+		os.Exit(0)
+	}
+
 	// Check if Docker is available
 	var err error
 	pool, err = dockertest.NewPool(os.Getenv("DOCKER_HOST"))
