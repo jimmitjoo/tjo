@@ -13,6 +13,11 @@ import (
 )
 
 func Test$HANDLERNAME$(t *testing.T) {
+	// Generated scaffolding: setupTestApp returns nil until you fill it in,
+	// and the handlers below would dereference it. Delete this line once it
+	// builds a real application.
+	t.Skip("TODO: implement setupTestApp before enabling this test")
+
 	// Setup test server
 	app := setupTestApp()
 	defer teardownTestApp(app)
@@ -50,6 +55,11 @@ func Test$HANDLERNAME$(t *testing.T) {
 }
 
 func Test$HANDLERNAME$WithJSON(t *testing.T) {
+	// Generated scaffolding: setupTestApp returns nil until you fill it in,
+	// and the handlers below would dereference it. Delete this line once it
+	// builds a real application.
+	t.Skip("TODO: implement setupTestApp before enabling this test")
+
 	// Setup test server
 	app := setupTestApp()
 	defer teardownTestApp(app)
