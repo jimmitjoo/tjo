@@ -30,11 +30,11 @@ func RandomString(n int) string {
 
 // CLIConfig holds the minimal configuration needed for CLI operations
 type CLIConfig struct {
-	RootPath   string
-	Version    string
-	AppName    string
-	DBType     string
-	Config     *config.Config
+	RootPath string
+	Version  string
+	AppName  string
+	DBType   string
+	Config   *config.Config
 }
 
 // LoadCLIConfig loads the configuration for CLI operations

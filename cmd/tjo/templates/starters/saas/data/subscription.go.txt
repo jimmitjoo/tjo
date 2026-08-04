@@ -98,7 +98,7 @@ func (s *Subscription) Insert(sub Subscription) (int, error) {
 		return 0, err
 	}
 
-	return getInsertID(res.ID()), nil
+	return getInsertID(res.ID())
 }
 
 // Update updates a subscription

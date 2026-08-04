@@ -71,6 +71,14 @@ func getDSN() string {
 		return dsn
 	}
 
+	if dbType == "sqlite" || dbType == "sqlite3" {
+		// golang-migrate addresses SQLite as sqlite3://<path>. Without this the
+		// call fell through to the MySQL branch below and failed with "default
+		// addr for network ... unknown", so `tjo make auth` and `tjo migrate`
+		// were unusable on a database `tjo new -d sqlite` sets up for you.
+		return "sqlite3://" + cfg.Config.Database.DSN(cfg.RootPath)
+	}
+
 	// Build MySQL DSN from config
 	return "mysql://" + cfg.Config.Database.DSN(cfg.RootPath)
 }

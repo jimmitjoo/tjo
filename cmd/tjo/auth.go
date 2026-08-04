@@ -60,7 +60,11 @@ func doAuth() error {
 	pathBuilder.WriteString("/routes.go")
 	routesFile := pathBuilder.String()
 
-	err = copyFileFromTemplate("templates/migrations/auth_tables."+dbType+".up.sql", upFile)
+	// Map the driver name to the dialect family that actually has a migration.
+	// This used to interpolate dbType straight into the filename, so `make auth`
+	// failed outright on two of the four databases `tjo new -d` accepts:
+	// sqlite had no file, and mariadb looked for one instead of reusing mysql's.
+	err = copyFileFromTemplate("templates/migrations/auth_tables."+migrationDialect(dbType)+".up.sql", upFile)
 	if err != nil {
 		return err
 	}
@@ -240,4 +244,18 @@ func doAuth() error {
 	color.Yellow("To enable 2FA for a user, direct them to /user/2fa/setup")
 
 	return nil
+}
+
+// migrationDialect maps a driver name to the migration file family it shares.
+func migrationDialect(dbType string) string {
+	switch strings.ToLower(dbType) {
+	case "postgres", "postgresql", "pgx":
+		return "postgres"
+	case "mysql", "mariadb":
+		return "mysql"
+	case "sqlite", "sqlite3":
+		return "sqlite"
+	default:
+		return strings.ToLower(dbType)
+	}
 }

@@ -115,7 +115,10 @@ func (t *Team) Insert(team Team) (int, error) {
 		return 0, err
 	}
 
-	id := getInsertID(res.ID())
+	id, err := getInsertID(res.ID())
+	if err != nil {
+		return 0, err
+	}
 
 	// Add owner as team member
 	memberCollection := upper.Collection("team_members")

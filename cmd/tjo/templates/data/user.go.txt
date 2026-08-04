@@ -228,7 +228,12 @@ func (u *User) Create(user User) (*User, error) {
 		return nil, fmt.Errorf("Create: %w", err)
 	}
 
-	user.ID = getInsertID(res.ID())
+	id, err := getInsertID(res.ID())
+	if err != nil {
+		return nil, fmt.Errorf("Create: %w", err)
+	}
+
+	user.ID = id
 	return &user, nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/mysql"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
@@ -16,7 +17,7 @@ func (g *Tjo) MigrateUp(dsn string) error {
 	pathBuilder.WriteString("file://")
 	pathBuilder.WriteString(g.RootPath)
 	pathBuilder.WriteString("/migrations")
-	
+
 	m, err := migrate.New(pathBuilder.String(), dsn)
 
 	if err != nil {
@@ -38,7 +39,7 @@ func (g *Tjo) MigrateDownAll(dsn string) error {
 	pathBuilder.WriteString("file://")
 	pathBuilder.WriteString(g.RootPath)
 	pathBuilder.WriteString("/migrations")
-	
+
 	m, err := migrate.New(pathBuilder.String(), dsn)
 
 	if err != nil {
@@ -59,7 +60,7 @@ func (g *Tjo) Steps(steps int, dsn string) error {
 	pathBuilder.WriteString("file://")
 	pathBuilder.WriteString(g.RootPath)
 	pathBuilder.WriteString("/migrations")
-	
+
 	m, err := migrate.New(pathBuilder.String(), dsn)
 
 	if err != nil {
@@ -80,7 +81,7 @@ func (g *Tjo) MigrateForce(dsn string) error {
 	pathBuilder.WriteString("file://")
 	pathBuilder.WriteString(g.RootPath)
 	pathBuilder.WriteString("/migrations")
-	
+
 	m, err := migrate.New(pathBuilder.String(), dsn)
 
 	if err != nil {

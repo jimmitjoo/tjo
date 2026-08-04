@@ -89,7 +89,10 @@ func (p *Post) Insert(post Post) (int, error) {
 		return 0, err
 	}
 
-	id := getInsertID(res.ID())
+	id, err := getInsertID(res.ID())
+	if err != nil {
+		return 0, err
+	}
 	return id, nil
 }
 
