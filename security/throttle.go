@@ -302,9 +302,23 @@ func (t *IPThrottler) allowSubnet(clientIP string) bool {
 	return false
 }
 
-// getRealIP extracts the real client IP considering proxies
+// getRealIP extracts the real client IP considering proxies.
+//
+// Proxy headers are consulted only when the peer is itself a trusted proxy.
+// RemoteAddr is the one value a client cannot forge, so it decides whether
+// the headers are worth anything at all.
 func (t *IPThrottler) getRealIP(r *http.Request) string {
-	// Check trusted proxy headers
+	peer, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		peer = r.RemoteAddr
+	}
+
+	// Headers from an untrusted peer are attacker-controlled. Ignoring them
+	// is what keeps the throttle, the penalties and the blacklist meaningful.
+	if !t.isTrustedProxy(peer) {
+		return peer
+	}
+
 	for _, header := range t.config.TrustedProxyHeaders {
 		if ip := r.Header.Get(header); ip != "" {
 			// Handle comma-separated IPs (X-Forwarded-For)
@@ -317,13 +331,8 @@ func (t *IPThrottler) getRealIP(r *http.Request) string {
 			}
 		}
 	}
-	
-	// Fallback to RemoteAddr
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+
+	return peer
 }
 
 // getIPStats gets or creates IP statistics

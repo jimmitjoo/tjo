@@ -200,6 +200,18 @@ func TestGetRealIP(t *testing.T) {
 			headers:    map[string]string{"X-Real-IP": "203.0.113.1"},
 			expected:   "203.0.113.1",
 		},
+		{
+			name:       "untrusted peer cannot spoof X-Forwarded-For",
+			remoteAddr: "203.0.113.9:5555",
+			headers:    map[string]string{"X-Forwarded-For": "10.1.1.1"},
+			expected:   "203.0.113.9",
+		},
+		{
+			name:       "untrusted peer cannot spoof X-Real-IP",
+			remoteAddr: "203.0.113.9:5555",
+			headers:    map[string]string{"X-Real-IP": "10.1.1.1"},
+			expected:   "203.0.113.9",
+		},
 	}
 	
 	for _, tt := range tests {
@@ -440,4 +452,39 @@ func TestTrustedProxyHandling(t *testing.T) {
 		result := throttler.isTrustedProxy(tt.ip)
 		assert.Equal(t, tt.expected, result, "IP: %s", tt.ip)
 	}
+}
+// TestThrottleNotBypassableByHeaderSpoofing guards the throttle against a
+// regression where getRealIP trusted proxy headers without checking that the
+// peer was a proxy at all. Rotating a forged X-Forwarded-For minted a fresh
+// bucket per request, defeating the limit entirely. See GHSA-hm83-wmj9-52fm.
+func TestThrottleNotBypassableByHeaderSpoofing(t *testing.T) {
+	const attempts = 50
+
+	countAllowed := func(spoof bool) int {
+		config := DefaultThrottleConfig()
+		config.RequestsPerMinute = 1
+		config.BurstSize = 5
+		throttler := NewIPThrottler(config)
+
+		allowed := 0
+		for i := 0; i < attempts; i++ {
+			req := httptest.NewRequest("GET", "/test", nil)
+			req.RemoteAddr = "203.0.113.9:5555" // same attacker every time
+			if spoof {
+				req.Header.Set("X-Forwarded-For", fmt.Sprintf("10.1.%d.%d", i/256, i%256))
+			}
+			if ok, _ := throttler.Allow(req); ok {
+				allowed++
+			}
+		}
+		return allowed
+	}
+
+	spoofed := countAllowed(true)
+	direct := countAllowed(false)
+
+	assert.Equal(t, direct, spoofed,
+		"spoofed proxy headers must not buy the attacker extra requests")
+	assert.LessOrEqual(t, spoofed, 5,
+		"attacker should be capped at BurstSize, got %d of %d", spoofed, attempts)
 }
