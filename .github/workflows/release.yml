@@ -39,9 +39,14 @@ jobs:
           - goos: darwin
             goarch: arm64
             runner: macos-latest
+          # amd64 is cross-compiled from the arm64 runner rather than built on
+          # macos-13. Intel runners are being retired and queue for a long
+          # time -- one queued 15 minutes and never started. macOS SDKs are
+          # universal, so cgo cross-compiles cleanly; verified locally that the
+          # result is an x86_64 Mach-O binary that runs and reports its version.
           - goos: darwin
             goarch: amd64
-            runner: macos-13
+            runner: macos-latest
           - goos: linux
             goarch: amd64
             runner: ubuntu-latest
