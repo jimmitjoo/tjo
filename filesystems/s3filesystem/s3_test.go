@@ -2,7 +2,9 @@ package s3filesystem
 
 import (
 	"context"
+	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -311,5 +313,85 @@ func TestDestinationPath(t *testing.T) {
 				t.Errorf("%q escapes the destination %q", got, tt.destination)
 			}
 		})
+	}
+}
+
+// Both implementations must satisfy ContextFS, not just FS. This is a compile
+// time assertion rather than a test body because that is the whole claim.
+var _ filesystems.ContextFS = (*S3)(nil)
+
+// TestDeleteContextHonoursItems pins the correction ContextFS exists to make.
+//
+// FS.Delete ignores its items argument and empties the entire bucket. That is
+// inherited from the v1 SDK implementation and was preserved deliberately, so
+// the aws-sdk-go-v2 migration would not silently change what Delete deletes.
+// DeleteContext is the new API and does not carry it forward.
+//
+// Verified against MinIO rather than a mock: the failure mode is "deletes more
+// than it was asked to", and a mock that records calls proves nothing about
+// which objects actually survive.
+func TestDeleteContextHonoursItems(t *testing.T) {
+	endpoint := os.Getenv("TJO_TEST_S3_ENDPOINT")
+	if endpoint == "" {
+		t.Skip("TJO_TEST_S3_ENDPOINT is not set")
+	}
+
+	s := &S3{
+		Key:      os.Getenv("TJO_TEST_S3_KEY"),
+		Secret:   os.Getenv("TJO_TEST_S3_SECRET"),
+		Region:   "us-east-1",
+		Endpoint: endpoint,
+		Bucket:   os.Getenv("TJO_TEST_S3_BUCKET"),
+	}
+
+	dir := t.TempDir()
+	var keys []string
+	for _, name := range []string{"doomed-a", "doomed-b", "keeper"} {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Put(p, ""); err != nil {
+			t.Fatalf("Put %s: %v", name, err)
+		}
+		keys = append(keys, strings.TrimPrefix(p, "/"))
+	}
+	t.Cleanup(func() { s.DeleteContext(context.Background(), nil) })
+
+	if err := s.DeleteContext(context.Background(), keys[:2]); err != nil {
+		t.Fatalf("DeleteContext: %v", err)
+	}
+
+	after, err := s.List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 {
+		t.Fatalf("%d objects left, want 1 (the keeper); DeleteContext deleted more than it was asked to", len(after))
+	}
+	if filepath.Base(after[0].Key) != "keeper" {
+		t.Fatalf("survivor is %q, want keeper", after[0].Key)
+	}
+}
+
+// A cancelled context must stop the operation rather than being ignored.
+func TestContextCancellationIsHonoured(t *testing.T) {
+	if os.Getenv("TJO_TEST_S3_ENDPOINT") == "" {
+		t.Skip("TJO_TEST_S3_ENDPOINT is not set")
+	}
+
+	s := &S3{
+		Key:      os.Getenv("TJO_TEST_S3_KEY"),
+		Secret:   os.Getenv("TJO_TEST_S3_SECRET"),
+		Region:   "us-east-1",
+		Endpoint: os.Getenv("TJO_TEST_S3_ENDPOINT"),
+		Bucket:   os.Getenv("TJO_TEST_S3_BUCKET"),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := s.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
+		t.Errorf("ListContext with a cancelled context returned %v, want context.Canceled", err)
 	}
 }

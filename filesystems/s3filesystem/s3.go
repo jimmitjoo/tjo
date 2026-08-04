@@ -56,6 +56,10 @@ func (s *S3) client() *s3.Client {
 }
 
 func (s *S3) Put(fileName, folder string) error {
+	return s.PutContext(context.Background(), fileName, folder)
+}
+
+func (s *S3) PutContext(ctx context.Context, fileName, folder string) error {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return err
@@ -64,7 +68,7 @@ func (s *S3) Put(fileName, folder string) error {
 
 	uploader := manager.NewUploader(s.client())
 
-	_, err = uploader.Upload(context.Background(), &s3.PutObjectInput{
+	_, err = uploader.Upload(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(s.Bucket),
 		Key:    aws.String(fileName),
 		Body:   file,
@@ -74,6 +78,10 @@ func (s *S3) Put(fileName, folder string) error {
 }
 
 func (s *S3) List(prefix string) ([]filesystems.Listing, error) {
+	return s.ListContext(context.Background(), prefix)
+}
+
+func (s *S3) ListContext(ctx context.Context, prefix string) ([]filesystems.Listing, error) {
 	var listing []filesystems.Listing
 
 	paginator := s3.NewListObjectsV2Paginator(s.client(), &s3.ListObjectsV2Input{
@@ -85,7 +93,7 @@ func (s *S3) List(prefix string) ([]filesystems.Listing, error) {
 	// one page. Paginating means a bucket with more than 1000 objects no longer
 	// lists as though it had exactly 1000.
 	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(context.Background())
+		page, err := paginator.NextPage(ctx)
 		if err != nil {
 			// v2 replaced v1's string error codes with concrete types, so this
 			// is errors.As rather than a switch on aerr.Code().
@@ -117,17 +125,39 @@ func (s *S3) List(prefix string) ([]filesystems.Listing, error) {
 
 // Delete removes every object in the bucket.
 //
-// v1 expressed this as s3manager.NewDeleteListIterator fed into
-// NewBatchDeleteWithClient. Neither exists in v2, so the list-then-delete loop
-// and the 1000-key API limit are handled here.
-//
 // The signature takes items and ignores them. That is inherited behaviour, not
 // an oversight introduced here: the v1 implementation also built its iterator
-// from a bucket-wide ListObjects rather than from the argument. Preserved
-// deliberately so an SDK migration does not quietly change what Delete deletes.
+// from a bucket-wide ListObjects rather than from the argument. Preserved so an
+// SDK migration does not quietly change what Delete deletes -- DeleteContext is
+// where that is corrected.
 func (s *S3) Delete(items []string) bool {
+	return s.DeleteContext(context.Background(), nil) == nil
+}
+
+// DeleteContext removes the named items, or everything when none are given.
+//
+// v1 expressed the bucket-wide case as s3manager.NewDeleteListIterator fed into
+// NewBatchDeleteWithClient. Neither exists in v2, so the list-then-delete loop
+// and the 1000-key API limit are handled here.
+func (s *S3) DeleteContext(ctx context.Context, items []string) error {
 	client := s.client()
-	ctx := context.Background()
+
+	if len(items) > 0 {
+		batch := make([]types.ObjectIdentifier, 0, deleteBatchLimit)
+		for _, key := range items {
+			batch = append(batch, types.ObjectIdentifier{Key: aws.String(key)})
+			if len(batch) == deleteBatchLimit {
+				if err := s.deleteBatch(ctx, client, batch); err != nil {
+					return err
+				}
+				batch = batch[:0]
+			}
+		}
+		if len(batch) > 0 {
+			return s.deleteBatch(ctx, client, batch)
+		}
+		return nil
+	}
 
 	paginator := s3.NewListObjectsV2Paginator(client, &s3.ListObjectsV2Input{
 		Bucket: aws.String(s.Bucket),
@@ -136,7 +166,7 @@ func (s *S3) Delete(items []string) bool {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			return false
+			return err
 		}
 
 		batch := make([]types.ObjectIdentifier, 0, deleteBatchLimit)
@@ -144,40 +174,52 @@ func (s *S3) Delete(items []string) bool {
 			batch = append(batch, types.ObjectIdentifier{Key: object.Key})
 
 			if len(batch) == deleteBatchLimit {
-				if !s.deleteBatch(ctx, client, batch) {
-					return false
+				if err := s.deleteBatch(ctx, client, batch); err != nil {
+					return err
 				}
 				batch = batch[:0]
 			}
 		}
 
-		if len(batch) > 0 && !s.deleteBatch(ctx, client, batch) {
-			return false
+		if len(batch) > 0 {
+			if err := s.deleteBatch(ctx, client, batch); err != nil {
+				return err
+			}
 		}
 	}
 
-	return true
+	return nil
 }
 
-func (s *S3) deleteBatch(ctx context.Context, client *s3.Client, batch []types.ObjectIdentifier) bool {
+func (s *S3) deleteBatch(ctx context.Context, client *s3.Client, batch []types.ObjectIdentifier) error {
 	out, err := client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 		Bucket: aws.String(s.Bucket),
 		Delete: &types.Delete{Objects: batch},
 	})
 	if err != nil {
-		return false
+		return err
 	}
 
 	// DeleteObjects reports per-key failures in the response body rather than
 	// as an error, so without this a partial failure looks like success.
-	return len(out.Errors) == 0
+	if len(out.Errors) > 0 {
+		e := out.Errors[0]
+		return fmt.Errorf("deleting %s: %s (%d more)",
+			aws.ToString(e.Key), aws.ToString(e.Message), len(out.Errors)-1)
+	}
+
+	return nil
 }
 
 func (s *S3) Get(destination string, items ...string) error {
+	return s.GetContext(context.Background(), destination, items...)
+}
+
+func (s *S3) GetContext(ctx context.Context, destination string, items ...string) error {
 	downloader := manager.NewDownloader(s.client())
 
 	for _, file := range items {
-		if err := s.download(downloader, destination, file); err != nil {
+		if err := s.download(ctx, downloader, destination, file); err != nil {
 			return err
 		}
 	}
@@ -189,7 +231,7 @@ func (s *S3) Get(destination string, items ...string) error {
 //
 // Split out of Get so the file is closed at the end of each iteration rather
 // than accumulating deferred closes until the whole batch finishes.
-func (s *S3) download(downloader *manager.Downloader, destination, key string) error {
+func (s *S3) download(ctx context.Context, downloader *manager.Downloader, destination, key string) error {
 	target, err := os.Create(destinationPath(destination, key))
 	if err != nil {
 		return err
@@ -200,7 +242,7 @@ func (s *S3) download(downloader *manager.Downloader, destination, key string) e
 		}
 	}()
 
-	_, err = downloader.Download(context.Background(), target, &s3.GetObjectInput{
+	_, err = downloader.Download(ctx, target, &s3.GetObjectInput{
 		Bucket: aws.String(s.Bucket),
 		Key:    aws.String(key),
 	})
