@@ -2,24 +2,24 @@
 
 ## Read this first: `go test ./...` does not test this repository
 
-This is a Go **workspace** (`go.work`). `email`, `otel`, `sms` and `websocket`
-are separate modules. From the repository root, `go build ./...`,
+This is a Go **workspace** (`go.work`). `email`, `llm`, `otel`, `sms` and
+`websocket` are separate modules. From the repository root, `go build ./...`,
 `go vet ./...`, `go test ./...` and `govulncheck ./...` all cover the root
-module **only** and silently skip the other four.
+module **only** and silently skip the other five.
 
 That blind spot shipped six defects (#25–#28) and 71 reachable vulnerabilities
 behind a green build. Run everything per module, or use the make targets, which
 already do:
 
 ```bash
-make test        # all five modules
-make vuln        # govulncheck, all five modules
+make test        # all six modules
+make vuln        # govulncheck, all six modules
 ```
 
 Per module, by hand:
 
 ```bash
-for m in . email otel sms websocket; do (cd $m && go build ./... && go vet ./... && go test -short -race ./...); done
+for m in . email llm otel sms websocket; do (cd $m && go build ./... && go vet ./... && go test -short -race ./...); done
 ```
 
 `go mod tidy` has the same trap. Run it in each module directory; a tidy from
@@ -87,7 +87,9 @@ Two recurring failure modes in this codebase, both of which have shipped:
 | `core/` | minimal helpers usable without the framework |
 | `database/` | query builder, migrations, seeding |
 | `security/` | throttling, headers, validation |
-| `email/`, `otel/`, `sms/`, `websocket/` | **separate modules** |
+| `admin/` | model-driven CRUD panel |
+| `ops/` | self-hosted operations dashboard |
+| `email/`, `llm/`, `otel/`, `sms/`, `websocket/` | **separate modules** |
 
 ## Conventions
 

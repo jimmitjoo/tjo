@@ -5,6 +5,107 @@ All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is 0, breaking changes may land in a minor release.
 
+## [0.12.0] - 2026-08-05
+
+The AI layer, kept deliberately thin, and the harness for the experiment that
+would tell us whether any of the agent work matters.
+
+### Added — `llm`
+
+A provider-agnostic layer over `openai/openai-go` and
+`anthropics/anthropic-sdk-go`: chat with streaming, tool calling, structured
+output, and embeddings. **Thin is the whole specification.**
+
+Swapping providers is one line. Keeping that true means absorbing the places
+the two APIs disagree rather than surfacing them — the system prompt is a
+message on one and a top-level field on the other, `max_tokens` is optional on
+one and required on the other, a tool result is its own role on one and a user
+message on the other, and structured output is `response_format` on one and a
+forced tool call on the other, with the tool's input lifted back into
+`Response.Text` so the caller sees JSON either way.
+
+Every test runs against both providers, because a test that passes on one and is
+not run against the other is how they drift.
+
+**Its own module**, like `sms` and `email`. The 2025 Go Developer Survey found
+22% of Go developers building AI features; the other 78% should not carry two
+vendor SDKs to get a router.
+
+**Token accounting and nothing more.** Counts are emitted as `gen_ai.*` span
+attributes on the span the call already produces. Cost *control* stays out
+because the pattern has not converged — a framework that shipped a budget
+enforcer in 2026 would be shipping somebody's guess. Prompts and completions are
+deliberately not recorded: they are the user's data, and a tracing backend is
+not where anyone expects to find them.
+
+### Added — vector search in the query builder
+
+pgvector on PostgreSQL and sqlite-vec on SQLite, as `Nearest` and
+`NearestWithin`. This is the one part of the AI stack that has settled: the
+embedding sits next to the row it describes.
+
+The reason to keep it in the primary database is that the tenancy filter and the
+similarity ordering compose into one statement. A separate vector store cannot
+answer "the ten nearest documents belonging to this organization" without either
+duplicating the tenancy model or over-fetching and filtering afterwards.
+
+Index management stays out: `USING hnsw ... WITH (m = 16, ef_construction = 64)`
+depends on the data, the recall target and the memory budget.
+
+### Added — the greenfield experiment harness
+
+`go run ./evals -greenfield -agent '...'` runs five phrasings that name no
+language and no framework, three times each, from an empty directory, and
+records what the agent reached for.
+
+Nobody has published this. "LLMs Love Python" measured greenfield choice on the
+2024-25 model generation; "What Claude Code Actually Chooses" is
+methodologically excellent and every one of its four test repositories already
+contained a framework.
+
+**The number is not in this release.** It needs an agent and an API budget. It
+is also worth saying in advance that Tjo will almost certainly not appear in the
+results, and that publishing an experiment whose finding is "our framework is
+invisible" is the point of running it.
+
+### Changed
+
+- `ORDER BY` in the query builder can carry parameters, which vector search
+  needs. They are appended after `WHERE`'s and `HAVING`'s, matching the order
+  the placeholders appear in the text.
+- The module list grew for the first time since the workspace was created, so
+  the six places that hardcode it all changed: `go.work`, the Makefile's test
+  loop and `SUBMODULES`, both CI matrices, the scaffold job, and AGENTS.md.
+
+### Decided
+
+- **No sync engine or CRDT layer** (#79), closed as a decision. The hedge it
+  proposed — SSE broadcast on change — shipped in v0.11.0. Revisit only with a
+  concrete application that a sync engine solves and SSE does not.
+
+### Known gaps, now written down
+
+Three investigations were opened rather than guessed at:
+
+- **The framework is English-only** (#83). There is no i18n layer, and
+  framework-produced strings — validation messages, generated auth flows, the
+  admin panel, the ops dashboard — are hardcoded English. The comparison table
+  has said `i18n: No` all along; it is now the honest headline of the "cons"
+  section rather than a row nobody reads.
+- **No social login** (#85). Passwords, 2FA, passkeys, organizations and roles
+  are covered; "sign in with Google" is not. The issue is mostly about the
+  account-linking rules, because the token exchange is a day and linking on an
+  unverified email is an account takeover.
+- **gRPC: not gRPC, possibly Connect** (#84). Raw gRPC needs a build step this
+  project has spent three releases not having, and browsers cannot call it. A
+  Connect handler is an `http.Handler`, which makes it a different question.
+
+### Verification
+
+All six modules build, vet and pass with `-race`. `govulncheck` reports zero
+reachable vulnerabilities across every module. No test in `llm` calls a live
+API: every one runs against `httptest`, including both Examples.
+
 ## [0.11.0] - 2026-08-05
 
 The release where the framework grew the two screens people pick a framework

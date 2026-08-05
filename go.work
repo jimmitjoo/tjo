@@ -5,6 +5,7 @@ toolchain go1.26.5
 use (
 	.
 	./email
+	./llm
 	./otel
 	./sms
 	./websocket

@@ -81,6 +81,7 @@ type QueryBuilder struct {
 	selectCols     []string
 	whereConds     []whereCondition
 	orderBy        []string
+	orderByParams  []interface{}
 	groupBy        []string
 	having         []whereCondition
 	joins          []joinClause
@@ -149,6 +150,12 @@ type whereCondition struct {
 	value    interface{}
 	logic    string        // AND or OR
 	params   []interface{} // For complex conditions like BETWEEN and IN
+
+	// raw is a complete expression carrying its own placeholders, for
+	// conditions that are not "column operator value" -- vector distance, for
+	// one. It is never built from caller input: the only writers are methods
+	// on this type that validate their identifiers first.
+	raw string
 }
 
 type joinClause struct {
@@ -546,6 +553,12 @@ func (qb *QueryBuilder) ToSQL() (string, []interface{}, error) {
 				query.WriteString(fmt.Sprintf(" %s ", cond.logic))
 			}
 
+			if cond.raw != "" {
+				query.WriteString(cond.raw)
+				params = append(params, cond.params...)
+				continue
+			}
+
 			switch cond.operator {
 			case "IS NULL", "IS NOT NULL":
 				query.WriteString(fmt.Sprintf("%s %s", cond.column, cond.operator))
@@ -580,8 +593,13 @@ func (qb *QueryBuilder) ToSQL() (string, []interface{}, error) {
 	}
 
 	// ORDER BY clause
+	//
+	// Its parameters go on after WHERE's and HAVING's, matching the order the
+	// placeholders appear in the text -- which is what the dialect's rebind
+	// numbers them by.
 	if len(qb.orderBy) > 0 {
 		query.WriteString(fmt.Sprintf(" ORDER BY %s", strings.Join(qb.orderBy, ", ")))
+		params = append(params, qb.orderByParams...)
 	}
 
 	// LIMIT clause
@@ -733,6 +751,12 @@ func (qb *QueryBuilder) Update(data map[string]interface{}) (sql.Result, error) 
 				query += fmt.Sprintf(" %s ", cond.logic)
 			}
 
+			if cond.raw != "" {
+				query += cond.raw
+				params = append(params, cond.params...)
+				continue
+			}
+
 			switch cond.operator {
 			case "IS NULL", "IS NOT NULL":
 				query += fmt.Sprintf("%s %s", cond.column, cond.operator)
@@ -769,6 +793,12 @@ func (qb *QueryBuilder) Delete() (sql.Result, error) {
 		for i, cond := range qb.whereConds {
 			if i > 0 {
 				query += fmt.Sprintf(" %s ", cond.logic)
+			}
+
+			if cond.raw != "" {
+				query += cond.raw
+				params = append(params, cond.params...)
+				continue
 			}
 
 			switch cond.operator {

@@ -22,8 +22,27 @@ func main() {
 		keep   = flag.Bool("keep", false, "keep working directories for inspection")
 		budget = flag.Duration("timeout", 10*time.Minute, "per-task timeout")
 		skills = flag.Bool("skills", false, "copy the skills bundle into each project before the agent runs, and say so in the prompt")
+
+		greenfield = flag.Bool("greenfield", false, "run the framework-selection experiment instead of the task suite: empty directories, prompts that name no framework, and record what the agent reached for")
+		label      = flag.String("label", "", "how to name the agent in published results, e.g. 'Claude Code v2.1.39 / claude-opus-5'")
+		out        = flag.String("out", "evals/results", "where to write the raw greenfield data")
 	)
 	flag.Parse()
+
+	// The greenfield experiment measures what an agent picks with nothing in
+	// the directory, so it needs no CLI -- handing it one would be handing it
+	// the answer.
+	if *greenfield {
+		name := *label
+		if name == "" {
+			name = *agent
+		}
+		if err := runGreenfield(*agent, name, *out, *budget, *keep); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *cli == "" {
 		fmt.Fprintln(os.Stderr, "-cli is required: build one with `make build`")

@@ -41,6 +41,8 @@ macOS binaries are unsigned, so Gatekeeper will ask before the first run.
 - Template Engine - Jet template engine for dynamic views
 - Logging & Metrics - Structured logging with health monitoring
 - OpenTelemetry - Distributed tracing and observability
+- LLM Integration - Chat, tools, structured output and embeddings over the first-party SDKs ([docs](docs/modules.md#llm-module))
+- Vector Search - pgvector and sqlite-vec in the query builder
 - Session Management - Secure session handling with multiple stores
 - CLI Tools - Project scaffolding and code generation
 - AI-Native Development - MCP server for AI assistants
