@@ -1,20 +1,39 @@
-// Package auth holds the authentication primitives that were previously only
-// present as generated code.
+// Package auth is authentication as a library: verbs and interfaces, no server,
+// no tables of its own.
 //
-// It is deliberately narrow. #52 proposes extracting the whole authentication
-// system as a framework-agnostic module, which is a larger and riskier piece of
-// work than it looks -- roughly 1,100 lines currently living in templates, plus
-// store interfaces that do not exist yet, plus a security review that the issue
-// itself sets as a precondition for tagging. Cramming that into the tail of a
-// release is how auth libraries ship with the bug they were written to avoid.
+// It exists because this project published four advisories and two of them were
+// in generated authentication code -- a password reset that verified nothing,
+// and API tokens stored in plaintext. Generated code cannot be unit-tested,
+// which is precisely why those defects reached users. Everything here can be,
+// and the tests are the argument for the design rather than a formality.
 //
-// What is here instead is the part that is self-contained, has no dependency on
-// a store or a session, and is where two of this project's four advisories
-// actually lived: API token generation and verification. Generated code cannot
-// be unit-tested, which is precisely why those defects reached users. This can.
+// # Storage stays yours
 //
-// The remaining flows -- users, sessions, 2FA, password reset -- stay in
-// templates until they get their own change with its own review.
+// Every flow takes a store interface and returns what to persist; nothing here
+// owns a user record, a session or a schema. That is deliberate: a library that
+// insists on owning the users table is the thing applications end up with two
+// of, and it is why swapping the backend later means a migration.
+//
+// # What is here
+//
+//   - Passwords: bcrypt with cost upgrade on login, a rune-counted policy, and
+//     a timing-equalised failure path.
+//   - Login: lookup and comparison unconditional and in that order.
+//   - Single-use tokens: password reset, activation, recovery codes and
+//     remember-me, separated by purpose and consumed atomically.
+//   - Two-factor: TOTP per RFC 6238, with replay rejection, and recovery codes.
+//   - Passkeys: both ceremonies, stored in an opaque interoperable record.
+//   - Organizations: memberships, roles, permissions, invitations, scoping.
+//   - API tokens: minted once, stored as a hash.
+//
+// # What is not, and will not be
+//
+// Sessions and the HTTP layer. A session belongs to the framework the
+// application already chose, and the one decision this package insists on
+// instead of implementing is that the caller renews the session at every point
+// where authentication completes -- password login, 2FA, passkey and
+// remember-me. Skipping it is session fixation, and it is the mistake generated
+// code kept making.
 package auth
 
 import (
