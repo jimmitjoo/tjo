@@ -4,16 +4,58 @@
 
 ---
 
+## How this was checked
+
+Star counts and last-push dates come from the GitHub API on **2026-08-05**.
+Feature rows for Tjo are checked against this repository's source at v0.12.0.
+Feature rows for the other frameworks are checked against their source or
+documentation where noted, and are otherwise carried over from earlier versions
+of this file — those are the rows most likely to be stale, and this paragraph
+exists so that is visible rather than implied.
+
+A comparison table with no date on it rots invisibly. This one had claimed
+"SSE: No" for Tjo since before the `sse` package existed, and "CSRF: Plugin" for
+Echo and Fiber, both of which ship it in core.
+
+## The landscape
+
+| Framework | Stars | Last push | Read |
+|---|--:|---|---|
+| [Gin](https://github.com/gin-gonic/gin) | 89,049 | 2026-08-04 | Dominant. Minimalist router plus middleware |
+| [PocketBase](https://github.com/pocketbase/pocketbase) | 60,471 | 2026-08-03 | A backend in one binary, not a framework. Included because its admin UI is what people compare an admin panel to |
+| [Fiber](https://github.com/gofiber/fiber) | 40,044 | 2026-08-05 | Express-shaped, on fasthttp |
+| [Echo](https://github.com/labstack/echo) | 32,598 | 2026-08-04 | Minimalist, with a large built-in middleware set |
+| [Beego](https://github.com/beego/beego) | 32,406 | 2026-07-28 | Full-stack, still active |
+| [Iris](https://github.com/kataras/iris) | 25,564 | 2026-07-27 | Feature-rich |
+| [Chi](https://github.com/go-chi/chi) | 22,631 | 2026-07-06 | A router, not a framework. Tjo uses it |
+| [GoFr](https://github.com/gofr-dev/gofr) | 21,053 | 2026-08-05 | Opinionated microservice framework, observability first |
+| [GoFrame](https://github.com/gogf/gf) | 13,236 | 2026-08-05 | Batteries-included, large in China |
+| [Revel](https://github.com/revel/revel) | 13,221 | **2023-10-28** | **Unmaintained.** Two years and nine months without a push |
+| [Encore](https://github.com/encoredev/encore) | 12,204 | 2026-08-04 | Infrastructure-from-code; a different category |
+| [Buffalo](https://github.com/gobuffalo/buffalo) | 8,412 | 2026-03-21 | Rails-shaped. Slowing: 4½ months since a push |
+| [Huma](https://github.com/danielgtaylor/huma) | 4,295 | 2026-07-29 | OpenAPI-first, layers over other routers |
+| [Fuego](https://github.com/go-fuego/fuego) | 1,760 | 2026-08-04 | OpenAPI-first, newer |
+
+**Revel is in the tables below and should be read as a historical column.** It
+has not been pushed since October 2023. It is also, along with Iris, one of the
+two frameworks that beat Tjo on i18n — which says more about how long Tjo has
+gone without i18n than it does about Revel.
+
+**GoFr, GoFrame and Encore are not tabulated below** and each is more active
+than Revel and larger than Buffalo. GoFrame is the closest comparator to Tjo in
+philosophy and the most conspicuous omission; adding it is worth doing before
+this file is cited anywhere.
+
 ## Overview
 
 | Aspect | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
 |--------|----------|-----|------|-------|---------|-------|-------|------|
-| **GitHub Stars** | New | 81k+ | 30k | 35k+ | 8k | 28k | 13k | 26k |
+| **GitHub Stars** | New | 89.0k | 32.6k | 40.0k | 8.4k | 32.4k | 13.2k | 25.6k |
 | **Type** | Full-stack | Minimalist | Minimalist | Minimalist | Full-stack | Full-stack | Full-stack | Feature-rich |
 | **Philosophy** | Laravel for Go | Express for Go | Balanced | Express for Go | Rails for Go | Django for Go | Play for Go | All-in-one |
 | **Go Version** | 1.25+ | 1.20+ | 1.18+ | 1.25+ | Latest 2 | 1.20+ | 1.18+ | 1.20+ |
 | **HTTP Engine** | net/http (Chi) | net/http | net/http | fasthttp | net/http | net/http | net/http | net/http |
-| **Last Release** | Active | Active | Active | Active | 2022? | Active | 2022 | Active |
+| **Last push** | Active | 2026-08-04 | 2026-08-04 | 2026-08-05 | 2026-03-21 | 2026-07-28 | **2023-10-28** | 2026-07-27 |
 
 ---
 
@@ -29,17 +71,17 @@
 | Named Routes | Yes | No | Yes | Yes | Yes | Yes | Yes | Yes |
 | RESTful Resources | Auto | Manual | Manual | Manual | Auto | Auto | Auto | Auto |
 | HTTP/2 | Yes | Yes | Yes | Limited | Yes | Yes | Yes | Push |
-| gRPC | No | No | No | No | No | No | No | Yes |
+| gRPC | No ([#84](https://github.com/jimmitjoo/tjo/issues/84)) | No | No | No | No | No | No | Yes |
 
 ### Middleware & Security
 
 | Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
 |---------|----------|-----|------|-------|---------|-------|-------|------|
 | Middleware System | Yes | Yes | Yes | Yes | Yes | Yes | Interceptors | Yes |
-| CSRF Protection | Built-in | Plugin | Plugin | Plugin | Built-in | Built-in | Yes | Yes |
-| Rate Limiting | Built-in | Plugin | Plugin | Plugin | Plugin | Plugin | No | Built-in |
+| CSRF Protection | Built-in | Plugin | Built-in | Built-in | Built-in | Built-in | Yes | Yes |
+| Rate Limiting | Built-in | Plugin | Built-in | Built-in | Plugin | Plugin | No | Built-in |
 | XSS Prevention | Bluemonday | No | No | No | No | No | No | No |
-| Input Validation | govalidator | go-playground | Yes | No | Yes | Yes | Built-in | Yes |
+| Input Validation | Built-in | go-playground | Yes | No | Yes | Yes | Built-in | Yes |
 | Authentication | `auth` package | No | No | No | No | No | No | No |
 | 2FA (TOTP) | Built-in, replay-checked | No | No | No | No | No | No | No |
 | Passkeys / WebAuthn | Built-in | No | No | No | No | No | No | No |
@@ -63,7 +105,7 @@
 
 | Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
 |---------|----------|-----|------|-------|---------|-------|-------|------|
-| Session Management | SCS | No | No | contrib | Yes | Yes | Cookie | Yes |
+| Session Management | SCS | No | No | Built-in | Yes | Yes | Cookie | Yes |
 | Session Stores | Redis/DB/Badger/Cookie | - | - | Redis/Memory | DB | Memory/File | Cookie | Multiple |
 | Cache System | Redis/Badger | No | No | No | No | Yes | No | Yes |
 
@@ -85,7 +127,7 @@
 | Email (API) | SendGrid/Mailgun+ | No | No | No | No | No | No | No |
 | SMS | Twilio/Vonage | No | No | No | No | No | No | No |
 | WebSocket | Hub-pattern | No | Yes | contrib | Plugin | Yes | No | Yes |
-| SSE | No | No | No | No | No | No | No | Yes |
+| SSE | Built-in, with topic broadcast | No | No | No | No | No | No | Yes |
 
 ### AI & Vectors
 
@@ -101,8 +143,8 @@
 | Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
 |---------|----------|-----|------|-------|---------|-------|-------|------|
 | Template Engine | Jet | html/template | html/template | Multi-engine | Plush | Built-in | Built-in | Django/Pug/etc |
-| Asset Pipeline | No | No | No | No | Webpack | No | No | No |
-| Hot Reload | No | No | No | No | Yes | Bee | Yes | No |
+| Asset Pipeline | Tailwind, in the scaffold | No | No | No | Webpack | No | No | No |
+| Hot Reload | `tjo run --watch` (air) | No | No | No | Yes | Bee | Yes | No |
 
 ### File Storage
 
@@ -130,7 +172,7 @@
 | CLI Tool | tjo | No | No | No | buffalo | bee | revel | No |
 | Code Generation | Extensive | No | No | No | Scaffolding | Scaffolding | Yes | No |
 | Project Scaffolding | Yes | No | No | No | Yes | Yes | Yes | No |
-| MCP/AI Integration | 12 tools | No | No | No | No | No | No | No |
+| MCP/AI Integration | 16 tools | No | No | No | No | No | No | No |
 | MVC Pattern | Optional | No | No | No | Yes | Yes | Yes | DI |
 | Admin panel | Model-driven CRUD | No | No | No | No | Yes | No | No |
 | Ops dashboard | Built-in | No | No | No | No | Yes | No | No |
@@ -170,11 +212,17 @@
   thing that usually makes people pick Django, in Go
 - **Ops dashboard** - Errors, slow queries, queue and cron on a page you host,
   rather than a monthly bill
+- **Real-time without a sync engine** - SSE with topic broadcast, and the
+  decision not to build a CRDT layer written down rather than reconsidered
+  every quarter
 
 **Cons:**
 - **English only** - There is no i18n layer, and framework-produced strings are
-  hardcoded English. This is the one row above where Revel and Iris beat it, and
-  it rules out whole markets today. ([#83](https://github.com/jimmitjoo/tjo/issues/83))
+  hardcoded English. It rules out whole markets today.
+  ([#83](https://github.com/jimmitjoo/tjo/issues/83)). The only frameworks above
+  that beat it here are Iris and Revel, and Revel has not been pushed since
+  October 2023 — so the honest reading is "Iris does this and we do not", not
+  "we are behind the field"
 - **No social login** - Passwords, 2FA and passkeys are covered; "sign in with
   Google" is not. ([#85](https://github.com/jimmitjoo/tjo/issues/85))
 - **New** - Small community, fewer Stack Overflow answers
