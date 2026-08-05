@@ -96,7 +96,13 @@ func (w *Worker) processNextJob() {
 	w.setCurrentJob(job)
 	w.setStatus(WorkerStatusBusy)
 
+	// As claimed. ProcessJob's in-memory retry bookkeeping increments this, and
+	// the queue already incremented the row when it handed the job over, so
+	// settling with the post-processing value would burn two attempts per run.
+	claimedAttempts := job.Attempts
+
 	err = w.processor.ProcessJob(w.ctx, job)
+	w.settle(job, claimedAttempts, err)
 
 	w.mutex.Lock()
 	if err != nil {
@@ -108,6 +114,47 @@ func (w *Worker) processNextJob() {
 
 	w.setCurrentJob(nil)
 	w.setStatus(WorkerStatusIdle)
+}
+
+// settleTimeout bounds how long recording an outcome may take.
+//
+// It is deliberately generous relative to a single UPDATE: this runs during
+// shutdown too, and a settle that gives up leaves the job looking abandoned.
+const settleTimeout = 5 * time.Second
+
+// settle records how the job ended, for queues that need telling.
+func (w *Worker) settle(job *Job, claimedAttempts int, err error) {
+	settler, ok := w.queue.(Settler)
+	if !ok {
+		return
+	}
+
+	// Not w.ctx. Stop() cancels it, and shutdown is exactly the moment the
+	// outcome must still be written -- otherwise every job in flight when the
+	// process stopped looks abandoned and runs a second time on the next boot.
+	ctx, cancel := context.WithTimeout(context.Background(), settleTimeout)
+	defer cancel()
+
+	if job.Status == JobStatusCompleted {
+		if err := settler.Complete(ctx, job.ID); err != nil {
+			log.Printf("Worker %s: could not mark job %s completed: %v", w.id, job.ID, err)
+		}
+		return
+	}
+
+	// ProcessJob returns nil when it has scheduled an in-memory retry, so the
+	// job's own status is the authority on what happened, not the error.
+	cause := err
+	if cause == nil {
+		cause = fmt.Errorf("%s", job.Error)
+	}
+
+	claimed := *job
+	claimed.Attempts = claimedAttempts
+
+	if err := settler.Fail(ctx, &claimed, cause); err != nil {
+		log.Printf("Worker %s: could not record failure of job %s: %v", w.id, job.ID, err)
+	}
 }
 
 func (w *Worker) setStatus(status WorkerStatus) {
