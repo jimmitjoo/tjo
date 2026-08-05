@@ -151,3 +151,30 @@ func TestSettleSurvivesWorkerCancellation(t *testing.T) {
 		t.Fatalf("%d completed rows after settling during shutdown, want 1", got)
 	}
 }
+
+// Oldest is the number that says whether the queue is moving. Depth says how
+// much work there is; this says whether anything is doing it, and a depth of
+// ten with an oldest of four hours is a stopped worker rather than a busy one.
+func TestOldestReportsHowLongTheQueueHasBeenWaiting(t *testing.T) {
+	q := sqliteQueue(t)
+	ctx := context.Background()
+
+	if got, err := q.Oldest(ctx); err != nil || got != 0 {
+		t.Fatalf("empty queue: %v, %v -- want zero and no error", got, err)
+	}
+
+	job := NewJob("work", "default", nil)
+	job.CreatedAt = time.Now().Add(-90 * time.Minute).UTC()
+	job.UpdatedAt = job.CreatedAt
+	if err := q.Push(job); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := q.Oldest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got < 80*time.Minute || got > 100*time.Minute {
+		t.Fatalf("Oldest = %v, want about 90 minutes", got)
+	}
+}

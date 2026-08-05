@@ -435,6 +435,54 @@ func (p *Panel) handlePage(w http.ResponseWriter, r *http.Request) {
 	p.render(w, r, customPage{Nav: p.navFor(ctx), Title: page.Title, Body: body})
 }
 
+// handlePagePost runs a custom page's form handler.
+func (p *Panel) handlePagePost(w http.ResponseWriter, r *http.Request) {
+	ctx := p.context(r)
+
+	page := p.page(r.PathValue("page"))
+	if page == nil {
+		p.deny(w, nil)
+		return
+	}
+
+	if page.Handler != nil {
+		if err := p.allow(ctx, Query{Action: page.PostAction, Resource: page.Path}); err != nil {
+			p.deny(w, err)
+			return
+		}
+		page.Handler.ServeHTTP(w, r)
+		return
+	}
+
+	// A page with no Post has no POST endpoint. Answering 404 rather than 405
+	// keeps it indistinguishable from a page that does not exist.
+	if page.Post == nil {
+		p.deny(w, nil)
+		return
+	}
+
+	if err := p.allow(ctx, Query{Action: page.PostAction, Resource: page.Path}); err != nil {
+		p.deny(w, err)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		p.fail(w, err)
+		return
+	}
+
+	redirect, err := page.Post(ctx)
+	if err != nil {
+		p.fail(w, err)
+		return
+	}
+	if redirect == "" {
+		redirect = p.url("p", page.Path)
+	}
+
+	http.Redirect(w, r, redirect, http.StatusSeeOther)
+}
+
 // readForm turns a submitted form into column values.
 //
 // Only fields that are editable *and* permitted are read. A field the

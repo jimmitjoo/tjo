@@ -1,0 +1,186 @@
+{{define "ops.html"}}
+
+{{if .Window}}
+<p class="count" style="margin:-8px 0 16px">Errors, requests and queries below cover the {{.Window}} held in memory.</p>
+{{end}}
+
+{{if .Health}}
+<div class="card">
+  <h3>Health</h3>
+  <div class="scroll"><table><tbody>
+    <tr><td>Status</td><td><strong>{{.Health.Status}}</strong></td></tr>
+    <tr><td>Database</td><td>{{.Health.DatabaseType}} {{.Health.Version}}</td></tr>
+    <tr><td>Response time</td><td>{{duration .Health.ResponseTime}}</td></tr>
+    <tr><td>Connections</td><td>{{.Health.ConnectionsInUse}} in use, {{.Health.ConnectionsIdle}} idle, {{.Health.ConnectionsOpen}} open{{if .Health.MaxConnections}} of {{.Health.MaxConnections}}{{end}}</td></tr>
+    {{range $name, $check := .Health.Checks}}
+      <tr><td>{{$name}}</td><td>{{$check}}</td></tr>
+    {{end}}
+    {{range .Health.Errors}}<tr><td>Error</td><td>{{.}}</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{else}}{{with index .Notes "health"}}<div class="card"><h3>Health</h3><div class="empty">{{.}}</div></div>{{end}}{{end}}
+
+<div class="card">
+  <h3>Errors</h3>
+  {{if .Errors}}
+  <div class="scroll"><table>
+    <thead><tr><th>Where</th><th>Message</th><th>Count</th><th>Last</th></tr></thead>
+    <tbody>
+      {{range .Errors}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td class="trunc">{{.Message}}</td>
+        <td><strong>{{.Count}}</strong></td>
+        <td style="white-space:nowrap">{{ago .Last}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table></div>
+  {{else}}
+  <div class="empty">{{with index .Notes "errors"}}{{.}}{{else}}No errors recorded.{{end}}</div>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Slowest requests</h3>
+  {{if .Requests}}
+  <div class="scroll"><table>
+    <thead><tr><th>Route</th><th>Duration</th><th>When</th></tr></thead>
+    <tbody>
+      {{range .Requests}}
+      <tr><td>{{.Name}}</td><td>{{duration .Duration}}</td><td style="white-space:nowrap">{{ago .At}}</td></tr>
+      {{end}}
+    </tbody>
+  </table></div>
+  {{else}}
+  <div class="empty">{{with index .Notes "requests"}}{{.}}{{else}}No requests recorded.{{end}}</div>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Slowest queries</h3>
+  {{if .Queries}}
+  <div class="scroll"><table>
+    <thead><tr><th>Operation</th><th>Statement</th><th>Duration</th><th>When</th></tr></thead>
+    <tbody>
+      {{range .Queries}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td class="trunc">{{.Detail}}</td>
+        <td>{{duration .Duration}}</td>
+        <td style="white-space:nowrap">{{ago .At}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table></div>
+  {{else}}
+  <div class="empty">{{with index .Notes "queries"}}{{.}}{{else}}No queries recorded.{{end}}</div>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Job queues</h3>
+  {{if .Queues}}
+  <div class="scroll"><table>
+    <thead><tr><th>Queue</th><th>Waiting</th><th>Running</th><th>Retrying</th><th>Failed</th><th>Completed</th><th>Oldest waiting</th></tr></thead>
+    <tbody>
+      {{range .Queues}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>{{.Waiting}}</td>
+        <td>{{.Running}}</td>
+        <td>{{.Retrying}}</td>
+        <td>{{if .Failed}}<strong>{{.Failed}}</strong>{{else}}0{{end}}</td>
+        <td>{{.Completed}}</td>
+        <td>{{duration .Oldest}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table></div>
+  {{else}}
+  <div class="empty">{{with index .Notes "queues"}}{{.}}{{else}}No queues.{{end}}</div>
+  {{end}}
+</div>
+
+{{if .FailedJobs}}
+<div class="card">
+  <h3>Failed jobs</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Queue</th><th>Type</th><th>Attempts</th><th>Last error</th><th>When</th><th></th></tr></thead>
+    <tbody>
+      {{range .FailedJobs}}
+      <tr>
+        <td>{{.Queue}}</td>
+        <td>{{.Type}}</td>
+        <td>{{.Attempts}}</td>
+        <td class="trunc">{{.LastError}}</td>
+        <td style="white-space:nowrap">{{ago .UpdatedAt}}</td>
+        <td class="actions">
+          <form method="POST" style="display:inline">
+            <input type="hidden" name="queue" value="{{.Queue}}">
+            <input type="hidden" name="job" value="{{.ID}}">
+            <button class="btn btn-sm" type="submit" name="action" value="retry">Retry</button>
+          </form>
+          <form method="POST" style="display:inline" onsubmit="return confirm('Discard this job? It will not run again.')">
+            <input type="hidden" name="queue" value="{{.Queue}}">
+            <input type="hidden" name="job" value="{{.ID}}">
+            <button class="btn btn-sm btn-danger" type="submit" name="action" value="discard">Discard</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}
+
+{{if .Stuck}}
+<div class="card">
+  <h3>Workflows that stopped</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Job</th><th>Step</th><th>Status</th><th>Attempts</th><th>Error</th><th>Since</th></tr></thead>
+    <tbody>
+      {{range .Stuck}}
+      <tr>
+        <td>{{.JobID}}</td>
+        <td><strong>{{.Step}}</strong></td>
+        <td>{{.Status}}</td>
+        <td>{{.Attempts}}</td>
+        <td class="trunc">{{.Error}}</td>
+        <td style="white-space:nowrap">{{ago .Since}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>Scheduled jobs</h3>
+  {{if .Cron}}
+  <div class="scroll"><table>
+    <thead><tr><th>Name</th><th>Last run</th><th>Took</th><th>Runs</th><th>Failures</th><th>Last error</th></tr></thead>
+    <tbody>
+      {{range .Cron}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td style="white-space:nowrap">{{stamp .LastRun}}</td>
+        <td>{{duration .Duration}}</td>
+        <td>{{.Runs}}</td>
+        <td>{{if .Failures}}<strong>{{.Failures}}</strong>{{else}}0{{end}}</td>
+        <td class="trunc">{{.LastError}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table></div>
+  <div class="empty" style="padding:12px 16px;text-align:left">
+    Counts are since this process started. A job that has never run since the
+    last deploy shows "never", which for a nightly entry is normal for most of
+    the day and alarming at noon.
+  </div>
+  {{else}}
+  <div class="empty">{{with index .Notes "cron"}}{{.}}{{else}}Nothing scheduled.{{end}}</div>
+  {{end}}
+</div>
+
+{{end}}
