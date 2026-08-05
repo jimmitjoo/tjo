@@ -1,6 +1,12 @@
 # Tjo Modules
 
-Tjo uses opt-in modules for SMS, Email, WebSocket, and OpenTelemetry. Import only what you need.
+Tjo uses opt-in modules for SMS, Email, WebSocket, OpenTelemetry and LLMs.
+Import only what you need.
+
+Each is a **separate Go module** with its own `go.mod`, tagged in lockstep with
+the framework. The rule for what becomes a module is dependency weight: a module
+exists when it would otherwise put a vendor SDK in the graph of every
+application that does not use it.
 
 ## Quick Start
 
@@ -11,6 +17,7 @@ import (
     "github.com/jimmitjoo/tjo/email"
     "github.com/jimmitjoo/tjo/websocket"
     "github.com/jimmitjoo/tjo/otel"
+    "github.com/jimmitjoo/tjo/llm"
 )
 
 func main() {
@@ -438,3 +445,137 @@ ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 defer cancel()
 app.Shutdown(ctx)
 ```
+
+---
+
+## LLM Module
+
+A thin layer over the first-party Go SDKs: chat with streaming, tool calling,
+structured output, and embeddings. Thin is the specification — evals, prompt
+management, chunking and agent orchestration are products, not framework
+features.
+
+Its own module because the 2025 Go Developer Survey found 22% of Go developers
+building AI features. The other 78% should not carry two vendor SDKs to get a
+router.
+
+### Swapping providers is one line
+
+```go
+chat := llm.OpenAI(os.Getenv("OPENAI_API_KEY"))
+chat := llm.Anthropic(os.Getenv("ANTHROPIC_API_KEY"))
+```
+
+Everything after that line is the same. The differences between the two APIs are
+absorbed rather than surfaced: the system prompt is a message on one and a field
+on the other, `max_tokens` is optional on one and required on the other, a tool
+result is its own role on one and a user message on the other, and structured
+output is `response_format` on one and a forced tool call on the other.
+
+### Chat
+
+```go
+res, err := chat.Complete(ctx, llm.Request{
+    Model:    "gpt-5",
+    System:   "Answer in one sentence.",
+    Messages: []llm.Message{llm.User("Why is the sky blue?")},
+})
+fmt.Println(res.Text, res.Usage.InputTokens, res.Usage.OutputTokens)
+```
+
+### Streaming, into an SSE response
+
+```go
+stream, _ := sse.New(w, r)
+
+_, err := chat.Stream(ctx, req, func(delta llm.Delta) error {
+    if delta.Text == "" {
+        return nil
+    }
+    return stream.Patch("token", delta.Text)
+})
+```
+
+`Stream` returns the request context's error once the client has gone away, so
+returning it from the callback stops the model call too — the difference between
+a closed tab and a bill.
+
+### Tool calling
+
+```go
+res, _ := chat.Complete(ctx, llm.Request{
+    Model:    model,
+    Messages: messages,
+    Tools: []llm.ToolDef{{
+        Name:        "order_status",
+        Description: "Look up an order's status",
+        Schema:      json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}`),
+    }},
+})
+
+for _, call := range res.ToolCalls {
+    result := lookUp(call.Arguments)
+    messages = append(messages,
+        llm.Message{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{call}},
+        llm.Tool(call.ID, result),
+    )
+}
+```
+
+The loop is yours. How many rounds to allow and what to do when the model asks
+for a tool that does not exist are application decisions; a framework that owned
+the loop would be an agent framework.
+
+### Structured output
+
+```go
+res, _ := chat.Complete(ctx, llm.Request{
+    Model:    model,
+    Messages: messages,
+    Schema: &llm.Schema{
+        Name:       "sentiment",
+        Definition: json.RawMessage(`{"type":"object","properties":{"label":{"type":"string"}}}`),
+        Strict:     true,
+    },
+})
+
+var out struct{ Label string }
+err := res.Into(&out)
+```
+
+### Embeddings and vector search
+
+```go
+vectors, _ := llm.OpenAIEmbedder(key).Embed(ctx, "text-embedding-3-small", []string{doc})
+
+rows, _ := database.NewQueryBuilder(db).WithDialect(database.DialectDollar).
+    Table("documents").
+    Where("organization_id", "=", orgID).
+    Nearest("embedding", vectors[0], database.Cosine).
+    Limit(10).
+    Get()
+```
+
+Vector search is in the root module's query builder, not here: it needs no SDK,
+and the reason to keep the vector in the primary database is that the tenancy
+filter and the similarity ordering compose into one statement.
+
+### Cost accounting
+
+Token counts are emitted as `gen_ai.*` OpenTelemetry span attributes —
+`input_tokens`, `output_tokens` and `cached_input_tokens` — on the span the call
+already produces. Grouping, summing and alerting on them belongs in the
+observability backend, so that is where they are put and nothing more is done.
+
+Prompts and completions are deliberately **not** recorded. They are the user's
+data and a tracing backend is not where anyone expects to find them.
+
+### Environment Variables
+
+```env
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+A provider constructed without a key fails at call time, not at construction, so
+an application that configures a provider it never uses still starts.

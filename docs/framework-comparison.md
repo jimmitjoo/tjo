@@ -40,7 +40,11 @@
 | Rate Limiting | Built-in | Plugin | Plugin | Plugin | Plugin | Plugin | No | Built-in |
 | XSS Prevention | Bluemonday | No | No | No | No | No | No | No |
 | Input Validation | govalidator | go-playground | Yes | No | Yes | Yes | Built-in | Yes |
-| 2FA/Auth | Built-in | No | No | No | No | No | No | No |
+| Authentication | `auth` package | No | No | No | No | No | No | No |
+| 2FA (TOTP) | Built-in, replay-checked | No | No | No | No | No | No | No |
+| Passkeys / WebAuthn | Built-in | No | No | No | No | No | No | No |
+| Social login | **No** ([#85](https://github.com/jimmitjoo/tjo/issues/85)) | No | No | No | No | No | No | No |
+| Roles & multi-tenancy | Built-in | No | No | No | No | No | No | No |
 | JWT | Plugin | Plugin | Plugin | Plugin | Plugin | Plugin | No | Built-in |
 | Anti-Bot (CAPTCHA) | No | No | No | No | No | No | No | Built-in |
 | Recovery | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
@@ -67,8 +71,10 @@
 
 | Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
 |---------|----------|-----|------|-------|---------|-------|-------|------|
-| Job Queue | Worker Pool | No | No | No | No | Task | No | No |
-| Cron Scheduler | robfig/cron | No | No | No | No | Toolbox | No | No |
+| Job Queue | Worker pool + SQL-backed | No | No | No | No | Task | No | No |
+| Transactional enqueue | Yes | No | No | No | No | No | No | No |
+| Durable steps / workflows | Yes | No | No | No | No | No | No | No |
+| Cron Scheduler | robfig/cron, with last-run status | No | No | No | No | Toolbox | No | No |
 | Task Runner | Makefile | No | No | No | Grift | Bee | revel cmd | No |
 
 ### Communication
@@ -80,6 +86,15 @@
 | SMS | Twilio/Vonage | No | No | No | No | No | No | No |
 | WebSocket | Hub-pattern | No | Yes | contrib | Plugin | Yes | No | Yes |
 | SSE | No | No | No | No | No | No | No | Yes |
+
+### AI & Vectors
+
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
+|---------|----------|-----|------|-------|---------|-------|-------|------|
+| LLM chat / tools / embeddings | `llm` module | No | No | No | No | No | No | No |
+| Vector search in query builder | pgvector, sqlite-vec | No | No | No | No | No | No | No |
+| MCP server | 16 tools | No | No | No | No | No | No | No |
+| Agent Skills bundle | Yes | No | No | No | No | No | No | No |
 
 ### Views & Templates
 
@@ -117,7 +132,9 @@
 | Project Scaffolding | Yes | No | No | No | Yes | Yes | Yes | No |
 | MCP/AI Integration | 12 tools | No | No | No | No | No | No | No |
 | MVC Pattern | Optional | No | No | No | Yes | Yes | Yes | DI |
-| i18n | No | No | No | No | No | No | Yes | Yes |
+| Admin panel | Model-driven CRUD | No | No | No | No | Yes | No | No |
+| Ops dashboard | Built-in | No | No | No | No | Yes | No | No |
+| i18n | **No** ([#83](https://github.com/jimmitjoo/tjo/issues/83)) | No | No | No | No | No | Yes | Yes |
 
 ### Production
 
@@ -149,8 +166,17 @@
 - **Security first** - CSRF, rate limiting, validation, XSS built-in
 - **OpenTelemetry built-in** - Observability without extra work
 - **Modern stack** - Go 1.25, latest best practices
+- **Admin panel** - Model-driven CRUD over your own structs, no build step. The
+  thing that usually makes people pick Django, in Go
+- **Ops dashboard** - Errors, slow queries, queue and cron on a page you host,
+  rather than a monthly bill
 
 **Cons:**
+- **English only** - There is no i18n layer, and framework-produced strings are
+  hardcoded English. This is the one row above where Revel and Iris beat it, and
+  it rules out whole markets today. ([#83](https://github.com/jimmitjoo/tjo/issues/83))
+- **No social login** - Passwords, 2FA and passkeys are covered; "sign in with
+  Google" is not. ([#85](https://github.com/jimmitjoo/tjo/issues/85))
 - **New** - Small community, fewer Stack Overflow answers
 - **Opinionated** - Must do things the Tjo way
 - **Documentation maturity** - Still growing
