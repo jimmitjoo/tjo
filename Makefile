@@ -130,7 +130,11 @@ release-push:
 	@# dependency cycle that can never be satisfied on a first release.
 	@echo "Pushing..."
 	@git push origin main
-	@git push origin v$(v) $(foreach m,$(SUBMODULES),$(m)/v$(v))
+	@# Fully-qualified refs, because a branch named after the release makes
+	@# "v$(v)" ambiguous and git refuses the push outright: "src refspec v0.11.0
+	@# matches more than one". Naming a release branch after its version is a
+	@# reasonable thing to do, and it broke this target once.
+	@git push origin refs/tags/v$(v) $(foreach m,$(SUBMODULES),refs/tags/$(m)/v$(v))
 	@echo ""
 	@# Now the skeleton can be checked and tagged. `tjo new` clones the skeleton
 	@# tag matching the CLI's own version, so a tag pointing at a tree that
