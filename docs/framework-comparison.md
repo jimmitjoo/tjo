@@ -8,10 +8,14 @@
 
 Star counts and last-push dates come from the GitHub API on **2026-08-05**.
 Feature rows for Tjo are checked against this repository's source at v0.12.0.
-Feature rows for the other frameworks are checked against their source or
-documentation where noted, and are otherwise carried over from earlier versions
-of this file — those are the rows most likely to be stale, and this paragraph
-exists so that is visible rather than implied.
+Feature rows for **GoFr, GoFrame and Encore** were filled in on 2026-08-05 by
+reading their repository trees: package layouts, middleware directories and
+runtime packages. Rows for Echo and Fiber were corrected the same way.
+
+Rows for Gin, Buffalo, Beego, Revel and Iris are carried over from earlier
+versions of this file and have **not** been re-verified. Those are the rows most
+likely to be stale, and this paragraph exists so that is visible rather than
+implied.
 
 A comparison table with no date on it rots invisibly. This one had claimed
 "SSE: No" for Tjo since before the `sse` package existed, and "CSRF: Plugin" for
@@ -41,15 +45,32 @@ has not been pushed since October 2023. It is also, along with Iris, one of the
 two frameworks that beat Tjo on i18n — which says more about how long Tjo has
 gone without i18n than it does about Revel.
 
-**GoFr, GoFrame and Encore are not tabulated below** and each is more active
-than Revel and larger than Buffalo. GoFrame is the closest comparator to Tjo in
-philosophy and the most conspicuous omission; adding it is worth doing before
-this file is cited anywhere.
+**GoFr, GoFrame and Encore were added to the tables below on 2026-08-05**, each
+checked against its source tree rather than its marketing:
+
+- **GoFrame** is the closest comparator to Tjo in philosophy and the one that
+  makes the most rows uncomfortable. `os/gcron`, `os/gsession`, `os/gcache`,
+  `database/gdb` with eleven drivers, `net/goai` for OpenAPI generation,
+  `contrib/rpc/grpcx`, and **`i18n/gi18n`** — it has had the
+  internationalisation Tjo does not, for years.
+- **GoFr** is API-first and observability-first: `pkg/gofr/http/middleware` has
+  rate limiting, OAuth, API-key and basic auth; `pkg/gofr/rbac` has roles;
+  `pkg/gofr/migration` has migrations; `datasource/` supports fifteen-plus
+  stores; and `pkg/gofr/ai` has **both an LLM layer and an MCP server**. It is
+  the only other framework here doing the AI work this project has been doing.
+- **Encore** is a different category — infrastructure-from-code. Its Go runtime
+  has `cron`, `pubsub`, `storage/{cache,objects,sqldb}`, `metrics`, `rlog` and
+  `shutdown`, and you get them by declaring them rather than by wiring them.
+  Comparing it row by row flatters the others: it does less inside the process
+  and more outside it.
+
+The three of them cost Tjo several rows it used to hold alone. That is the
+point of re-checking.
 
 ## Overview
 
-| Aspect | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|--------|----------|-----|------|-------|---------|-------|-------|------|
+| Aspect | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|--------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
 | **GitHub Stars** | New | 89.0k | 32.6k | 40.0k | 8.4k | 32.4k | 13.2k | 25.6k |
 | **Type** | Full-stack | Minimalist | Minimalist | Minimalist | Full-stack | Full-stack | Full-stack | Feature-rich |
 | **Philosophy** | Laravel for Go | Express for Go | Balanced | Express for Go | Rails for Go | Django for Go | Play for Go | All-in-one |
@@ -63,135 +84,135 @@ this file is cited anywhere.
 
 ### Routing & HTTP
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| HTTP Router | Chi | httprouter | Radix tree | fasthttp | Gorilla Mux | Built-in | Built-in | Built-in |
-| Route Groups | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Path Parameters | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Typed |
-| Named Routes | Yes | No | Yes | Yes | Yes | Yes | Yes | Yes |
-| RESTful Resources | Auto | Manual | Manual | Manual | Auto | Auto | Auto | Auto |
-| HTTP/2 | Yes | Yes | Yes | Limited | Yes | Yes | Yes | Push |
-| gRPC | No ([#84](https://github.com/jimmitjoo/tjo/issues/84)) | No | No | No | No | No | No | Yes |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| HTTP Router | Chi | httprouter | Radix tree | fasthttp | Gorilla Mux | Built-in | Built-in | Built-in | Built-in | ghttp | Built-in |
+| Route Groups | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Services |
+| Path Parameters | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Typed | Yes | Yes | Typed |
+| Named Routes | Yes | No | Yes | Yes | Yes | Yes | Yes | Yes | No | Yes | n/a |
+| RESTful Resources | Auto | Manual | Manual | Manual | Auto | Auto | Auto | Auto | Manual | Auto (gf gen) | From code |
+| HTTP/2 | Yes | Yes | Yes | Limited | Yes | Yes | Yes | Push | Yes | Yes | Yes |
+| gRPC | No ([#84](https://github.com/jimmitjoo/tjo/issues/84)) | No | No | No | No | No | No | Yes | Built-in | grpcx | No |
 
 ### Middleware & Security
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| Middleware System | Yes | Yes | Yes | Yes | Yes | Yes | Interceptors | Yes |
-| CSRF Protection | Built-in | Plugin | Built-in | Built-in | Built-in | Built-in | Yes | Yes |
-| Rate Limiting | Built-in | Plugin | Built-in | Built-in | Plugin | Plugin | No | Built-in |
-| XSS Prevention | Bluemonday | No | No | No | No | No | No | No |
-| Input Validation | Built-in | go-playground | Yes | No | Yes | Yes | Built-in | Yes |
-| Authentication | `auth` package | No | No | No | No | No | No | No |
-| 2FA (TOTP) | Built-in, replay-checked | No | No | No | No | No | No | No |
-| Passkeys / WebAuthn | Built-in | No | No | No | No | No | No | No |
-| Social login | **No** ([#85](https://github.com/jimmitjoo/tjo/issues/85)) | No | No | No | No | No | No | No |
-| Roles & multi-tenancy | Built-in | No | No | No | No | No | No | No |
-| JWT | Plugin | Plugin | Plugin | Plugin | Plugin | Plugin | No | Built-in |
-| Anti-Bot (CAPTCHA) | No | No | No | No | No | No | No | Built-in |
-| Recovery | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| Middleware System | Yes | Yes | Yes | Yes | Yes | Yes | Interceptors | Yes | Yes | Yes | Yes |
+| CSRF Protection | Built-in | Plugin | Built-in | Built-in | Built-in | Built-in | Yes | Yes | No | Plugin | n/a |
+| Rate Limiting | Built-in | Plugin | Built-in | Built-in | Plugin | Plugin | No | Built-in | Built-in | Plugin | No |
+| XSS Prevention | Bluemonday | No | No | No | No | No | No | No | No | gvalid | No |
+| Input Validation | Built-in | go-playground | Yes | No | Yes | Yes | Built-in | Yes | Built-in | gvalid | From types |
+| Authentication | `auth` package | No | No | No | No | No | No | No | Basic/APIKey/OAuth | No | Auth handler |
+| 2FA (TOTP) | Built-in, replay-checked | No | No | No | No | No | No | No | No | No | No |
+| Passkeys / WebAuthn | Built-in | No | No | No | No | No | No | No | No | No | No |
+| Social login | **No** ([#85](https://github.com/jimmitjoo/tjo/issues/85)) | No | No | No | No | No | No | No | OAuth middleware | No | No |
+| Roles & multi-tenancy | Built-in | No | No | No | No | No | No | No | RBAC | No | No |
+| JWT | Plugin | Plugin | Plugin | Plugin | Plugin | Plugin | No | Built-in | Plugin | Plugin | Plugin |
+| Anti-Bot (CAPTCHA) | No | No | No | No | No | No | No | Built-in | No | No | No |
+| Recovery | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 ### Database & Persistence
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| ORM/Query Builder | Fluent QB | No | No | No | Pop | Beego ORM | No | No |
-| Migrations | golang-migrate | No | No | No | Soda | Built-in | No | No |
-| Multi-DB Support | PG/MySQL/SQLite | No | No | No | Via Pop | Via ORM | No | No |
-| Seeding | Yes | No | No | No | Yes | Yes | No | No |
-| Connection Pool | Yes | No | No | No | Yes | Yes | No | No |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| ORM/Query Builder | Fluent QB | No | No | No | Pop | Beego ORM | No | No | Yes | gdb | sqldb |
+| Migrations | golang-migrate | No | No | No | Soda | Built-in | No | No | Built-in | No | Built-in |
+| Multi-DB Support | PG/MySQL/SQLite | No | No | No | Via Pop | Via ORM | No | No | 15+ datasources | 11 drivers | PostgreSQL |
+| Seeding | Yes | No | No | No | Yes | Yes | No | No | No | No | No |
+| Connection Pool | Yes | No | No | No | Yes | Yes | No | No | Yes | Yes | Yes |
 
 ### Caching & Sessions
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| Session Management | SCS | No | No | Built-in | Yes | Yes | Cookie | Yes |
-| Session Stores | Redis/DB/Badger/Cookie | - | - | Redis/Memory | DB | Memory/File | Cookie | Multiple |
-| Cache System | Redis/Badger | No | No | No | No | Yes | No | Yes |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| Session Management | SCS | No | No | Built-in | Yes | Yes | Cookie | Yes | No | gsession | No |
+| Session Stores | Redis/DB/Badger/Cookie | - | - | Redis/Memory | DB | Memory/File | Cookie | Multiple | - | Memory/Redis/File | - |
+| Cache System | Redis/Badger | No | No | No | No | Yes | No | Yes | Redis | gcache/gredis | Built-in |
 
 ### Background Processing
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| Job Queue | Worker pool + SQL-backed | No | No | No | No | Task | No | No |
-| Transactional enqueue | Yes | No | No | No | No | No | No | No |
-| Durable steps / workflows | Yes | No | No | No | No | No | No | No |
-| Cron Scheduler | robfig/cron, with last-run status | No | No | No | No | Toolbox | No | No |
-| Task Runner | Makefile | No | No | No | Grift | Bee | revel cmd | No |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| Job Queue | Worker pool + SQL-backed | No | No | No | No | Task | No | No | Pub/Sub | No | Pub/Sub |
+| Transactional enqueue | Yes | No | No | No | No | No | No | No | No | No | No |
+| Durable steps / workflows | Yes | No | No | No | No | No | No | No | No | No | No |
+| Cron Scheduler | robfig/cron, with last-run status | No | No | No | No | Toolbox | No | No | Built-in | gcron | Built-in |
+| Task Runner | Makefile | No | No | No | Grift | Bee | revel cmd | No | No | gf cli | encore cli |
 
 ### Communication
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| Email (SMTP) | go-simple-mail | No | No | No | Plugin | No | No | No |
-| Email (API) | SendGrid/Mailgun+ | No | No | No | No | No | No | No |
-| SMS | Twilio/Vonage | No | No | No | No | No | No | No |
-| WebSocket | Hub-pattern | No | Yes | contrib | Plugin | Yes | No | Yes |
-| SSE | Built-in, with topic broadcast | No | No | No | No | No | No | Yes |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| Email (SMTP) | go-simple-mail | No | No | No | Plugin | No | No | No | No | No | No |
+| Email (API) | SendGrid/Mailgun+ | No | No | No | No | No | No | No | No | No | No |
+| SMS | Twilio/Vonage | No | No | No | No | No | No | No | No | No | No |
+| WebSocket | Hub-pattern | No | Yes | contrib | Plugin | Yes | No | Yes | Built-in | Built-in | No |
+| SSE | Built-in, with topic broadcast | No | No | No | No | No | No | Yes | No | No | No |
 
 ### AI & Vectors
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| LLM chat / tools / embeddings | `llm` module | No | No | No | No | No | No | No |
-| Vector search in query builder | pgvector, sqlite-vec | No | No | No | No | No | No | No |
-| MCP server | 16 tools | No | No | No | No | No | No | No |
-| Agent Skills bundle | Yes | No | No | No | No | No | No | No |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| LLM chat / tools / embeddings | `llm` module | No | No | No | No | No | No | No | Built-in | No | No |
+| Vector search in query builder | pgvector, sqlite-vec | No | No | No | No | No | No | No | No | No | No |
+| MCP server | 16 tools | No | No | No | No | No | No | No | Built-in | No | No |
+| Agent Skills bundle | Yes | No | No | No | No | No | No | No | No | No | No |
 
 ### Views & Templates
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| Template Engine | Jet | html/template | html/template | Multi-engine | Plush | Built-in | Built-in | Django/Pug/etc |
-| Asset Pipeline | Tailwind, in the scaffold | No | No | No | Webpack | No | No | No |
-| Hot Reload | `tjo run --watch` (air) | No | No | No | Yes | Bee | Yes | No |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| Template Engine | Jet | html/template | html/template | Multi-engine | Plush | Built-in | Built-in | Django/Pug/etc | html/template | gview | None |
+| Asset Pipeline | Tailwind, in the scaffold | No | No | No | Webpack | No | No | No | No | No | No |
+| Hot Reload | `tjo run --watch` (air) | No | No | No | Yes | Bee | Yes | No | No | gf run | encore run |
 
 ### File Storage
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| S3 Integration | Yes | No | No | No | No | No | No | No |
-| MinIO Integration | Yes | No | No | No | No | No | No | No |
-| File Upload | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| WebDAV | No | No | No | No | No | No | No | Yes |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| S3 Integration | Yes | No | No | No | No | No | No | No | No | No | Object storage |
+| MinIO Integration | Yes | No | No | No | No | No | No | No | No | No | No |
+| File Upload | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| WebDAV | No | No | No | No | No | No | No | Yes | No | No | No |
 
 ### Observability
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| Structured Logging | Yes | No | Yes | No | Yes | Yes | No | Accesslog |
-| OpenTelemetry | Built-in | Plugin | Plugin | Plugin | No | No | No | No |
-| Health Checks | Yes | No | No | No | No | No | No | No |
-| Metrics/Monitor | Yes | No | No | Plugin | No | Yes | No | Yes |
-| PPROF | No | No | No | No | No | No | No | Built-in |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| Structured Logging | Yes | No | Yes | No | Yes | Yes | No | Accesslog | Yes | glog | rlog |
+| OpenTelemetry | Built-in | Plugin | Plugin | Plugin | No | No | No | No | Built-in | gtrace | Built-in |
+| Health Checks | Yes | No | No | No | No | No | No | No | Built-in | No | Yes |
+| Metrics/Monitor | Yes | No | No | Plugin | No | Yes | No | Yes | Built-in | gmetric | Built-in |
+| PPROF | No | No | No | No | No | No | No | Built-in | No | Built-in | No |
 
 ### Developer Experience
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| CLI Tool | tjo | No | No | No | buffalo | bee | revel | No |
-| Code Generation | Extensive | No | No | No | Scaffolding | Scaffolding | Yes | No |
-| Project Scaffolding | Yes | No | No | No | Yes | Yes | Yes | No |
-| MCP/AI Integration | 16 tools | No | No | No | No | No | No | No |
-| MVC Pattern | Optional | No | No | No | Yes | Yes | Yes | DI |
-| Admin panel | Model-driven CRUD | No | No | No | No | Yes | No | No |
-| Ops dashboard | Built-in | No | No | No | No | Yes | No | No |
-| i18n | **No** ([#83](https://github.com/jimmitjoo/tjo/issues/83)) | No | No | No | No | No | Yes | Yes |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| CLI Tool | tjo | No | No | No | buffalo | bee | revel | No | gofr | gf | encore |
+| Code Generation | Extensive | No | No | No | Scaffolding | Scaffolding | Yes | No | No | Extensive | Clients |
+| Project Scaffolding | Yes | No | No | No | Yes | Yes | Yes | No | Yes | Yes | Yes |
+| MCP/AI Integration | 16 tools | No | No | No | No | No | No | No | Built-in | No | No |
+| MVC Pattern | Optional | No | No | No | Yes | Yes | Yes | DI | No | Optional | No |
+| Admin panel | Model-driven CRUD | No | No | No | No | Yes | No | No | No | No | No |
+| Ops dashboard | Built-in | No | No | No | No | Yes | No | No | No | No | Local dashboard |
+| i18n | **No** ([#83](https://github.com/jimmitjoo/tjo/issues/83)) | No | No | No | No | No | Yes | Yes | No | **gi18n** | No |
 
 ### Production
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
-| Graceful Shutdown | Yes | Manual | Manual | Yes | Yes | Yes | Yes | Yes |
-| Docker Support | Generator | No | No | No | No | No | No | No |
-| Config Validation | Startup | No | No | No | No | Yes | No | No |
-| Auto-HTTPS | No | No | Let's Encrypt | No | No | No | No | Yes |
-| ngrok Integration | No | No | No | No | No | No | No | Yes |
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
+| Graceful Shutdown | Yes | Manual | Manual | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Docker Support | Generator | No | No | No | No | No | No | No | Yes | Yes | Built-in |
+| Config Validation | Startup | No | No | No | No | Yes | No | No | Yes | gcfg | From code |
+| Auto-HTTPS | No | No | Let's Encrypt | No | No | No | No | Yes | No | Yes | Yes |
+| ngrok Integration | No | No | No | No | No | No | No | Yes | No | No | No |
 
 ### Compression
 
-| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris |
-|---------|----------|-----|------|-------|---------|-------|-------|------|
+| Feature | Tjo | Gin | Echo | Fiber | Buffalo | Beego | Revel | Iris | GoFr | GoFrame | Encore |
+|---------|----------|-----|------|-------|---------|-------|-------|------|-----|---------|--------|
 | gzip | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | brotli | No | No | No | No | No | No | No | Yes |
 | snappy/s2 | No | No | No | No | No | No | No | Yes |
@@ -203,8 +224,12 @@ this file is cited anywhere.
 ### Tjo
 
 **Pros:**
-- **Most complete package** - Everything from database to email/SMS built-in
-- **AI-native** - MCP integration = AI can build your app for you
+- **Most complete package** - Everything from database to email/SMS built-in.
+  GoFrame is the closest competitor on breadth and does not have email, SMS,
+  passkeys, an admin panel or durable job steps
+- **AI-native** - MCP integration, an Agent Skills bundle, and an LLM layer.
+  GoFr is the only other framework here doing this work, and it does not have
+  the vector search
 - **Security first** - CSRF, rate limiting, validation, XSS built-in
 - **OpenTelemetry built-in** - Observability without extra work
 - **Modern stack** - Go 1.25, latest best practices
