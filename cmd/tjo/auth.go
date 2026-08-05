@@ -91,11 +91,6 @@ func doAuth() error {
 		return err
 	}
 
-	err = copyFileFromTemplate("templates/data/remember_token.go.txt", rootPath+"/data/remember_token.go")
-	if err != nil {
-		return err
-	}
-
 	// create middleware
 	err = copyFileFromTemplate("templates/middleware/auth.go.txt", rootPath+"/middleware/auth.go")
 	if err != nil {
@@ -143,6 +138,11 @@ func doAuth() error {
 	}
 
 	err = copyFileFromTemplate("templates/views/login.jet", rootPath+"/views/login.jet")
+	if err != nil {
+		return err
+	}
+
+	err = copyFileFromTemplate("templates/views/2fa-recovery-codes.jet", rootPath+"/views/2fa-recovery-codes.jet")
 	if err != nil {
 		return err
 	}
@@ -229,13 +229,48 @@ func doAuth() error {
 		return err
 	}
 
-	// find the line with 'return route.App.Routes' in routesContent
-	routesOutput := bytes.Replace(routesContent, []byte("return route.App.Routes"), []byte(string(authRoutes)+"\n\n"+string(tfaRoutes)+"\n\n\treturn route.App.Routes"), 1)
+	// Insert before the router is returned.
+	//
+	// The marker used to be "return route.App.Routes", which the routes.go
+	// template has not contained for several releases -- so make auth wrote the
+	// handlers, wrote nothing to routes.go, and reported success. Every project
+	// scaffolded in that window had a complete authentication system that no
+	// URL reached. The scaffold job did not catch it because unreachable
+	// handlers compile perfectly.
+	//
+	// Failing loudly now, because "generated an auth system you cannot log in
+	// to" is not an outcome worth reporting as done.
+	const (
+		returnMarker     = "return a.App.HTTP.Router"
+		middlewareMarker = "a.App.HTTP.Router.Use(security.SecureMiddleware(a.securityConfig()))"
+	)
+
+	if !bytes.Contains(routesContent, []byte(returnMarker)) {
+		return fmt.Errorf("could not find %q in routes.go, so the authentication routes were not added -- add them by hand or restore the generated routes() function", returnMarker)
+	}
+	// chi panics if a middleware is registered after a route, so CheckRemember
+	// goes next to the security middleware rather than beside the routes it
+	// belongs to.
+	if !bytes.Contains(routesContent, []byte(middlewareMarker)) {
+		return fmt.Errorf("could not find %q in routes.go, so the remember-me middleware was not added -- add a.App.HTTP.Router.Use(a.Middleware.CheckRemember) above your first route", middlewareMarker)
+	}
+
+	rememberMiddleware := middlewareMarker + `
+
+	// Logs a returning visitor back in from their remember cookie, renewing the
+	// session as it does. Registered here because chi requires every middleware
+	// to be declared before the first route.
+	a.App.HTTP.Router.Use(a.Middleware.CheckRemember)`
+
+	routesOutput := bytes.Replace(routesContent, []byte(middlewareMarker), []byte(rememberMiddleware), 1)
+	routesOutput = bytes.Replace(routesOutput, []byte(returnMarker),
+		[]byte(string(authRoutes)+"\n"+string(tfaRoutes)+"\n\t"+returnMarker), 1)
+
 	if err = os.WriteFile(routesFile, routesOutput, 0644); err != nil {
 		return err
 	}
 
-	color.Yellow("  - users, tokens and remember_tokens migrations created and ran")
+	color.Yellow("  - users and tokens migrations created and ran")
 	color.Yellow("  - user and token models created")
 	color.Yellow("  - auth middleware created")
 	color.Yellow("  - 2FA (TOTP) support included")

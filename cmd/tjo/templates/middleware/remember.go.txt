@@ -1,92 +1,121 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
-	"$APPURL$/data"
 	"net/http"
 	"strconv"
-	"strings"
-	"time"
+	"sync"
+
+	"github.com/jimmitjoo/tjo"
+	"github.com/jimmitjoo/tjo/auth"
 )
 
+// CheckRemember logs a returning visitor back in from their remember cookie.
+//
+// The version this replaces read "<user id>|<token>" out of the cookie, split
+// it, looked the token up in plaintext, and put the user id straight into
+// whatever session the request arrived with. Three things were wrong with that
+// and all three are gone:
+//
+//   - The token was stored in the database exactly as it appeared in the
+//     cookie, so reading that table was a working login for every user who had
+//     ticked the box. Only the hash is stored now.
+//   - The session was not renewed, so a session id an attacker had fixed on the
+//     victim's browser was promoted to an authenticated one. That is session
+//     fixation, on the one login path nobody was watching. The CSRF token was
+//     not rotated either.
+//   - The cookie carried a user id that the code parsed before authenticating
+//     anything. It carries a token and nothing else now; the hash is the lookup
+//     key, so there is nothing to parse and nothing to trust.
 func (m *Middleware) CheckRemember(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !m.App.HTTP.Session.Exists(r.Context(), "userID") {
-			// user is not logged in
-			cookie, err := r.Cookie(fmt.Sprintf("_%s_remember", m.App.AppName))
-			if err != nil {
-				// no remember cookie
-				next.ServeHTTP(w, r)
-				return
-			}
+		ctx := r.Context()
 
-			// remember cookie exists
-			key := cookie.Value
-			var u data.User
-			if len(key) > 0 {
-				// cookie has some data, so lets validate it
-				split := strings.Split(key, "|")
-				if len(split) != 2 {
-					// malformed cookie; without this check the index below
-					// panics on any value a client cares to send
-					m.deleteRememberCookie(w, r)
-					next.ServeHTTP(w, r)
-					return
-				}
-
-				uid, hash := split[0], split[1]
-				id, err := strconv.Atoi(uid)
-				if err != nil {
-					m.deleteRememberCookie(w, r)
-					next.ServeHTTP(w, r)
-					return
-				}
-				validHash := u.CheckForRememberToken(id, hash)
-				if !validHash {
-					// cookie is invalid, so lets delete it
-					m.deleteRememberCookie(w, r)
-					next.ServeHTTP(w, r)
-					return
-				} else {
-					user, _ := u.Find(id)
-					m.App.HTTP.Session.Put(r.Context(), "userID", user.ID)
-					m.App.HTTP.Session.Put(r.Context(), "remember_token", hash)
-					next.ServeHTTP(w, r)
-					return
-				}
-			} else {
-				// cookie is empty, so lets delete it
-				m.deleteRememberCookie(w, r)
-				next.ServeHTTP(w, r)
-				return
-			}
-
-		} else {
-			// user is logged in
+		if m.App.HTTP.Session.Exists(ctx, "userID") {
 			next.ServeHTTP(w, r)
+			return
 		}
+
+		token, err := auth.RememberedToken(r, m.rememberCookieName())
+		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Spends this token and issues its replacement in one atomic step, so
+		// a copied cookie is worthless after whichever browser presented it
+		// first -- and the theft shows up as an unexpected logout rather than
+		// as nothing at all.
+		userID, replacement, err := auth.Recall(ctx, m.rememberStore(), token, auth.DefaultRememberTTL)
+		if err != nil {
+			m.forget(w)
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		id, err := strconv.Atoi(userID)
+		if err != nil {
+			m.forget(w)
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// This session is becoming authenticated, so it gets what the login
+		// handler gives: a new session id, and a CSRF token that did not exist
+		// while the session was anonymous.
+		if err := m.App.HTTP.Session.RenewToken(ctx); err != nil {
+			m.App.Logging.Error.Println("error renewing session token from remember cookie:", err)
+			next.ServeHTTP(w, r)
+			return
+		}
+		tjo.RotateCSRFToken(m.App.HTTP.Session, r)
+
+		http.SetCookie(w, auth.RememberCookie(
+			m.rememberCookieName(), replacement, auth.DefaultRememberTTL,
+			m.App.HTTP.Session.Cookie.Secure))
+
+		m.App.HTTP.Session.Put(ctx, "userID", id)
+
+		next.ServeHTTP(w, r)
 	})
 }
 
-func (m *Middleware) deleteRememberCookie(w http.ResponseWriter, r *http.Request) {
-	_ = m.App.HTTP.Session.RenewToken(r.Context())
+func (m *Middleware) forget(w http.ResponseWriter) {
+	http.SetCookie(w, auth.ClearRememberCookie(m.rememberCookieName(), m.App.HTTP.Session.Cookie.Secure))
+}
 
-	// delete cookie
-	newCookie := http.Cookie{
-		Name:     fmt.Sprintf("_%s_remember", m.App.AppName),
-		Value:    "",
-		Path:     "/",
-		Expires:  time.Now().Add(-100 * time.Hour * 24),
-		HttpOnly: true,
-		Domain:   m.App.HTTP.Session.Cookie.Domain,
-		MaxAge:   -1,
-		Secure:   m.App.HTTP.Session.Cookie.Secure,
-		SameSite: m.App.HTTP.Session.Cookie.SameSite,
+// rememberCookieName is per application, so two applications on one host do not
+// present each other's remember cookies.
+func (m *Middleware) rememberCookieName() string {
+	return fmt.Sprintf("_%s_remember", m.App.AppName)
+}
+
+var (
+	rememberStore     *auth.SQLResetStore
+	rememberStoreOnce sync.Once
+)
+
+// rememberStore is the same single-use token store the password-reset flow
+// uses. A remember token is a single-use, expiring, user-bound secret consumed
+// atomically, which is exactly what that store was written to get right.
+func (m *Middleware) rememberStore() *auth.SQLResetStore {
+	rememberStoreOnce.Do(func() {
+		rememberStore = auth.NewSQLResetStore(m.App.Data.DB.Pool, rememberDialect(m.App.Config.Database.Type))
+		if err := rememberStore.Migrate(context.Background()); err != nil {
+			m.App.Logging.Error.Println("error preparing the token table:", err)
+		}
+	})
+	return rememberStore
+}
+
+func rememberDialect(dbType string) auth.Dialect {
+	switch dbType {
+	case "postgres", "postgresql", "pgx":
+		return auth.DialectPostgres
+	case "mysql", "mariadb":
+		return auth.DialectMySQL
+	default:
+		return auth.DialectSQLite
 	}
-	http.SetCookie(w, &newCookie)
-
-	// log the user out
-	m.App.HTTP.Session.Remove(r.Context(), "userID")
-	m.App.HTTP.Session.Destroy(r.Context())
-	m.App.HTTP.Session.RenewToken(r.Context())
 }

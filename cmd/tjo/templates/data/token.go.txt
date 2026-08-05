@@ -1,14 +1,11 @@
 package data
 
 import (
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base32"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
+	"github.com/jimmitjoo/tjo/auth"
 	up "github.com/upper/db/v4"
 )
 
@@ -94,9 +91,11 @@ func (t *Token) Find(id int) (*Token, error) {
 // hashToken returns the value stored for a bearer token. Tokens are looked up
 // by hash so that read access to the database -- a backup, a dump, a logged
 // slow query -- does not hand over usable credentials.
+//
+// The framework's implementation, not a second one. Two copies of the same
+// hashing is how the two stop agreeing, and this one is tested.
 func hashToken(token string) []byte {
-	sum := sha256.Sum256([]byte(token))
-	return sum[:]
+	return auth.HashToken(token)
 }
 
 // get token by token
@@ -154,26 +153,27 @@ func (t *Token) Insert(token Token, user User) error {
 	return err
 }
 
-// generate a token for a user with a ttl
+// GenerateToken mints a bearer token for a user.
+//
+// auth.NewToken produces the plaintext and the hash; only the hash is stored,
+// and the plaintext exists in the returned value and nowhere else. That is the
+// correction v0.7.0 made after tokens were persisted in plaintext and
+// serialised into JSON responses -- a logged response body was a working
+// credential.
 func (t *Token) GenerateToken(userId int, ttl time.Duration) (*Token, error) {
-	var token Token
-
-	token.UserID = userId
-	token.ExpiresAt = time.Now().Add(ttl)
-
-	randomToken := make([]byte, 16)
-	_, err := rand.Read(randomToken)
+	minted, err := auth.NewToken(ttl)
 	if err != nil {
 		return nil, err
 	}
 
-	token.PlainText = base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(randomToken)
-	hash := sha256.Sum256([]byte(token.PlainText))
-	token.Hash = hash[:]
-	token.CreatedAt = time.Now()
-	token.UpdatedAt = time.Now()
-
-	return &token, nil
+	return &Token{
+		UserID:    userId,
+		PlainText: minted.PlainText,
+		Hash:      minted.Hash,
+		ExpiresAt: minted.Expiry,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}, nil
 }
 
 // Authenticate a token
@@ -183,15 +183,12 @@ func (t *Token) AuthenticateToken(r *http.Request) (*User, error) {
 		return nil, errors.New("no authorization header received")
 	}
 
-	headerParts := strings.Split(authirazationHeader, " ")
-	if len(headerParts) != 2 || headerParts[0] != "Bearer" {
-		return nil, errors.New("invalid authorization header")
-	}
-
-	token := headerParts[1]
-
-	if len(token) != 26 {
-		return nil, errors.New("invalid token length")
+	// Parsing the header is auth's, including the length check: a value of the
+	// wrong length cannot be one of ours and does not need a database lookup to
+	// find out.
+	token, err := auth.FromAuthorizationHeader(authirazationHeader)
+	if err != nil {
+		return nil, err
 	}
 
 	tkn, err := t.GetByToken(token)
@@ -213,24 +210,18 @@ func (t *Token) AuthenticateToken(r *http.Request) (*User, error) {
 	return user, nil
 }
 
-// validate a token
+// ValidateToken reports whether a bearer token is usable.
+//
+// One error for unknown and expired, because distinguishing them tells an
+// attacker which of their guesses existed.
 func (t *Token) ValidateToken(token string) (bool, error) {
-	user, err := t.GetUserForToken(token)
-
-	if err != nil {
-		return false, errors.New("no matching user found")
+	if _, err := t.GetUserForToken(token); err != nil {
+		return false, auth.ErrInvalidToken
 	}
 
-	if user.Token.PlainText == "" {
-		return false, errors.New("no matching token found")
-	}
-
-	if user.Token.ExpiresAt.Before(time.Now()) {
-		return false, errors.New("token has expired")
-	}
-
-	if len(token) != 26 {
-		return false, errors.New("invalid token length")
+	tkn, err := t.GetByToken(token)
+	if err != nil || tkn.ExpiresAt.Before(time.Now()) {
+		return false, auth.ErrInvalidToken
 	}
 
 	return true, nil
