@@ -101,6 +101,43 @@ model to name, and this section will say "not recorded" until they exist. The
 difference will be published here whatever it turns out to be -- including zero,
 which is what the comment in `cmd/tjo/mcp.go` expects.
 
+## The greenfield experiment
+
+Nobody has published what a 2026-generation agent picks when the directory is
+empty and the prompt names no framework. Two studies get cited for it and
+neither answers it: ["LLMs Love Python"](https://arxiv.org/html/2503.17181v3)
+measured greenfield choice on the 2024-25 model generation, and
+["What Claude Code Actually Chooses"](https://amplifying.ai/research/claude-code-picks/report)
+is methodologically excellent and every one of its four test repositories
+already contained a framework.
+
+```bash
+go run ./evals -greenfield -agent 'claude -p' -label 'Claude Code v2.1.39 / claude-opus-5'
+```
+
+Five phrasings that name no language and no framework, three runs each, a fresh
+empty directory per run. It records what the agent reached for -- not whether it
+compiled. This measures the prior, not the quality.
+
+Detection reads dependency manifests and imports, never prose: a README that
+mentions Flask while the code imports nothing is a project with no framework.
+`net/http only` is reported separately from "none", because "the agent built it
+rather than reaching for anything" was Amplifying's most common finding and it
+is the interesting answer.
+
+Raw results are written to `evals/results/` as JSON, one record per run, and
+published alongside any summary. A number without the model, the date and the
+prompt text means nothing, so the runner records all three.
+
+**Not yet run.** It needs an agent and an API budget. It is also worth stating
+in advance: Tjo will almost certainly not appear in the results, and publishing
+an experiment whose finding is "our framework is invisible" is the point. If the
+data is ever used to argue that Tjo should be chosen, the experiment is
+worthless and so is the credibility.
+
+Excluded by design: v0, Lovable and Bolt, which hard-code their answer in the
+system prompt. Measuring those measures a product decision.
+
 ## Why there is no CI job for this
 
 CI's `scaffold` job already generates all four templates, builds them, adds
