@@ -45,6 +45,7 @@
 package i18n
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -317,4 +318,25 @@ func (c *Catalogue) lookup(tag language.Tag, key string) (Message, language.Tag,
 	}
 
 	return Message{}, tag, false
+}
+
+//go:embed locales/*.json
+var frameworkLocales embed.FS
+
+// init loads the framework's own English messages into the default catalogue.
+//
+// Shipped as the fallback rather than as the only option: an application adds
+// locales/sv.json and gets Swedish for the keys it translated and English for
+// the rest, which is what makes a partial translation useful rather than
+// embarrassing.
+//
+// Only English is shipped. A framework that shipped a stale Turkish
+// translation would be worse than one that shipped none, because the stale one
+// silently wins over the source language.
+func init() {
+	if err := defaultCatalogue.Load(frameworkLocales, "locales/*.json"); err != nil {
+		// The catalogue is embedded at build time, so a failure here means the
+		// binary is malformed rather than misconfigured.
+		panic("i18n: the framework's own catalogue did not load: " + err.Error())
+	}
 }

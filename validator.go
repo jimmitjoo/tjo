@@ -1,7 +1,10 @@
 package tjo
 
 import (
-	"fmt"
+	"context"
+	"github.com/jimmitjoo/tjo/i18n"
+	"golang.org/x/text/language"
+
 	"html"
 	"net/http"
 	"net/mail"
@@ -16,10 +19,28 @@ import (
 type Validation struct {
 	Data   url.Values
 	Errors map[string]string
+
+	// Printer renders the framework's own messages in the request's language.
+	// Nil means the fallback language, which is what a background job gets.
+	Printer *i18n.Printer
 }
 
 func (g *Tjo) Validator(data url.Values) *Validation {
 	return &Validation{Data: data, Errors: make(map[string]string)}
+}
+
+// ValidatorFor is Validator with the request's language attached, so the
+// framework's own validation messages come back in it.
+//
+// Prefer it in a handler. Validator stays for the places with no request --
+// a job, a CLI command -- where the fallback language is the only sensible
+// answer anyway.
+func (g *Tjo) ValidatorFor(ctx context.Context, data url.Values) *Validation {
+	return &Validation{
+		Data:    data,
+		Errors:  make(map[string]string),
+		Printer: i18n.From(ctx),
+	}
 }
 
 func (v *Validation) Valid() bool {
@@ -32,6 +53,25 @@ func (v *Validation) AddError(key, message string) {
 	}
 }
 
+// addKey records a framework message by translation key.
+//
+// The framework's own messages are keys, not English. Which language they come
+// out in depends on the request, so a Validation carries the printer that was
+// negotiated for it -- see Tjo.Validator, which passes one in.
+//
+// A Validation built without one still works and answers in the fallback
+// language: validating in a background job should not be a nil check.
+func (v *Validation) addKey(field, key string, args ...any) {
+	v.AddError(field, v.printer().T(key, args...))
+}
+
+func (v *Validation) printer() *i18n.Printer {
+	if v.Printer != nil {
+		return v.Printer
+	}
+	return i18n.Default().Printer(language.English)
+}
+
 func (v *Validation) Has(field string, r *http.Request) bool {
 	x := r.Form.Get(field)
 	return strings.TrimSpace(x) != ""
@@ -40,7 +80,7 @@ func (v *Validation) Has(field string, r *http.Request) bool {
 func (v *Validation) Required(r *http.Request, fields ...string) {
 	for _, field := range fields {
 		if !v.Has(field, r) {
-			v.AddError(field, "This field cannot be blank")
+			v.addKey(field, "validation.blank")
 		}
 	}
 }
@@ -54,78 +94,78 @@ func (v *Validation) Check(ok bool, key, message string) {
 func (v *Validation) IsEmail(field, value string) {
 	// Validate email length to prevent DoS attacks
 	if len(value) > 254 { // RFC 5321 maximum email length
-		v.AddError(field, "Email address too long")
+		v.addKey(field, "validation.email_too_long")
 		return
 	}
 	if !isEmail(value) {
-		v.AddError(field, "Invalid email address")
+		v.addKey(field, "validation.email_invalid")
 	}
 }
 
 func (v *Validation) Equals(eq bool, field, verified string) {
 	if !eq {
-		v.AddError(field, "This field must equal: "+verified)
+		v.addKey(field, "validation.must_equal", "value", verified)
 	}
 }
 
 func (v *Validation) IsInt(field, value string) {
 	_, err := strconv.Atoi(value)
 	if err != nil {
-		v.AddError(field, "This field must be an integer")
+		v.addKey(field, "validation.integer")
 	}
 }
 
 func (v *Validation) IsFloat(field, value string) {
 	_, err := strconv.ParseFloat(value, 64)
 	if err != nil {
-		v.AddError(field, "This field must be a floating point number")
+		v.addKey(field, "validation.float")
 	}
 }
 
 func (v *Validation) IsString(field, value string) {
 	if !isPrintableASCII(value) {
-		v.AddError(field, "This field must contain only printable characters")
+		v.addKey(field, "validation.printable")
 	}
 }
 
 func (v *Validation) IsDateISO(field, value string) {
 	_, err := time.Parse("2006-01-02", value)
 	if err != nil {
-		v.AddError(field, "This field must be a date in the form of YYYY-MM-DD")
+		v.addKey(field, "validation.date")
 	}
 }
 
 func (v *Validation) NoSpaces(field, value string) {
 	if strings.Contains(value, " ") {
-		v.AddError(field, "This field cannot contain spaces")
+		v.addKey(field, "validation.no_spaces")
 	}
 }
 
 // MaxLength validates that a field doesn't exceed a maximum length
 func (v *Validation) MaxLength(field, value string, maxLength int) {
 	if len(value) > maxLength {
-		v.AddError(field, fmt.Sprintf("This field must not exceed %d characters", maxLength))
+		v.addKey(field, "validation.max_length", "max", maxLength)
 	}
 }
 
 // MinLength validates that a field meets a minimum length requirement
 func (v *Validation) MinLength(field, value string, minLength int) {
 	if len(value) < minLength {
-		v.AddError(field, fmt.Sprintf("This field must be at least %d characters", minLength))
+		v.addKey(field, "validation.min_length", "min", minLength)
 	}
 }
 
 // IsAlphanumeric validates that a field contains only letters and numbers
 func (v *Validation) IsAlphanumeric(field, value string) {
 	if !isAlphanumeric(value) {
-		v.AddError(field, "This field must contain only letters and numbers")
+		v.addKey(field, "validation.alphanumeric")
 	}
 }
 
 // IsURL validates that a field contains a valid URL
 func (v *Validation) IsURL(field, value string) {
 	if !isURL(value) {
-		v.AddError(field, "This field must be a valid URL")
+		v.addKey(field, "validation.url")
 	}
 }
 
