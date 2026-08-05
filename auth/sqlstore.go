@@ -53,6 +53,11 @@ func (s *SQLResetStore) rebind(q string) string {
 	if s.dialect != DialectPostgres {
 		return q
 	}
+	return rebindPostgres(q)
+}
+
+// rebindPostgres rewrites a query written with ? into $1, $2, ...
+func rebindPostgres(q string) string {
 	var b strings.Builder
 	n := 0
 	for _, r := range q {
