@@ -1,0 +1,111 @@
+{{define "list.html"}}
+{{template "chrome_start" .Nav}}
+
+<div class="head">
+  <h2>{{.Resource.Plural}}{{if not .Resource.Plural}}{{.Resource.Table}}{{end}}</h2>
+  <span class="count">{{.Total}} record{{if ne .Total 1}}s{{end}}</span>
+  <span class="spacer"></span>
+  {{if .CanWrite}}<a class="btn btn-primary" href="{{.BaseURL}}/new">New</a>{{end}}
+</div>
+
+<div class="card">
+  <form method="GET" action="{{.BaseURL}}">
+    <div class="filters">
+      {{if .Resource.SearchFields}}
+      <div style="flex:2 1 240px">
+        <label for="q">Search</label>
+        <input id="q" type="search" name="q" value="{{.Params.Search}}" placeholder="Search {{len .Resource.SearchFields}} column{{if ne (len .Resource.SearchFields) 1}}s{{end}}">
+      </div>
+      {{end}}
+      <div><button class="btn btn-primary" type="submit">Search</button></div>
+      {{if or .Params.Search .Params.Filters}}<div><a class="btn" href="{{$.BaseURL}}">Clear</a></div>{{end}}
+      <span class="spacer"></span>
+      <div><a class="btn" href="#column-filters" onclick="document.getElementById('column-filters').open=true;return true">Filter by column</a></div>
+    </div>
+
+    <!-- Per-column filters are folded away: on a wide table they are a wall of
+         inputs above the data somebody came to look at. Open when one is set. -->
+    <details id="column-filters" class="card-details" {{if .Params.Filters}}open{{end}}>
+      <summary>Column filters</summary>
+      <div class="filters">
+        {{range .Fields}}
+          {{if not .PrimaryKey}}
+          <div style="flex:1 1 160px">
+            <label for="f_{{.Name}}">{{.Label}}</label>
+            <input id="f_{{.Name}}" type="text" name="f_{{.Name}}" value="{{filterValue $ .Name}}">
+          </div>
+          {{end}}
+        {{end}}
+        <div><button class="btn" type="submit">Apply</button></div>
+      </div>
+    </details>
+  </form>
+
+  {{if .Rows}}
+  <form method="POST" action="{{.BaseURL}}/bulk" id="bulk">
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            {{if .CanWrite}}<th style="width:1px"><input type="checkbox" id="all" aria-label="Select all"></th>{{end}}
+            {{range .Fields}}
+              <th><a href="{{sortURL $ .Name}}">{{.Label}} {{sortIndicator $ .Name}}</a></th>
+            {{end}}
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Rows}}
+          <tr>
+            {{if $.CanWrite}}<td>{{if or .CanUpdate .CanDelete}}<input type="checkbox" name="ids" value="{{.ID}}" aria-label="Select {{.ID}}">{{end}}</td>{{end}}
+            {{range .Cells}}<td class="trunc">{{.}}</td>{{end}}
+            <td class="actions">
+              {{if .CanUpdate}}<a class="btn btn-sm" href="{{$.BaseURL}}/{{.ID}}">Edit</a>{{else}}<a class="btn btn-sm" href="{{$.BaseURL}}/{{.ID}}">View</a>{{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    {{if .CanWrite}}
+    <div class="bar">
+      <span class="count">With selected:</span>
+      <button class="btn btn-danger" type="submit" name="action" value="delete"
+        onclick="return confirm('Delete the selected records? This cannot be undone.')">Delete</button>
+      {{range .Resource.BulkActions}}
+        <button class="btn" type="submit" name="action" value="{{.Name}}"
+          {{if .Confirm}}onclick="return confirm('{{.Label}} the selected records?')"{{end}}>{{.Label}}</button>
+      {{end}}
+    </div>
+    {{end}}
+  </form>
+  {{else}}
+  <div class="empty">Nothing here yet.</div>
+  {{end}}
+
+  {{if gt .Pages 1}}
+  <div class="pager">
+    {{range pageNumbers .Params.Page .Pages}}
+      {{if eq . $.Params.Page}}<span class="btn btn-sm here">{{.}}</span>
+      {{else}}<a class="btn btn-sm" href="{{pageURL $ .}}">{{.}}</a>{{end}}
+    {{end}}
+  </div>
+  {{end}}
+</div>
+
+<script>
+// The only script in the panel: tick every box from the header one.
+(function () {
+  var all = document.getElementById('all');
+  if (!all) return;
+  all.addEventListener('change', function () {
+    document.querySelectorAll('#bulk input[name=ids]').forEach(function (box) {
+      box.checked = all.checked;
+    });
+  });
+})();
+</script>
+
+{{template "chrome_end"}}
+{{end}}

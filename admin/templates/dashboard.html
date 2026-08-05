@@ -1,0 +1,23 @@
+{{define "dashboard.html"}}
+{{template "chrome_start" .Nav}}
+<div class="head"><h2>{{.Nav.Title}}</h2></div>
+
+{{if .Nav.Resources}}
+<div class="card">
+  <h3>Data</h3>
+  <div class="scroll"><table><tbody>
+    {{range .Nav.Resources}}<tr><td><a href="{{.URL}}">{{.Label}}</a></td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{end}}
+
+{{if .Nav.Pages}}
+<div class="card">
+  <h3>Tools</h3>
+  <div class="scroll"><table><tbody>
+    {{range .Nav.Pages}}<tr><td><a href="{{.URL}}">{{.Label}}</a></td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{end}}
+{{template "chrome_end"}}
+{{end}}

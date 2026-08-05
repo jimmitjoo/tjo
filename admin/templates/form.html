@@ -1,0 +1,116 @@
+{{define "form.html"}}
+{{template "chrome_start" .Nav}}
+
+<div class="head">
+  <h2>{{if .Creating}}New {{.Resource.Singular}}{{else}}Edit {{.Resource.Singular}}{{end}}</h2>
+  <span class="spacer"></span>
+  <a class="btn" href="{{.BackURL}}">Back</a>
+</div>
+
+{{with index .Problems ""}}<div class="note">{{.}}</div>{{end}}
+
+<form method="POST" action="{{.Action}}" {{if .HasFiles}}enctype="multipart/form-data"{{end}}>
+  <div class="card">
+    <div class="fields">
+      {{range .Inputs}}
+      {{$f := .Field}}
+      <div class="field{{if or (eq $f.Kind "longtext") $f.Relation}} wide{{end}}">
+        <label for="{{$f.Name}}">{{$f.Label}}{{if $f.Required}} *{{end}}</label>
+
+        {{if or $f.ReadOnly $f.PrimaryKey}}
+          <div class="ro" id="{{$f.Name}}">{{display .Value}}</div>
+
+        {{else if eq $f.Kind "bool"}}
+          <input id="{{$f.Name}}" type="checkbox" name="{{$f.Name}}" value="true" {{if isChecked .Value}}checked{{end}} style="width:auto">
+
+        {{else if eq $f.Kind "longtext"}}
+          <textarea id="{{$f.Name}}" name="{{$f.Name}}" {{if $f.Required}}required{{end}}>{{display .Value}}</textarea>
+
+        {{else if eq $f.Kind "select"}}
+          <select id="{{$f.Name}}" name="{{$f.Name}}" {{if $f.Required}}required{{end}}>
+            <option value="">—</option>
+            {{$current := display .Value}}
+            {{range .Choices}}<option value="{{.Value}}" {{if eq .Value $current}}selected{{end}}>{{.Label}}</option>{{end}}
+          </select>
+
+        {{else if eq $f.Kind "file"}}
+          <input id="{{$f.Name}}" type="file" name="{{$f.Name}}">
+          {{if .Value}}<div class="hint">Currently: {{display .Value}}</div>{{end}}
+
+        {{else if eq $f.Kind "number"}}
+          <input id="{{$f.Name}}" type="number" step="1" name="{{$f.Name}}" value="{{inputValue $f .Value}}" {{if $f.Required}}required{{end}}>
+
+        {{else if eq $f.Kind "decimal"}}
+          <input id="{{$f.Name}}" type="number" step="any" name="{{$f.Name}}" value="{{inputValue $f .Value}}" {{if $f.Required}}required{{end}}>
+
+        {{else if eq $f.Kind "time"}}
+          <input id="{{$f.Name}}" type="datetime-local" name="{{$f.Name}}" value="{{inputValue $f .Value}}" {{if $f.Required}}required{{end}}>
+
+        {{else if eq $f.Kind "email"}}
+          <input id="{{$f.Name}}" type="email" name="{{$f.Name}}" value="{{inputValue $f .Value}}" {{if $f.Required}}required{{end}}>
+
+        {{else if eq $f.Kind "url"}}
+          <input id="{{$f.Name}}" type="url" name="{{$f.Name}}" value="{{inputValue $f .Value}}" {{if $f.Required}}required{{end}}>
+
+        {{else}}
+          <input id="{{$f.Name}}" type="text" name="{{$f.Name}}" value="{{inputValue $f .Value}}" {{if $f.Required}}required{{end}}>
+        {{end}}
+
+        {{with index $.Problems $f.Name}}<div class="err">{{.}}</div>{{end}}
+      </div>
+      {{end}}
+    </div>
+
+    <div class="bar">
+      {{if not .Resource.ReadOnly}}<button class="btn btn-primary" type="submit">Save</button>{{end}}
+      <a class="btn" href="{{.BackURL}}">Cancel</a>
+      <span class="spacer"></span>
+    </div>
+  </div>
+</form>
+
+{{range .Related}}
+<div class="card">
+  <h3>{{.Title}}</h3>
+  {{if .Rows}}
+  <div class="scroll"><table>
+    <thead><tr>{{range .Columns}}<th>{{.}}</th>{{end}}</tr></thead>
+    <tbody>
+      {{$columns := .Columns}}
+      {{range .Rows}}
+        {{$row := .}}
+        <tr>{{range $columns}}<td class="trunc">{{display (index $row .)}}</td>{{end}}</tr>
+      {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<div class="empty">None.</div>{{end}}
+</div>
+{{end}}
+
+{{if .History}}
+<div class="card">
+  <h3>History</h3>
+  <div class="scroll"><table class="history"><tbody>
+    {{range .History}}
+    <tr>
+      <td style="white-space:nowrap">{{display .At}}</td>
+      <td>{{.Action}}</td>
+      <td>{{if .Actor}}{{.Actor}}{{else}}—{{end}}</td>
+      <td>{{.Summary}}</td>
+    </tr>
+    {{end}}
+  </tbody></table></div>
+</div>
+{{end}}
+
+{{if .CanDelete}}
+<form method="POST" action="{{.Action}}/delete" onsubmit="return confirm('Delete this {{.Resource.Singular}}? This cannot be undone.')">
+  <div class="card"><div class="bar">
+    <button class="btn btn-danger" type="submit">Delete this {{.Resource.Singular}}</button>
+    <span class="count">Permanent.</span>
+  </div></div>
+</form>
+{{end}}
+
+{{template "chrome_end"}}
+{{end}}
