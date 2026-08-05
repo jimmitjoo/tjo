@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/jimmitjoo/tjo"
+	"github.com/jimmitjoo/tjo/auth"
 	up "github.com/upper/db/v4"
 )
 
@@ -23,6 +23,7 @@ type User struct {
 	Active         int       `db:"user_active" json:"active"`
 	TOTPSecret     string    `db:"totp_secret" json:"-"`     // 2FA TOTP secret (encrypted)
 	TOTPEnabled    bool      `db:"totp_enabled" json:"totp_enabled"`
+	TOTPLastStep   int64     `db:"totp_last_step" json:"-"` // replay protection; see auth.VerifyTOTP
 	CreatedAt      time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt      time.Time `db:"updated_at" json:"updated_at"`
 	Token          Token     `db:"-" json:"-"`
@@ -211,9 +212,18 @@ func (u *User) Update(user User) (*User, error) {
 	return &user, nil
 }
 
-// Create creates a new user with hashed password
+// Create creates a new user, hashing the password.
+//
+// Hashing goes through the auth package rather than calling bcrypt here. It
+// enforces the policy and refuses input bcrypt cannot hash: bcrypt reads at
+// most 72 bytes, and a library that accepted a 200-byte passphrase and compared
+// the first 72 would be telling the user their password is stronger than it is.
 func (u *User) Create(user User) (*User, error) {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err := auth.DefaultPasswordPolicy().Validate(user.Password); err != nil {
+		return nil, err
+	}
+
+	hashedPassword, err := auth.HashPassword(user.Password)
 	if err != nil {
 		return nil, fmt.Errorf("Create hash: %w", err)
 	}
@@ -269,71 +279,61 @@ func (u *User) SetPasswordHash(id int, hash []byte) error {
 	return nil
 }
 
-func (u *User) ResetPassword(id int, password string) error {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return fmt.Errorf("ResetPassword hash: %w", err)
-	}
+// AuthID, PasswordHash and Activated implement auth.Account.
+//
+// That interface is three methods on purpose: everything else about a user --
+// names, preferences, whatever this application actually cares about -- stays
+// here, in this project's own type. A library that insisted on owning the user
+// record is how an application ends up with two users tables.
+func (u *User) AuthID() string { return strconv.Itoa(u.ID) }
 
-	user, err := u.Find(id)
-	if err != nil {
-		return fmt.Errorf("ResetPassword find: %w", err)
+// PasswordHash returns the stored hash, or nil when the account has none, which
+// is normal for an account that signs in with a passkey.
+func (u *User) PasswordHash() []byte {
+	if u.Password == "" {
+		return nil
 	}
-
-	user.Password = string(hashedPassword)
-	if _, err := u.Update(*user); err != nil {
-		return fmt.Errorf("ResetPassword update: %w", err)
-	}
-
-	return nil
+	return []byte(u.Password)
 }
 
-// PasswordMatches verifies that the provided password matches the user's hashed password
-func (u *User) PasswordMatches(plainText string) (bool, error) {
-	err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(plainText))
-	if err != nil {
-		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-			return false, nil
-		}
-		return false, fmt.Errorf("PasswordMatches: %w", err)
-	}
-	return true, nil
-}
+func (u *User) Activated() bool { return u.Active == 1 }
 
-// CheckForRememberToken checks if a remember token exists for the user
-func (u *User) CheckForRememberToken(id int, token string) bool {
-	var rememberToken RememberToken
-	rt := RememberToken{}
-	collection := upper.Collection(rt.Table())
-	res := collection.Find(up.Cond{"user_id =": id, "remember_token =": token})
-	err := res.One(&rememberToken)
-	return err == nil
-}
+// Accounts implements auth.AccountStore.
+type Accounts struct{}
 
-// Authenticate verifies email and password and returns the user if valid
-func (u *User) Authenticate(email, password string) (*User, error) {
+// ByEmail returns the account for an address, or (nil, nil) when there is none.
+//
+// The nil-nil return is required rather than stylistic. auth.Authenticate does
+// the bcrypt comparison against a dummy hash when there is no account, so a
+// login attempt for an unknown address costs the same as one for a known one.
+// Returning an error here instead would make the miss cheap and the hit
+// expensive, which is a user-enumeration oracle measurable over the network.
+func (Accounts) ByEmail(ctx context.Context, email string) (auth.Account, error) {
+	var u User
 	user, err := u.ByEmail(email)
 	if err != nil {
-		return nil, ErrInvalidCreds
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, nil
+		}
+		return nil, err
 	}
-
-	matches, err := user.PasswordMatches(password)
-	if err != nil {
-		return nil, fmt.Errorf("Authenticate: %w", err)
+	if user == nil {
+		return nil, nil
 	}
-
-	if !matches {
-		return nil, ErrInvalidCreds
-	}
-
-	if user.Active != 1 {
-		return nil, ErrInactiveUser
-	}
-
 	return user, nil
 }
 
-// FindWithContext retrieves a user with context support for timeouts
+// SetTOTPLastStep records the time step a code was accepted at, so the same
+// code cannot be presented twice. See auth.VerifyTOTP.
+func (u *User) SetTOTPLastStep(id int, step int64) error {
+	collection := upper.Collection(u.Table())
+	res := collection.Find(up.Cond{"id =": id})
+	return res.Update(map[string]interface{}{
+		"totp_last_step": step,
+		"updated_at":     time.Now(),
+	})
+}
+
 func (u *User) FindWithContext(ctx context.Context, id int) (*User, error) {
 	select {
 	case <-ctx.Done():

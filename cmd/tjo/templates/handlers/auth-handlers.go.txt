@@ -2,8 +2,7 @@ package handlers
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -120,147 +119,146 @@ func (h *Handlers) UserLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// PostUserLogin verifies credentials and starts a session.
+//
+// It decides nothing about the credentials themselves. auth.AuthenticateAndUpgrade
+// does the lookup and the bcrypt comparison unconditionally and in that order,
+// so an attempt against an address with no account costs the same as one
+// against an address with an account -- and it rehashes at the current cost
+// while the plaintext is in hand, which is the only moment that is possible.
 func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 
 	h.isAuthenticated(w, r)
 
-	err := r.ParseForm()
-	if err != nil {
-		w.Write([]byte(err.Error()))
+	if err := r.ParseForm(); err != nil {
 		h.App.Logging.Error.Println("error parsing login form:", err)
-		return
-	}
-
-	emailAddress := r.Form.Get("email")
-	password := r.Form.Get("password")
-
-	// check if email is empty
-	if emailAddress == "" {
-		// put error message in session and redirect back
-		h.App.HTTP.Session.Put(r.Context(), "error", "Email address is required")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	// check if password is empty
-	if password == "" {
-		// put error message in session and redirect back
-		h.App.HTTP.Session.Put(r.Context(), "error", "Password is required")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	user, err := h.Models.Users.ByEmail(emailAddress)
-	if err != nil {
-		h.App.HTTP.Session.Put(r.Context(), "error", "These credentials do not match our records.")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		// w.Write([]byte(err.Error()))
-		return
-	}
-
-	if user == nil {
-		// w.Write([]byte("Invalid email address"))
-		h.App.HTTP.Session.Put(r.Context(), "error", "These credentials do not match our records.")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	if user.Active != 1 {
-		// send activation link
-		h.sendActivationLink(*user)
-
-		h.App.HTTP.Session.Put(r.Context(), "flash", "Your account is not active. Please check your email for an activation link.")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	// check if the password matches
-	matches, err := user.PasswordMatches(password)
-	if err != nil {
-		w.Write([]byte("Error validating password"))
-	}
-
-	if !matches {
-		h.App.HTTP.Session.Put(r.Context(), "error", "These credentials do not match our records.")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	// Check if 2FA is enabled
-	if user.Has2FAEnabled() {
-		// Store user ID for 2FA verification
-		h.App.HTTP.Session.Put(r.Context(), "pending_2fa_user_id", user.ID)
-
-		// Handle remember me - store for after 2FA verification
-		if r.Form.Get("remember") == "remember" {
-			randomString := h.randomString(12)
-			hasher := sha256.New()
-			_, err := hasher.Write([]byte(randomString))
-			if err != nil {
-				h.App.ErrorStatus(w, http.StatusInternalServerError)
-				return
-			}
-			sha := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
-			h.App.HTTP.Session.Put(r.Context(), "pending_remember_token", sha)
-		}
-
-		http.Redirect(w, r, "/2fa/challenge", http.StatusSeeOther)
-		return
-	}
-
-	// did the user check remember me?
-	if r.Form.Get("remember") == "remember" {
-		randomString := h.randomString(12)
-		hasher := sha256.New()
-		_, err := hasher.Write([]byte(randomString))
-		if err != nil {
-			h.App.ErrorStatus(w, http.StatusInternalServerError)
-			return
-		}
-
-		sha := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
-		rm := data.RememberToken{}
-		err = rm.InsertToken(user.ID, sha)
-		if err != nil {
-			h.App.ErrorStatus(w, http.StatusInternalServerError)
-			return
-		}
-
-		cookie := http.Cookie{
-			Name:     fmt.Sprintf("_%s_remember", h.App.AppName),
-			Value:    fmt.Sprintf("%d|%s", user.ID, sha),
-			Path:     "/",
-			Expires:  time.Now().Add(time.Hour * 24 * 365),
-			HttpOnly: true,
-			Domain:   h.App.HTTP.Session.Cookie.Domain,
-			MaxAge:   31536000,
-			Secure:   h.App.HTTP.Session.Cookie.Secure,
-			SameSite: http.SameSiteStrictMode,
-		}
-
-		http.SetCookie(w, &cookie)
-		h.App.HTTP.Session.Put(r.Context(), "remember_token", sha)
-	}
-
-	// Rotate the session ID now that the user is authenticated. Without this an
-	// attacker who managed to fix a session ID on the victim's browser before
-	// login still holds a valid, now-authenticated session afterwards. Logout
-	// already did this; login did not.
-	if err := h.App.HTTP.Session.RenewToken(r.Context()); err != nil {
-		h.App.Logging.Error.Println("error renewing session token on login:", err)
 		h.App.ErrorStatus(w, http.StatusInternalServerError)
 		return
 	}
 
-	// RenewToken changes the session ID but keeps the session's contents, and
-	// the CSRF token lives there -- so without this the token minted for the
-	// anonymous session survives into the authenticated one.
+	ctx := r.Context()
+
+	account, err := auth.AuthenticateAndUpgrade(ctx, data.Accounts{},
+		r.Form.Get("email"), r.Form.Get("password"),
+		func(ctx context.Context, account auth.Account, newHash []byte) {
+			id, convErr := strconv.Atoi(account.AuthID())
+			if convErr != nil {
+				return
+			}
+			var user *data.User
+			if err := user.SetPasswordHash(id, newHash); err != nil {
+				// The user authenticated correctly. A storage problem is not
+				// their problem, so this is logged and the login proceeds.
+				h.App.Logging.Error.Println("error upgrading password hash:", err)
+			}
+		})
+
+	switch {
+	case errors.Is(err, auth.ErrNotActivated):
+		// Reported only after the password verified, so it tells nothing to
+		// someone who does not already know it. The previous version checked
+		// this *before* the password and mailed an activation link, which
+		// answered "does this address have an account here" to anyone asking,
+		// and mailed a stranger's inbox on request while it was at it.
+		id, convErr := strconv.Atoi(account.AuthID())
+		if convErr == nil {
+			if user, findErr := h.Models.Users.Find(id); findErr == nil {
+				h.sendActivationLink(*user)
+			}
+		}
+		h.App.HTTP.Session.Put(ctx, "flash", "Your account is not active. Please check your email for an activation link.")
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+
+	case err != nil:
+		// One message for an unknown address and a wrong password, because
+		// they are the same answer to the only question a login form should
+		// answer.
+		h.App.HTTP.Session.Put(ctx, "error", "These credentials do not match our records.")
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	id, err := strconv.Atoi(account.AuthID())
+	if err != nil {
+		h.App.Logging.Error.Println("account has an unusable id:", err)
+		h.App.ErrorStatus(w, http.StatusInternalServerError)
+		return
+	}
+
+	user, err := h.Models.Users.Find(id)
+	if err != nil {
+		h.App.Logging.Error.Println("error loading the authenticated user:", err)
+		h.App.ErrorStatus(w, http.StatusInternalServerError)
+		return
+	}
+
+	remember := r.Form.Get("remember") == "remember"
+
+	if user.TOTPEnabled {
+		// Not logged in yet. The session stays anonymous and carries only the
+		// fact that a password was accepted, so a request that skips the
+		// challenge is a request from an unauthenticated session.
+		h.App.HTTP.Session.Put(ctx, "pending_2fa_user_id", user.ID)
+		h.App.HTTP.Session.Put(ctx, "pending_remember", remember)
+		http.Redirect(w, r, "/2fa/challenge", http.StatusSeeOther)
+		return
+	}
+
+	h.completeLogin(w, r, user, remember)
+}
+
+// completeLogin is the only place in this application where a session becomes
+// authenticated.
+//
+// One function for the password path and the 2FA path, deliberately. These
+// three things have to happen together, and the version with a copy per path is
+// how one copy ends up missing one of them -- which is exactly what happened
+// here before v0.9.0, when the 2FA path renewed the session but did not rotate
+// the CSRF token.
+//
+//   - RenewToken changes the session id, so an attacker who fixed a session id
+//     on the victim's browser before login does not hold an authenticated one
+//     after it.
+//   - RotateCSRFToken because RenewToken keeps the session's *contents*, and
+//     the CSRF token lives there; without it the token minted for the anonymous
+//     session survives into the authenticated one.
+//   - The remember token is issued last, and only once the session is safe.
+func (h *Handlers) completeLogin(w http.ResponseWriter, r *http.Request, user *data.User, remember bool) {
+	ctx := r.Context()
+
+	if err := h.App.HTTP.Session.RenewToken(ctx); err != nil {
+		h.App.Logging.Error.Println("error renewing session token on login:", err)
+		h.App.ErrorStatus(w, http.StatusInternalServerError)
+		return
+	}
 	tjo.RotateCSRFToken(h.App.HTTP.Session, r)
 
-	h.App.HTTP.Session.Put(r.Context(), "userID", user.ID)
-	h.App.HTTP.Session.Put(r.Context(), "auth_time", time.Now().Unix())
+	if remember {
+		// Only the hash reaches the database, the token expires, and it is
+		// single-use: the next time this cookie is presented it is exchanged
+		// for a new one, so a copy of it stops working. All of that is in
+		// auth.Remember; this decides whether the box was ticked.
+		token, err := auth.Remember(ctx, h.ResetTokens(), strconv.Itoa(user.ID), auth.DefaultRememberTTL)
+		if err != nil {
+			h.App.Logging.Error.Println("error issuing remember token:", err)
+		} else {
+			http.SetCookie(w, auth.RememberCookie(
+				h.rememberCookieName(), token, auth.DefaultRememberTTL,
+				h.App.HTTP.Session.Cookie.Secure))
+		}
+	}
+
+	h.App.HTTP.Session.Put(ctx, "userID", user.ID)
+	h.App.HTTP.Session.Put(ctx, "auth_time", time.Now().Unix())
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// rememberCookieName is per application, so two applications on one host do not
+// present each other's remember cookies.
+func (h *Handlers) rememberCookieName() string {
+	return fmt.Sprintf("_%s_remember", h.App.AppName)
 }
 
 func (h *Handlers) ActivateUserAccount(w http.ResponseWriter, r *http.Request) {
@@ -309,34 +307,26 @@ func (h *Handlers) ActivateUserAccount(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
+// UserLogout ends the session and this browser's remember token.
+//
+// This device's token only. auth.Forget would end them all, which is not what
+// "log out" means on the machine someone is sitting at -- signing a person out
+// of their phone because they closed a laptop tab is a surprise, and a silent
+// one.
 func (h *Handlers) UserLogout(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 
-	// delete remember me cookie if it exists
-	if h.App.HTTP.Session.Exists(r.Context(), "remember_token") {
-		rt := data.RememberToken{}
-		_ = rt.DeleteToken(h.App.HTTP.Session.GetString(r.Context(), "remember_token"))
+	if token, err := auth.RememberedToken(r, h.rememberCookieName()); err == nil {
+		if err := auth.ForgetOne(ctx, h.ResetTokens(), token); err != nil {
+			h.App.Logging.Error.Println("error invalidating remember token:", err)
+		}
 	}
+	http.SetCookie(w, auth.ClearRememberCookie(h.rememberCookieName(), h.App.HTTP.Session.Cookie.Secure))
 
-	// delete cookie
-	newCookie := http.Cookie{
-		Name:     fmt.Sprintf("_%s_remember", h.App.AppName),
-		Value:    "",
-		Path:     "/",
-		Expires:  time.Now().Add(-100 * time.Hour * 24),
-		HttpOnly: true,
-		Domain:   h.App.HTTP.Session.Cookie.Domain,
-		MaxAge:   -1,
-		Secure:   h.App.HTTP.Session.Cookie.Secure,
-		SameSite: http.SameSiteStrictMode,
+	h.App.HTTP.Session.Destroy(ctx)
+	if err := h.App.HTTP.Session.RenewToken(ctx); err != nil {
+		h.App.Logging.Error.Println("error renewing session token on logout:", err)
 	}
-	http.SetCookie(w, &newCookie)
-
-	h.App.HTTP.Session.RenewToken(r.Context())
-	tjo.RotateCSRFToken(h.App.HTTP.Session, r)
-	h.App.HTTP.Session.Remove(r.Context(), "userID")
-	h.App.HTTP.Session.Remove(r.Context(), "remember_token")
-	h.App.HTTP.Session.Destroy(r.Context())
-	h.App.HTTP.Session.RenewToken(r.Context())
 	tjo.RotateCSRFToken(h.App.HTTP.Session, r)
 
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -529,7 +519,3 @@ func (h *Handlers) isAuthenticated(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// randomString returns a cryptographically random string of the given length.
-func (h *Handlers) randomString(length int) string {
-	return h.App.RandomString(length)
-}

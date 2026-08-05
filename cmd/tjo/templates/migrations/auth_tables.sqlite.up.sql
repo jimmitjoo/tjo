@@ -18,25 +18,23 @@ CREATE TABLE users (
     password TEXT NOT NULL,
     totp_secret TEXT DEFAULT '',
     totp_enabled INTEGER NOT NULL DEFAULT 0,
+    -- The last TOTP time step this account authenticated with. RFC 6238 §5.2
+    -- requires that a code be accepted only once, and this is what remembers.
+    totp_last_step INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE UNIQUE INDEX users_email_unique ON users (email);
 
+-- No remember_tokens table.
+--
+-- "Remember me" now uses the framework's single-use token store
+-- (tjo_reset_tokens), which the auth package creates and which keeps only a
+-- hash. The table this replaces held the cookie's value verbatim and had no
+-- expiry column, so reading it was a working login for every user who had
+-- ticked the box.
 DROP TABLE IF EXISTS remember_tokens;
-
-CREATE TABLE remember_tokens (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    remember_token TEXT NOT NULL DEFAULT '',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE INDEX remember_tokens_token_index ON remember_tokens (remember_token);
-CREATE INDEX remember_tokens_user_id_index ON remember_tokens (user_id);
 
 DROP TABLE IF EXISTS tokens;
 

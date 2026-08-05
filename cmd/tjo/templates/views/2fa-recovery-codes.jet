@@ -1,0 +1,50 @@
+{{extends "./layouts/base.jet"}}
+
+{{block browserTitle()}}
+Recovery Codes
+{{end}}
+
+{{block css()}} {{end}}
+
+{{block pageContent()}}
+    <div class="flex min-h-full flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div class="sm:mx-auto sm:w-full sm:max-w-md">
+            <h2 class="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">Save your recovery codes</h2>
+            <p class="mt-2 text-center text-sm text-gray-600">
+                Two-factor authentication is now on. These codes are the only way
+                back into your account if you lose your authenticator.
+            </p>
+        </div>
+
+        <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+            <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+                <div class="rounded-md bg-yellow-50 p-4 mb-6">
+                    <p class="text-sm text-yellow-800">
+                        This page is the only place these codes exist in readable
+                        form. The server keeps only their hashes, so they cannot
+                        be shown again.
+                    </p>
+                </div>
+
+                <ul class="grid grid-cols-1 gap-2 font-mono text-sm">
+                    {{range codes}}
+                        <li class="rounded bg-gray-50 px-3 py-2 select-all">{{.}}</li>
+                    {{end}}
+                </ul>
+
+                <p class="mt-6 text-xs text-gray-500">
+                    Each code works once. You can generate a new set at any time,
+                    which invalidates these.
+                </p>
+
+                <div class="mt-6 text-center">
+                    <a href="/user/settings" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+                        I have saved them
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+{{end}}
+
+{{block js()}} {{end}}

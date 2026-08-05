@@ -89,6 +89,22 @@ func Recall(ctx context.Context, store ResetStore, plain string, ttl time.Durati
 	return userID, replacement, nil
 }
 
+// ForgetOne invalidates a single remember token, the one in this browser's
+// cookie.
+//
+// This is what logging out should call. Forget would sign the user out of every
+// device they own, which is not what "log out" means on the machine they are
+// sitting at -- and doing it silently is worse than not doing it.
+func ForgetOne(ctx context.Context, store ResetStore, plain string) error {
+	_, err := Redeem(ctx, store, plain, PurposeRemember)
+	if errors.Is(err, ErrInvalidReset) {
+		// Already gone, or never valid. Logging out is not the moment to
+		// report that.
+		return nil
+	}
+	return err
+}
+
 // Forget invalidates every remember token of an account.
 //
 // Log-out calls this. So should a password change: the whole point of changing

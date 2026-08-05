@@ -50,6 +50,33 @@ Two-Factor Authentication
                     </div>
                 </form>
 
+                <details class="mt-6">
+                    <summary class="cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-500">
+                        Lost your device? Use a recovery code
+                    </summary>
+                    <form action="/2fa/verify" method="POST" class="mt-4 space-y-4">
+                        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                        <div>
+                            <label for="recovery_code" class="block text-sm font-medium leading-6 text-gray-900">Recovery Code</label>
+                            <div class="mt-2">
+                                <input
+                                    id="recovery_code"
+                                    name="recovery_code"
+                                    type="text"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                    required
+                                    class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 font-mono"
+                                >
+                            </div>
+                            <p class="mt-2 text-xs text-gray-500">Each code works once. Using one does not disable two-factor authentication.</p>
+                        </div>
+                        <button type="submit" class="flex w-full justify-center rounded-md bg-gray-800 py-2 px-3 text-sm font-semibold text-white shadow-sm hover:bg-gray-700">
+                            Use recovery code
+                        </button>
+                    </form>
+                </details>
+
                 <div class="mt-6 text-center">
                     <a href="/login" class="text-sm font-medium text-gray-600 hover:text-gray-500">Back to login</a>
                 </div>

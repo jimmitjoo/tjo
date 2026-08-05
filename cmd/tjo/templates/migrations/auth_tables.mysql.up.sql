@@ -9,6 +9,9 @@ CREATE TABLE `users` (
     `password` char(60) CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
     `totp_secret` varchar(255) DEFAULT '',
     `totp_enabled` tinyint(1) NOT NULL DEFAULT 0,
+    -- The last TOTP time step this account authenticated with. RFC 6238 §5.2
+    -- requires that a code be accepted only once, and this is what remembers.
+    `totp_last_step` bigint NOT NULL DEFAULT 0,
     `created_at` timestamp NULL DEFAULT NULL,
     `updated_at` timestamp NULL DEFAULT NULL,
     PRIMARY KEY (`id`),
@@ -16,19 +19,14 @@ CREATE TABLE `users` (
     KEY `users_email_index` (`email`)
 ) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4;
 
+-- No remember_tokens table.
+--
+-- "Remember me" now uses the framework's single-use token store
+-- (tjo_reset_tokens), which the auth package creates and which keeps only a
+-- hash. The table this replaces held the cookie's value verbatim and had no
+-- expiry column, so reading it was a working login for every user who had
+-- ticked the box.
 drop table if exists remember_tokens cascade;
-
-CREATE TABLE `remember_tokens` (
-    `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-    `user_id` int(10) unsigned NOT NULL,
-    `remember_token` varchar(100) NOT NULL DEFAULT '',
-    `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-    `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-    PRIMARY KEY (`id`),
-    KEY `remember_token` (`remember_token`),
-    KEY `remember_tokens_user_id_foreign` (`user_id`),
-    CONSTRAINT `remember_tokens_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8;
 
 drop table if exists tokens cascade;
 
