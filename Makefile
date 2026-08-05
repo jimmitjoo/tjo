@@ -18,7 +18,7 @@ test-simple:
 # workspace, so `./...` from the root never reaches the four submodules.
 # Mirrors the `vuln` job in .github/workflows/ci.yml -- keep them in step.
 vuln:
-	@for m in . email otel sms websocket; do \
+	@for m in . email llm otel sms websocket; do \
 		echo "==> $$m"; \
 		(cd $$m && go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...) || exit 1; \
 	done
@@ -53,7 +53,7 @@ build:
 	@echo "Built tjo version $(VERSION)"
 
 # Submodules that are tagged in lockstep with the root module.
-SUBMODULES := email otel sms websocket
+SUBMODULES := email llm otel sms websocket
 
 ## release: creates a new release (usage: make release v=0.7.0)
 ##

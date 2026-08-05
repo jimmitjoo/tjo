@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'email', 'otel', 'sms', 'websocket']
+        module: ['.', 'email', 'llm', 'otel', 'sms', 'websocket']
 
     # Cheap enough to run for every module in the matrix rather than splitting
     # the job in two; only the root module reads the DSN.
@@ -156,7 +156,7 @@ jobs:
   # was green the whole time, because nothing ran govulncheck. The findings were
   # the symptom; this missing job was the defect.
   #
-  # Matrixed over the same five modules for the same reason the test job is:
+  # Matrixed over the same six modules for the same reason the test job is:
   # `govulncheck ./...` from the root reaches the root module only.
   #
   # govulncheck exits 3 when a vulnerable symbol is reachable and 0 when clean,
@@ -171,7 +171,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'email', 'otel', 'sms', 'websocket']
+        module: ['.', 'email', 'llm', 'otel', 'sms', 'websocket']
 
     steps:
       - uses: actions/checkout@v7
@@ -219,7 +219,7 @@ jobs:
           {
             echo ""
             echo "replace github.com/jimmitjoo/tjo => $GITHUB_WORKSPACE"
-            for m in email otel sms websocket; do
+            for m in email llm otel sms websocket; do
               echo "replace github.com/jimmitjoo/tjo/$m => $GITHUB_WORKSPACE/$m"
             done
           } >> cmd/tjo/templates/go.mod.txt
