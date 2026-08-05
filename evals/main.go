@@ -21,6 +21,7 @@ func main() {
 		only   = flag.String("task", "", "run one task by name")
 		keep   = flag.Bool("keep", false, "keep working directories for inspection")
 		budget = flag.Duration("timeout", 10*time.Minute, "per-task timeout")
+		skills = flag.Bool("skills", false, "copy the skills bundle into each project before the agent runs, and say so in the prompt")
 	)
 	flag.Parse()
 
@@ -57,6 +58,11 @@ func main() {
 	fmt.Printf("tjo evals — %d tasks", len(selected))
 	if *agent != "" {
 		fmt.Printf(", agent: %s", *agent)
+		if *skills {
+			fmt.Print(", with the skills bundle")
+		} else {
+			fmt.Print(", without the skills bundle")
+		}
 	} else {
 		fmt.Print(", deterministic only (pass -agent to include generative tasks)")
 	}
@@ -66,7 +72,7 @@ func main() {
 	start := time.Now()
 
 	for _, t := range selected {
-		res := run(t, abs, *agent, *budget, *keep)
+		res := run(t, abs, *agent, *budget, *keep, *skills)
 
 		status := "PASS"
 		if !res.ok {
@@ -114,7 +120,7 @@ type result struct {
 
 var results []result
 
-func run(t task, cli, agent string, budget time.Duration, keep bool) result {
+func run(t task, cli, agent string, budget time.Duration, keep, skills bool) result {
 	start := time.Now()
 
 	dir, err := os.MkdirTemp("", "tjo-eval-"+t.Name+"-")
@@ -143,7 +149,14 @@ func run(t task, cli, agent string, budget time.Duration, keep bool) result {
 	}
 
 	if t.Prompt != "" {
-		if err := e.runAgent(agent, t.Prompt, budget); err != nil {
+		prompt := t.Prompt
+		if skills {
+			if err := e.installSkills(); err != nil {
+				return fail("skills: " + err.Error())
+			}
+			prompt = skillsPreamble + prompt
+		}
+		if err := e.runAgent(agent, prompt, budget); err != nil {
 			return fail("agent: " + err.Error())
 		}
 	}
@@ -199,4 +212,60 @@ func tail(s string, n int) string {
 		lines = lines[len(lines)-n:]
 	}
 	return "  " + strings.Join(lines, "\n  ")
+}
+
+// The A/B this suite exists to run.
+//
+// #76 argues that Agent Skills, AGENTS.md and an MCP server are a defensive
+// move -- they make a framework work well for whoever already chose it -- and
+// that there is no published evidence they change what an agent picks. The
+// honest version of that claim is a number, produced by running the same tasks
+// twice with one flag different, and published even when the difference is
+// zero. Especially when it is zero.
+//
+// Run it as:
+//
+//	go run ./evals -cli ./dist/tjo -agent 'claude -p'
+//	go run ./evals -cli ./dist/tjo -agent 'claude -p' -skills
+//
+// and put both numbers in evals/README.md with the model, the date and the
+// prompt. A number without those is worse than no number.
+
+const skillsPreamble = `A skills bundle for this framework has been placed in .claude/skills/tjo/.
+Read .claude/skills/tjo/SKILL.md before you start.
+
+`
+
+// installSkills copies the repository's skills bundle into the generated
+// project, which is where an agent working in that directory would find one.
+func (e *env) installSkills() error {
+	root, err := repoRoot()
+	if err != nil {
+		return err
+	}
+
+	source := filepath.Join(root, "skills", "tjo")
+	target := filepath.Join(e.dir, "demo", ".claude", "skills", "tjo")
+
+	return os.CopyFS(target, os.DirFS(source))
+}
+
+// repoRoot walks up from the working directory looking for go.work, so the
+// suite finds the bundle whichever directory it was started from.
+func repoRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.work")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no go.work above %s", dir)
+		}
+		dir = parent
+	}
 }

@@ -75,6 +75,32 @@ running an agent, and a number produced without naming the model, the prompt and
 the date is worse than no number. That is the next step, not a completed one,
 and this file will say so until it is done.
 
+## The skills A/B
+
+v0.11.0 shipped an Agent Skills bundle, `llms.txt`, a Claude Code plugin
+marketplace and an MCP docs tool. #76 argues those are a **defensive** move --
+they make the framework work well for whoever already chose it -- and that there
+is no published evidence any of it changes what an agent picks when the user
+does not specify. Astro deleted its `llms.txt` in April 2026 after measuring
+that nobody fetched it; the one published controlled A/B of a docs-retrieval MCP
+server improved zero of ten questions.
+
+The honest version of that argument is a number. The suite runs the same tasks
+twice, one flag apart:
+
+```bash
+go run ./evals -cli ./dist/tjo -agent 'claude -p'            # without
+go run ./evals -cli ./dist/tjo -agent 'claude -p' -skills    # with
+```
+
+`-skills` copies `skills/tjo/` into the generated project and tells the agent it
+is there, which is what an agent working in that directory would find.
+
+**Neither number has been recorded.** Both require an agent, an API budget and a
+model to name, and this section will say "not recorded" until they exist. The
+difference will be published here whatever it turns out to be -- including zero,
+which is what the comment in `cmd/tjo/mcp.go` expects.
+
 ## Why there is no CI job for this
 
 CI's `scaffold` job already generates all four templates, builds them, adds

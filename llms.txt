@@ -1,0 +1,65 @@
+# Tjo
+
+> A full-featured web framework for Go: routing, sessions, an ORM-less query
+> builder, migrations, a database-backed job queue with durable steps, an
+> authentication package, an admin panel, and server-sent events. Batteries
+> included, standard library first.
+
+Version: v0.11.0. Go 1.25 is the language floor, 1.26 the toolchain.
+
+## What models get this wrong about
+
+Read this section before writing any Tjo code. These are the mistakes that
+appear in generated code because the training data predates them.
+
+- **The import path is `github.com/jimmitjoo/tjo`**, with no version suffix.
+  There is no `/v2`.
+- **`go test ./...` does not test this repository.** It is a Go workspace
+  (`go.work`). `email`, `otel`, `sms` and `websocket` are separate modules and
+  a root-level `./...` silently skips all four. Use `make test`, or loop over
+  the five module directories. The same applies to `go build`, `go vet`,
+  `go mod tidy` and `govulncheck`.
+- **Authentication logic does not belong in generated code.** Use the `auth`
+  package: `auth.Authenticate`, `auth.ResetPassword`, `auth.VerifyTOTP`,
+  `auth.Remember`, `auth.NewPasskeys`. As of v0.11.0 no template decides
+  whether a credential is valid. Do not write bcrypt comparisons, token
+  hashing or TOTP validation by hand.
+- **Generated code is generated, not written.** `tjo make handler|controller|
+  model|auth` and `tjo migrate` produce it. To change the output, change the
+  template in `cmd/tjo/templates/`, not the file it produced.
+- **A session must be renewed wherever authentication completes.** Password
+  login, 2FA, passkey and remember-me. `session.RenewToken` followed by
+  `tjo.RotateCSRFToken`. Skipping either is session fixation.
+- **`jobs.SQLQueue` needs a worker that settles.** The framework's `Worker`
+  does this; a hand-rolled loop that pops and runs will re-run every job
+  forever, because claiming a row is not completing it.
+- **The admin panel refuses to serve without an authorizer.** That is not a
+  bug to work around; `admin.AllowAll` exists for development and says so.
+
+## Docs
+
+- [README](https://github.com/jimmitjoo/tjo/blob/main/readme.md): install, quick start, the whole feature list
+- [AGENTS.md](https://github.com/jimmitjoo/tjo/blob/main/AGENTS.md): how to work in this repository, and the traps that have shipped defects
+- [Configuration](https://github.com/jimmitjoo/tjo/blob/main/docs/configuration.md): environment variables and the config struct
+- [Query builder](https://github.com/jimmitjoo/tjo/blob/main/docs/query-builder.md): the fluent API over database/sql
+- [Modules](https://github.com/jimmitjoo/tjo/blob/main/docs/modules.md): the separate email, otel, sms and websocket modules
+- [Extending](https://github.com/jimmitjoo/tjo/blob/main/docs/extending.md): writing your own modules
+- [OpenTelemetry](https://github.com/jimmitjoo/tjo/blob/main/docs/opentelemetry.md): tracing, metrics and the ops dashboard
+- [CHANGELOG](https://github.com/jimmitjoo/tjo/blob/main/CHANGELOG.md): what changed in each release, and why
+- [SECURITY](https://github.com/jimmitjoo/tjo/blob/main/SECURITY.md): the advisory policy, including that generated code is in scope
+
+## Packages
+
+- `auth`: passwords, login, single-use tokens, TOTP, recovery codes, passkeys, organizations, roles
+- `admin`: model-driven CRUD panel, reflection over your structs
+- `ops`: self-hosted dashboard for errors, slow requests, queues, cron and health
+- `jobs`: database-backed queue, workers, and durable checkpointed workflows
+- `database`: query builder, migrations, seeding, health checks
+- `sse`: server-sent events and topic broadcast
+- `security`: throttling, headers, validation, CSRF configuration
+- `cache`, `session`: Redis and Badger backends
+- `core`: helpers usable without the framework
+
+## Optional
+
+- [llms-full.txt](https://github.com/jimmitjoo/tjo/blob/main/llms-full.txt): the same, with API signatures and worked examples

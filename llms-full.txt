@@ -1,0 +1,158 @@
+# Tjo, in full
+
+Version v0.11.0. Everything in llms.txt, plus the signatures and the worked
+examples. If you are generating Tjo code, read the "what models get this wrong
+about" section of llms.txt first: it is short and it is where the mistakes are.
+
+## Starting a project
+
+```bash
+go install github.com/jimmitjoo/tjo/cmd/tjo@latest
+tjo new myapp -t default -d postgres   # templates: default, blog, api, saas
+cd myapp
+tjo make auth                          # users, tokens, login, 2FA, remember-me
+tjo migrate up
+tjo run
+```
+
+`tjo make` is the way code enters a project. The templates live in
+`cmd/tjo/templates/` and generated output is deterministic; hand-written
+equivalents drift from the templates, which is how `tjo make auth` once came to
+emit 181 references to a struct that no longer existed.
+
+## Testing this repository
+
+It is a workspace. From the root, `go test ./...` covers the root module only
+and silently skips `email`, `otel`, `sms` and `websocket`. That blind spot
+shipped six defects and 71 reachable vulnerabilities behind a green build.
+
+```bash
+make test   # all five modules
+make vuln   # govulncheck, all five modules
+```
+
+## auth
+
+Verbs and store interfaces. It never owns a table.
+
+```go
+// Login. The lookup and the bcrypt comparison happen unconditionally and in
+// that order, so an unknown address costs the same as a known one.
+account, err := auth.AuthenticateAndUpgrade(ctx, store, email, password,
+    func(ctx context.Context, a auth.Account, newHash []byte) { /* store it */ })
+
+// Password reset. Consumes the token atomically and returns the hash to write.
+userID, hash, err := auth.ResetPassword(ctx, store, auth.DefaultPasswordPolicy(), token, newPassword)
+
+// Two-factor. lastStep is replay protection and is not optional: store the
+// returned step against the account and pass it back.
+step, err := auth.VerifyTOTP(secret, code, time.Now(), user.TOTPLastStep)
+
+// Recovery codes and remember-me are single-use tokens on the same store.
+codes, err := auth.NewRecoveryCodes(ctx, store, userID, ttl)
+token, err := auth.Remember(ctx, store, userID, auth.DefaultRememberTTL)
+userID, replacement, err := auth.Recall(ctx, store, token, auth.DefaultRememberTTL)
+
+// Passkeys. Both ceremonies; the credential is stored as one opaque string.
+passkeys, err := auth.NewPasskeys(auth.PasskeyConfig{
+    RelyingPartyID: "example.com", Origins: []string{"https://example.com"},
+}, store)
+ceremony, err := passkeys.BeginRegistration(ctx, accountID, name, displayName)
+record, err := passkeys.FinishRegistration(ctx, accountID, label, ceremony.State, r)
+```
+
+Interfaces you implement: `auth.Account` (three methods), `auth.AccountStore`,
+`auth.ResetStore`, `auth.PasskeyStore`, `auth.OrganizationStore`.
+`auth.SQLResetStore` and `auth.SQLPasskeyStore` are provided because their
+atomicity requirements are what a hand-written version gets wrong.
+
+## admin
+
+```go
+panel := admin.New(admin.Config{DB: db, Driver: "postgres", Authorizer: rules})
+panel.Register(admin.Resource{Model: User{}, Table: "users"})
+mux.Handle("/admin/", http.StripPrefix("/admin", panel.Handler("/admin")))
+```
+
+Field types, labels and which columns are searchable come from the struct.
+Override with an `admin:"..."` tag: `label=`, `hidden`, `show`, `readonly`,
+`required`, `search`, `file`, `choices=a|b|c`, `belongsTo=table.key:label`.
+
+Columns named like credentials (`password`, `token_hash`, `totp_secret`, ...)
+are hidden unless the tag says `show`. There is no permissive authorizer
+default: without one every request is answered 404.
+
+## ops
+
+```go
+recorder := ops.NewRecorder(0)
+provider.TracerProvider().RegisterSpanProcessor(recorder)
+
+panel.AddPage(ops.Page(ops.Config{
+    Recorder: recorder,
+    Queues:   []*jobs.SQLQueue{queue},
+    Health:   database.NewHealthChecker(db, 2*time.Second),
+}))
+```
+
+## jobs
+
+```go
+queue := jobs.NewSQLQueue(db, "default", jobs.DialectPostgres)
+queue.Migrate(ctx)
+queue.PushTx(ctx, tx, job)   // enqueue inside the transaction that motivated it
+
+// Durable steps. A step runs once; a replay returns the stored result.
+workflows := jobs.NewWorkflows(db, jobs.DialectPostgres)
+workflows.Migrate(ctx)
+
+func handle(ctx context.Context, job *jobs.Job) error {
+    wf := workflows.For(job)
+
+    charge, err := jobs.Step(ctx, wf, "charge", chargeCard)
+    if err != nil {
+        return err          // including *jobs.Parked -- return it unchanged
+    }
+    if err := wf.Sleep(ctx, "settle", 24*time.Hour); err != nil {
+        return err
+    }
+    return jobs.Do(ctx, wf, "receipt", func(ctx context.Context) error {
+        return sendReceipt(charge)
+    })
+}
+```
+
+`Sleep` and `WaitForEvent` return `*jobs.Parked`. A handler that swallows it
+tells the worker the job succeeded and the workflow is lost.
+
+## sse
+
+```go
+stream, err := sse.New(w, r)
+broker.Serve(stream, "invoices")     // returns on disconnect, unsubscribes itself
+
+broker.Patch("invoices", "patch", "<li>INV-1042 paid</li>")   // from anywhere
+```
+
+Serve behind HTTP/2. Under HTTP/1.1 a browser caps an origin at six connections
+and an SSE response never completes.
+
+## database
+
+```go
+rows, err := database.NewQueryBuilder(db).WithDialect(database.DialectDollar).
+    Table("invoices").
+    Where("status", "=", "unpaid").
+    OrderBy("created_at", "DESC").
+    Paginate(1, 25).
+    Get()
+```
+
+## Conventions in this codebase
+
+- Comments explain why, not what. Several record a bug that a change prevents.
+- Commit messages describe the defect and the evidence, not the diff.
+- Prefer the standard library. v0.9.0 removed four dependencies by replacing
+  them with stdlib calls or forty lines.
+- Every fix ships a regression test that was run against the unfixed code and
+  observed to fail.

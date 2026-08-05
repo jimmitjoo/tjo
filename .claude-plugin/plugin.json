@@ -1,0 +1,18 @@
+{
+  "name": "tjo",
+  "version": "0.11.0",
+  "description": "Build and maintain applications with the Tjo web framework for Go.",
+  "author": {
+    "name": "Jimmie Johansson",
+    "url": "https://github.com/jimmitjoo"
+  },
+  "homepage": "https://github.com/jimmitjoo/tjo",
+  "license": "MIT",
+  "skills": ["./skills/tjo"],
+  "mcpServers": {
+    "tjo": {
+      "command": "tjo",
+      "args": ["mcp"]
+    }
+  }
+}

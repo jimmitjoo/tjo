@@ -217,3 +217,68 @@ func TestToolListIsDeterministicAndCacheable(t *testing.T) {
 		t.Errorf("CacheScope = %q, want private", first.CacheScope)
 	}
 }
+
+// The docs tool answers with the documentation compiled into this binary, which
+// is the only reason it exists: fetching from the internet returns the default
+// branch, and a model's own idea of this framework is months old and averaged
+// over every version that existed then.
+func TestDocsToolServesTheInstalledVersion(t *testing.T) {
+	ctx := context.Background()
+
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "tjo", Version: "test"}, nil)
+	registerTools(srv)
+
+	ss, err := srv.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	cs, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+
+	call := func(args map[string]any) string {
+		t.Helper()
+		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "tjo_docs", Arguments: args})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Content) == 0 {
+			t.Fatal("no content")
+		}
+		text, ok := res.Content[0].(*mcp.TextContent)
+		if !ok {
+			t.Fatalf("content is %T", res.Content[0])
+		}
+		return text.Text
+	}
+
+	listing := call(nil)
+	if !strings.Contains(listing, "query-builder") {
+		t.Errorf("the topic list is missing a document:\n%s", listing)
+	}
+
+	page := call(map[string]any{"topic": "query-builder"})
+	if len(page) < 500 {
+		t.Errorf("the document came back too short to be one:\n%s", page)
+	}
+
+	// A topic is matched against the embedded set, never joined onto a path: a
+	// docs tool that took a path would be a file-read primitive with a
+	// documentation label on it.
+	escape := call(map[string]any{"topic": "../../go.mod"})
+	if !strings.Contains(escape, "no such topic") {
+		t.Errorf("a path escaped the embedded set:\n%s", escape)
+	}
+
+	hits := call(map[string]any{"search": "OpenTelemetry"})
+	if strings.Contains(hits, "No mention") {
+		t.Errorf("search found nothing for a term that is in the docs:\n%s", hits)
+	}
+}
