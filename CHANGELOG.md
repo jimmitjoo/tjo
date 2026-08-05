@@ -5,6 +5,147 @@ All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is 0, breaking changes may land in a minor release.
 
+## [0.11.0] - 2026-08-05
+
+The release where the framework grew the two screens people pick a framework
+for, and where authentication stopped being generated.
+
+### Added — `admin`
+
+Model-driven CRUD. Register a struct and a table and you have a list with
+search, filters, sorting and pagination, and a form with an input per column
+chosen from the field's Go type. Labels, which columns are searchable, which
+are dates, which are foreign keys: all reflected off the model.
+
+Django's admin is still the canonical reason people pick Django, and Go has had
+nothing maintained — the largest project in the space had not been pushed to in
+fourteen months. Filament's ~24% attach rate against Laravel is the evidence
+that this is not a niche.
+
+It refuses to serve until told who may use it. A panel with no authorizer
+answers 404 to everything, because the failure mode of a permissive default is
+a CRUD interface to the whole database published by someone who meant to
+configure it later. Authorization is per record and per field, and it is
+enforced where the work happens rather than where the button is drawn.
+
+Columns whose names say they hold credentials — `password`, `token_hash`,
+`totp_secret` — are hidden by default. An admin panel renders whatever is in
+the table, so the first person to register a users model would otherwise
+publish every password hash to whoever can reach it.
+
+Relations, bulk actions, file uploads through the `filesystems` package, an
+audit trail, and a slot for custom pages. Server-rendered with `html/template`
+and inline CSS: no npm, no bundler, no CDN, and the only JavaScript is the
+select-all checkbox.
+
+### Added — `ops`
+
+A self-hosted dashboard: errors grouped and counted, slow requests, slow
+queries, queue depth, failed jobs with a retry and a discard, cron last-run,
+and database health. No ingestion, no retention, nothing with a bill attached.
+
+It is a page in the admin panel, so it inherits the panel's authorizer and its
+rule that an unauthenticated visitor gets 404. A dashboard listing slow queries
+and error messages is a description of the application's internals; served to
+whoever finds the URL it is reconnaissance rather than operations.
+
+Empty panels say **why** they are empty. "No slow queries" and "the database is
+not instrumented" look identical and mean opposite things.
+
+### Added — durable steps on the job queue
+
+`Step` runs a function once and checkpoints its result. A replay — after a
+crash, a retry, or a park — returns the stored result instead of running it
+again, so a workflow that fails at step three re-runs step three and nothing
+before it. `Sleep` survives a process restart; `WaitForEvent` parks on a human
+approval for as long as it takes, because it is a row rather than a goroutine.
+
+Two tables next to `tjo_jobs`. No Temporal cluster, no second service.
+
+### Added — passkey ceremonies
+
+The record format landed in v0.10.0 because it had a deadline attached; this is
+registration and authentication over `go-webauthn`, challenge storage the
+caller controls, multiple credentials per account, and revocation. Nothing
+returns a go-webauthn type, so replacing the backend — with `crypto/passkey` if
+golang/go#80663 lands for Go 1.28 — is a change to one file and no change at
+all to the stored rows.
+
+Tested by running the ceremonies against a virtual authenticator, not by
+mocking them.
+
+### Added — SSE broadcast
+
+`sse.Broker` pushes a rendered fragment to every subscriber of a topic. A
+subscriber that falls behind is dropped rather than waited for: one
+backgrounded tab must not stop every other client from receiving.
+
+### Changed — `tjo make auth` generates wiring, not security logic
+
+No template decides anything about security any more. Twelve decisions moved
+into the `auth` package: whether a password matches, at what cost it is hashed,
+whether an inactive account is reported before or after the password is
+checked, how a remember token is generated, stored, validated and expired, how
+a session is promoted from a cookie, how a TOTP secret is made, whether a code
+has been used before, and how a bearer token is minted, hashed and parsed.
+
+`auth` gained TOTP (forty lines of standard library, with RFC 6238's own test
+vectors), recovery codes, and remember-me. Neither needed a new store: both are
+single-use, expiring, user-bound secrets consumed atomically, which is what
+`ResetStore` was written to get right.
+
+### Fixed
+
+- **Remember-me stored the cookie's value in the database verbatim**, with no
+  expiry, in a cookie that lasted a year. Reading that table was a working
+  long-lived login for every user who had ticked the box — the same defect as
+  the plaintext API tokens v0.7.0 fixed, arrived at independently in a second
+  place. Tokens are now hashed, expiring and single-use, and rotate on every
+  use.
+- **The remember-me middleware promoted an anonymous session without renewing
+  it**, and did not rotate the CSRF token. That is session fixation, on the one
+  login path nobody was watching.
+- **A TOTP code could be used as many times as it was presented** within its
+  window. RFC 6238 §5.2 requires otherwise; a code seen over a shoulder or left
+  in a log stayed good for up to ninety seconds.
+- **`tjo make auth` had not been adding its routes for several releases.** The
+  injection matched a marker the routes template stopped containing, so the
+  command wrote the handlers, wrote nothing to `routes.go`, and reported
+  success. Unreachable handlers compile, so neither the scaffold job nor the
+  evals noticed. It now fails loudly instead.
+- **Jobs on an `SQLQueue` ran forever.** A worker popped a job, ran it, and
+  returned; nothing wrote the outcome back, so the row stayed claimed, the lock
+  went stale, and the next worker ran the same job again — every five minutes,
+  with nothing failing and nothing logged. `MemoryQueue` hid it, because Pop
+  removes the job.
+- **The activation branch of login ran before the password was verified**, so
+  submitting a known address with any password produced a different response
+  from an unknown one, and mailed an activation link to whichever address was
+  asked for.
+- **`SQLQueue.Oldest` returned nothing**, because `MIN(created_at)` loses
+  SQLite's type affinity where a plain column reference keeps it. The scan
+  failed, the error was swallowed, and the ops panel showed a dash while jobs
+  sat in the queue.
+
+### Added — the agent-facing surface
+
+`llms.txt`, `llms-full.txt`, an Agent Skills bundle, a Claude Code plugin
+marketplace, and an MCP tool serving the documentation of the installed
+version. All of it leads with what models get *wrong* about this framework
+rather than with a feature tour.
+
+The eval suite gained a `-skills` flag so the A/B is one flag apart. **The
+number has not been recorded**, because it needs an agent, an API budget and a
+model to name, and a number published without those is worse than none.
+
+### Verification
+
+Every module built, vetted and tested. The `admin`, `ops` and `jobs` packages
+are tested against SQLite and PostgreSQL. The generated authentication flows
+were exercised over HTTP against a scaffolded application with a real database
+— `go build` proves none of it, as v0.10.0's reset view demonstrated by
+compiling cleanly while posting a field its handler did not read.
+
 ## [0.10.0] - 2026-08-05
 
 Authentication, as a package you can import without importing the framework.

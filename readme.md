@@ -27,11 +27,15 @@ macOS binaries are unsigned, so Gatekeeper will ask before the first run.
 
 - Chi Router - Fast and lightweight HTTP router
 - Multi-Database Support - PostgreSQL, MySQL, MariaDB, SQLite (PostgreSQL needs `WithDialect`, see [query builder docs](docs/query-builder.md#database-dialects))
+- Admin Panel - Model-driven CRUD over your own structs, server-rendered, no build step ([docs](docs/admin.md))
+- Ops Dashboard - Self-hosted errors, slow queries, job queue, cron and health ([docs](docs/admin.md#the-ops-dashboard))
+- Authentication - Passwords, 2FA with recovery codes, remember-me, passkeys, organizations and roles, as a package rather than generated code
 - Security First - CSRF protection, rate limiting, input validation, XSS prevention, 2FA
 - Email System - Multiple provider support with templates
 - Caching - Redis and Badger cache implementations
-- Background Jobs - Job queue with cron scheduler
+- Background Jobs - Database-backed queue with cron scheduler and durable, checkpointed workflows
 - WebSocket Support - Real-time communication with hub pattern
+- Server-Sent Events - Streaming, and broadcast of rendered fragments to subscribed clients
 - File Storage - S3 and MinIO filesystem integrations
 - SMS Integration - Multiple SMS provider support
 - Template Engine - Jet template engine for dynamic views
