@@ -74,8 +74,11 @@ func (q *SQLQueue) ph(n int) string {
 }
 
 // rebind rewrites a query written with ? into the dialect's placeholders.
-func (q *SQLQueue) rebind(query string) string {
-	if q.dialect != DialectPostgres {
+func (q *SQLQueue) rebind(query string) string { return rebind(q.dialect, query) }
+
+// rebind rewrites a query written with ? into dialect's placeholders.
+func rebind(dialect Dialect, query string) string {
+	if dialect != DialectPostgres {
 		return query
 	}
 	var b strings.Builder
@@ -361,6 +364,19 @@ func (q *SQLQueue) Fail(ctx context.Context, job *Job, cause error) error {
 		`UPDATE tjo_jobs SET status = 'retrying', locked_at = NULL, locked_by = NULL,
 		 scheduled_at = ?, last_error = ?, updated_at = ? WHERE id = ?`),
 		next, cause.Error(), now, job.ID)
+	return err
+}
+
+// Park suspends a claimed job until a later time, releasing the lock.
+//
+// The attempt the claim counted is given back. Parking is waiting, not
+// failing, and a workflow that sleeps between steps would otherwise exhaust
+// max_attempts by doing exactly what it was written to do.
+func (q *SQLQueue) Park(ctx context.Context, jobID string, until time.Time) error {
+	_, err := q.db.ExecContext(ctx, q.rebind(
+		`UPDATE tjo_jobs SET status = 'pending', scheduled_at = ?, locked_at = NULL, locked_by = NULL,
+		 attempts = CASE WHEN attempts > 0 THEN attempts - 1 ELSE 0 END, updated_at = ?
+		 WHERE id = ?`), until, time.Now().UTC(), jobID)
 	return err
 }
 

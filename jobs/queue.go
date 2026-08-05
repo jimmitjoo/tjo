@@ -39,6 +39,16 @@ type Settler interface {
 	Fail(ctx context.Context, job *Job, cause error) error
 }
 
+// Parker is a Queue that can suspend a job until a later time.
+//
+// This is what durable workflows need beyond retries: Sleep and WaitForEvent
+// are not failures and must not spend the job's attempts, or a workflow with
+// four sleeps and three retries would die of waiting.
+type Parker interface {
+	// Park reschedules a claimed job for later without counting an attempt.
+	Park(ctx context.Context, jobID string, until time.Time) error
+}
+
 type MemoryQueue struct {
 	name  string
 	jobs  []*Job

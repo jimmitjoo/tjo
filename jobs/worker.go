@@ -124,6 +124,11 @@ const settleTimeout = 5 * time.Second
 
 // settle records how the job ended, for queues that need telling.
 func (w *Worker) settle(job *Job, claimedAttempts int, err error) {
+	if parked, ok := IsParked(err); ok {
+		w.park(job, parked)
+		return
+	}
+
 	settler, ok := w.queue.(Settler)
 	if !ok {
 		return
@@ -154,6 +159,26 @@ func (w *Worker) settle(job *Job, claimedAttempts int, err error) {
 
 	if err := settler.Fail(ctx, &claimed, cause); err != nil {
 		log.Printf("Worker %s: could not record failure of job %s: %v", w.id, job.ID, err)
+	}
+}
+
+// park suspends a workflow that is waiting on time or on an event.
+func (w *Worker) park(job *Job, parked *Parked) {
+	parker, ok := w.queue.(Parker)
+	if !ok {
+		// Loudly. On a MemoryQueue the job was removed by Pop and there is no
+		// row to reschedule, so the workflow is gone -- and a workflow that
+		// vanishes at its first Sleep is worth more than a silent return.
+		log.Printf("Worker %s: job %s parked until %s (%s) but queue %q cannot park jobs -- the workflow is lost; use a durable queue such as SQLQueue",
+			w.id, job.ID, parked.Until.Format(time.RFC3339), parked.Why, w.queue.Name())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), settleTimeout)
+	defer cancel()
+
+	if err := parker.Park(ctx, job.ID, parked.Until); err != nil {
+		log.Printf("Worker %s: could not park job %s: %v", w.id, job.ID, err)
 	}
 }
 
