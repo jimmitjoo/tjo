@@ -74,6 +74,7 @@ const (
 	EventJobRetrying   = "job.retrying"
 	EventJobCancelled  = "job.cancelled"
 	EventJobDeadLetter = "job.dead_letter"
+	EventJobParked     = "job.parked"
 )
 
 func NewJob(jobType, queue string, payload map[string]interface{}) *Job {

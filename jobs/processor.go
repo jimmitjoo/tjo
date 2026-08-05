@@ -115,6 +115,20 @@ func (jp *JobProcessor) ProcessJob(ctx context.Context, job *Job) error {
 	jp.updateDuration(duration)
 
 	if err != nil {
+		// A parked workflow has not failed. Running it through the failure
+		// path would spend an attempt and, worse, return nil once a retry was
+		// scheduled -- which the worker would read as success and mark the job
+		// completed, losing the workflow at whatever step it had reached.
+		if parked, ok := IsParked(err); ok {
+			job.Status = JobStatusScheduled
+			job.ScheduledAt = &parked.Until
+			jp.emitEvent(EventJobParked, job, err, map[string]interface{}{
+				"until": parked.Until,
+				"why":   parked.Why,
+			})
+			return err
+		}
+
 		if job.Status != JobStatusFailed {
 			return jp.handleJobFailure(job, err)
 		}
