@@ -17,6 +17,28 @@ type Queue interface {
 	Clear() error
 }
 
+// Settler is a Queue whose jobs outlive being popped, so how they ended has to
+// be recorded rather than implied.
+//
+// MemoryQueue does not need this: Pop removes the job from the slice, so a
+// completed job is gone by virtue of having been taken. SQLQueue only *claims*
+// the row -- it stays, at status 'running', with a lock that expires. Something
+// has to write the outcome back, and until this interface existed nothing did:
+// a worker ran the job, the row stayed claimed, the lock went stale after
+// LockTimeout, and the next worker ran the same job again. Forever, every five
+// minutes, with nothing failing and nothing logged.
+//
+// Worker settles through this when its queue implements it, which is what makes
+// durable workflows meaningful -- replay is only useful on a queue that can
+// tell a finished job from an abandoned one.
+type Settler interface {
+	// Complete records that the job finished successfully.
+	Complete(ctx context.Context, jobID string) error
+
+	// Fail records a failure, scheduling a retry while attempts remain.
+	Fail(ctx context.Context, job *Job, cause error) error
+}
+
 type MemoryQueue struct {
 	name  string
 	jobs  []*Job
