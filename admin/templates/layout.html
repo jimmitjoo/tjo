@@ -1,0 +1,124 @@
+{{define "chrome_start"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{.Title}}</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #14161a; --muted: #5c6470;
+  --line: #e3e6ea; --accent: #2f5bd8; --accent-ink: #ffffff;
+  --danger: #b3261e; --danger-bg: #fdeceb; --ok-bg: #e9f4ec;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a; --panel: #1c1f25; --ink: #e8eaed; --muted: #9aa3af;
+    --line: #2b2f37; --accent: #7ea0ff; --accent-ink: #10131a;
+    --danger: #ff8a80; --danger-bg: #3a1d1b; --ok-bg: #1d3324;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.shell { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+@media (max-width: 800px) { .shell { grid-template-columns: 1fr; } }
+
+.side {
+  background: var(--panel); border-right: 1px solid var(--line); padding: 20px 0;
+}
+.side h1 { font-size: 15px; margin: 0 20px 16px; letter-spacing: .02em; }
+.side .group { color: var(--muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .08em; margin: 18px 20px 6px; }
+.side a { display: block; padding: 7px 20px; color: var(--ink); border-left: 3px solid transparent; }
+.side a:hover { background: var(--bg); text-decoration: none; border-left-color: var(--accent); }
+
+.main { padding: 28px 32px 64px; min-width: 0; }
+.head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.head h2 { margin: 0; font-size: 22px; }
+.head .count { color: var(--muted); font-size: 14px; }
+.spacer { flex: 1; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.card + .card { margin-top: 20px; }
+.card h3 { margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+th a { color: inherit; }
+tbody tr:hover { background: var(--bg); }
+/* Not sticky. A pinned actions column sounds right and then paints itself over
+   the last data column whenever the table happens to fit, which is most of the
+   time. Six columns and a scrollbar is the version that always works. */
+td.actions { white-space: nowrap; text-align: right; }
+td.trunc { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.btn {
+  display: inline-block; padding: 7px 13px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); font-size: 14px; cursor: pointer; line-height: 1.4;
+}
+.btn:hover { text-decoration: none; border-color: var(--accent); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn-danger { color: var(--danger); border-color: var(--line); }
+.btn-danger:hover { border-color: var(--danger); }
+.btn-sm { padding: 4px 9px; font-size: 13px; }
+
+form.inline { display: inline; }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.filters label { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+input[type=text], input[type=search], input[type=email], input[type=url], input[type=number],
+input[type=datetime-local], input[type=password], input[type=file], select, textarea {
+  padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--ink); font: inherit; font-size: 14px; width: 100%;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+textarea { min-height: 120px; resize: vertical; }
+
+.fields { padding: 16px; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+.field .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.field .err { color: var(--danger); font-size: 13px; margin-top: 4px; }
+.field.wide { grid-column: 1 / -1; }
+.field .ro { padding: 7px 10px; background: var(--bg); border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); overflow-wrap: anywhere; }
+
+details.card-details { border-top: 1px solid var(--line); }
+details.card-details > summary { padding: 10px 16px; cursor: pointer; color: var(--muted); font-size: 13px; list-style: none; }
+details.card-details > summary::-webkit-details-marker { display: none; }
+details.card-details > summary::before { content: "▸ "; }
+details.card-details[open] > summary::before { content: "▾ "; }
+details.card-details[open] > summary { border-bottom: 1px solid var(--line); }
+
+.bar { display: flex; gap: 10px; align-items: center; padding: 14px 16px; border-top: 1px solid var(--line); }
+.pager { display: flex; gap: 6px; align-items: center; padding: 12px 16px; flex-wrap: wrap; }
+.pager .here { font-weight: 700; }
+
+.note { padding: 12px 16px; border-radius: var(--radius); background: var(--danger-bg); color: var(--danger); margin-bottom: 16px; }
+.empty { padding: 40px 16px; text-align: center; color: var(--muted); }
+.history { font-size: 13px; color: var(--muted); }
+.history td { border-bottom: none; padding: 6px 16px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="side">
+    <h1><a href="{{.Mount}}/">{{.Title}}</a></h1>
+    {{if .Resources}}<div class="group">Data</div>{{range .Resources}}<a href="{{.URL}}">{{.Label}}</a>{{end}}{{end}}
+    {{if .Pages}}<div class="group">Tools</div>{{range .Pages}}<a href="{{.URL}}">{{.Label}}</a>{{end}}{{end}}
+  </nav>
+  <main class="main">
+{{end}}
+
+{{define "chrome_end"}}
+  </main>
+</div>
+</body>
+</html>
+{{end}}
