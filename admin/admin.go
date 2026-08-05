@@ -134,9 +134,21 @@ type Page struct {
 	// redirects, or is not HTML. Set one or the other; Handler wins.
 	Handler http.Handler
 
+	// Post handles a form submitted from this page and returns where to send
+	// the browser next. An empty redirect returns to the page itself.
+	//
+	// A page without one accepts no writes at all: an internal tool that only
+	// reads should not have a POST endpoint just because pages can have them.
+	Post func(ctx Context) (redirect string, err error)
+
 	// Action is the permission checked before the page is shown. Defaults to
 	// ActionList.
 	Action Action
+
+	// PostAction is the permission checked before Post runs. Defaults to
+	// ActionUpdate, so a page that reads with one role and writes with another
+	// gets that without configuration.
+	PostAction Action
 }
 
 // New returns a panel.
@@ -214,6 +226,9 @@ func (p *Panel) AddPage(pages ...Page) *Panel {
 		if page.Action == "" {
 			page.Action = ActionList
 		}
+		if page.PostAction == "" {
+			page.PostAction = ActionUpdate
+		}
 
 		p.pages = append(p.pages, &page)
 		p.byPath[page.Path] = &page
@@ -261,6 +276,7 @@ func (p *Panel) Handler(mount string) http.Handler {
 	mux.HandleFunc("POST /r/{resource}/{id}", p.handleUpdate)
 	mux.HandleFunc("POST /r/{resource}/{id}/delete", p.handleDelete)
 	mux.HandleFunc("GET /p/{page}", p.handlePage)
+	mux.HandleFunc("POST /p/{page}", p.handlePagePost)
 
 	// Cross-origin protection covers every mutating request whether or not the
 	// application mounted its own CSRF middleware. It is not a replacement for

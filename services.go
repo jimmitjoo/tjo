@@ -2,8 +2,11 @@ package tjo
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/CloudyKit/jet/v6"
 	"github.com/alexedwards/scs/v2"
@@ -65,7 +68,33 @@ type BackgroundService struct {
 	Mail        email.Mail
 	SMS         sms.SMSProvider
 	cronEntries map[string]cron.EntryID
+	cronRuns    map[string]*CronRun
 	cronMu      sync.RWMutex
+}
+
+// CronRun is what happened the last time a scheduled job ran.
+//
+// Nothing recorded this before, which is why a cron entry that had silently
+// stopped firing was invisible: the scheduler knew the job existed and nothing
+// knew whether it had ever done anything.
+type CronRun struct {
+	// Name is the scheduled job.
+	Name string
+
+	// LastRun is when it last started. Zero means it has not run since the
+	// process started -- which for a nightly job is normal for most of the day,
+	// and is why the dashboard shows the schedule next to it.
+	LastRun time.Time
+
+	// Duration is how long the last run took.
+	Duration time.Duration
+
+	// Runs and Failures count since the process started.
+	Runs     int
+	Failures int
+
+	// LastError is the panic recovered from the last failed run.
+	LastError string
 }
 
 // ScheduleCron adds a named cron job that can be unscheduled later.
@@ -77,14 +106,64 @@ func (b *BackgroundService) ScheduleCron(name, expr string, fn func()) (cron.Ent
 	if b.cronEntries == nil {
 		b.cronEntries = make(map[string]cron.EntryID)
 	}
+	if b.cronRuns == nil {
+		b.cronRuns = make(map[string]*CronRun)
+	}
 
-	id, err := b.Scheduler.AddFunc(expr, fn)
+	// Wrapped so that the run is recorded and a panic in a scheduled job is
+	// contained. robfig/cron's default logger prints a recovered panic and
+	// keeps the entry, but nothing else could tell that it had happened; a job
+	// panicking every night looked exactly like a job doing its work.
+	id, err := b.Scheduler.AddFunc(expr, func() { b.runCron(name, fn) })
 	if err != nil {
 		return 0, err
 	}
 
 	b.cronEntries[name] = id
+	b.cronRuns[name] = &CronRun{Name: name}
 	return id, nil
+}
+
+// runCron records one run.
+func (b *BackgroundService) runCron(name string, fn func()) {
+	started := time.Now()
+
+	defer func() {
+		recovered := recover()
+
+		b.cronMu.Lock()
+		defer b.cronMu.Unlock()
+
+		run := b.cronRuns[name]
+		if run == nil {
+			run = &CronRun{Name: name}
+			b.cronRuns[name] = run
+		}
+
+		run.LastRun = started
+		run.Duration = time.Since(started)
+		run.Runs++
+
+		if recovered != nil {
+			run.Failures++
+			run.LastError = fmt.Sprint(recovered)
+		}
+	}()
+
+	fn()
+}
+
+// CronStatus reports the last run of every scheduled job, sorted by name.
+func (b *BackgroundService) CronStatus() []CronRun {
+	b.cronMu.RLock()
+	defer b.cronMu.RUnlock()
+
+	out := make([]CronRun, 0, len(b.cronRuns))
+	for _, run := range b.cronRuns {
+		out = append(out, *run)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 // UnscheduleCron removes a named cron job. Returns true if the job was found and removed.
@@ -95,6 +174,7 @@ func (b *BackgroundService) UnscheduleCron(name string) bool {
 	if id, ok := b.cronEntries[name]; ok {
 		b.Scheduler.Remove(id)
 		delete(b.cronEntries, name)
+		delete(b.cronRuns, name)
 		return true
 	}
 	return false

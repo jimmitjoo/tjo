@@ -396,6 +396,113 @@ func (q *SQLQueue) CountByStatus(status JobStatus) int {
 	return n
 }
 
+// Snapshot is one job as an operator sees it.
+type Snapshot struct {
+	ID          string
+	Type        string
+	Status      JobStatus
+	Attempts    int
+	MaxAttempts int
+	ScheduledAt *time.Time
+	LastError   string
+	UpdatedAt   time.Time
+}
+
+// Recent returns jobs in a status, newest first.
+//
+// For a dashboard: "which jobs failed and why" is the first question anyone
+// asks of a queue, and until now the only way to answer it was to open a SQL
+// client.
+func (q *SQLQueue) Recent(ctx context.Context, status JobStatus, limit int) ([]Snapshot, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	rows, err := q.db.QueryContext(ctx, q.rebind(
+		`SELECT id, type, status, attempts, max_attempts, scheduled_at, last_error, updated_at
+		 FROM tjo_jobs WHERE queue = ? AND status = ? ORDER BY updated_at DESC LIMIT ?`),
+		q.name, string(status), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Snapshot
+	for rows.Next() {
+		var (
+			s         Snapshot
+			statusIn  string
+			scheduled sql.NullTime
+			lastError sql.NullString
+		)
+		if err := rows.Scan(&s.ID, &s.Type, &statusIn, &s.Attempts, &s.MaxAttempts,
+			&scheduled, &lastError, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		s.Status = JobStatus(statusIn)
+		s.LastError = lastError.String
+		if scheduled.Valid {
+			t := scheduled.Time
+			s.ScheduledAt = &t
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// Retry puts a failed job back in the queue, due now, with its attempts reset.
+//
+// Only a failed job: retrying one that is running would let two workers hold
+// the same job, and the recovery path for a stalled worker is the lock timeout
+// rather than a button.
+func (q *SQLQueue) Retry(ctx context.Context, jobID string) error {
+	res, err := q.db.ExecContext(ctx, q.rebind(
+		`UPDATE tjo_jobs SET status = 'pending', attempts = 0, scheduled_at = ?, locked_at = NULL,
+		 locked_by = NULL, updated_at = ? WHERE id = ? AND status = 'failed'`),
+		time.Now().UTC(), time.Now().UTC(), jobID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return fmt.Errorf("jobs: %s is not a failed job", jobID)
+	}
+	return nil
+}
+
+// Discard deletes a failed job.
+func (q *SQLQueue) Discard(ctx context.Context, jobID string) error {
+	_, err := q.db.ExecContext(ctx, q.rebind(
+		`DELETE FROM tjo_jobs WHERE id = ? AND status = 'failed'`), jobID)
+	return err
+}
+
+// Oldest returns how long the oldest waiting job has been waiting.
+//
+// The number that matters. Queue depth says how much work there is; this says
+// whether it is being done, and a depth of ten with an oldest of four hours is
+// a stopped worker rather than a busy one.
+func (q *SQLQueue) Oldest(ctx context.Context) (time.Duration, error) {
+	// ORDER BY ... LIMIT 1 rather than MIN(created_at), which looks like the
+	// same query and is not: SQLite applies a column's type affinity to a
+	// column reference and not to an expression, so MIN() over a DATETIME comes
+	// back as text, the scan into a time fails, and the panel showed a dash
+	// while three jobs sat in the queue.
+	var created sql.NullTime
+	err := q.db.QueryRowContext(ctx, q.rebind(
+		`SELECT created_at FROM tjo_jobs WHERE queue = ? AND status IN ('pending', 'retrying')
+		 ORDER BY created_at ASC LIMIT 1`),
+		q.name).Scan(&created)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return 0, nil
+	case err != nil:
+		return 0, err
+	case !created.Valid:
+		return 0, nil
+	}
+	return time.Since(created.Time), nil
+}
+
 // Clear removes every job on this queue.
 func (q *SQLQueue) Clear() error {
 	_, err := q.db.Exec(q.rebind(`DELETE FROM tjo_jobs WHERE queue = ?`), q.name)
