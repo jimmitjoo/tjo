@@ -1,0 +1,26 @@
+{
+  "name": "tjo",
+  "owner": {
+    "name": "Jimmie Johansson",
+    "url": "https://github.com/jimmitjoo"
+  },
+  "metadata": {
+    "description": "The Tjo web framework for Go: skills and an MCP server for building with it.",
+    "version": "0.11.0"
+  },
+  "plugins": [
+    {
+      "name": "tjo",
+      "source": "./",
+      "description": "Build and maintain applications with the Tjo web framework for Go: the generators, the auth package, the admin panel, the ops dashboard and durable job steps.",
+      "version": "0.11.0",
+      "author": {
+        "name": "Jimmie Johansson",
+        "url": "https://github.com/jimmitjoo"
+      },
+      "homepage": "https://github.com/jimmitjoo/tjo",
+      "license": "MIT",
+      "keywords": ["go", "golang", "web-framework", "tjo"]
+    }
+  ]
+}

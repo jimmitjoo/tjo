@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/jimmitjoo/tjo/core"
+	"github.com/jimmitjoo/tjo/docs"
 	"github.com/joho/godotenv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -349,9 +351,6 @@ func registerTools(server *mcp.Server) {
 	//
 	// These answer questions about *this* project that an agent cannot answer
 	// without reading every file, which is the failure mode worth attacking.
-	// Documentation retrieval is not: the one published controlled A/B of a
-	// docs-retrieval MCP server improved zero of ten questions, and Astro
-	// deleted its llms.txt after measuring that nobody fetched it.
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "tjo_routes_list",
@@ -412,6 +411,73 @@ func registerTools(server *mcp.Server) {
 			return errorResult(err.Error()), nil, nil
 		}
 		return textResult(out), nil, nil
+	})
+
+	// Tool 16: the documentation of the version that is installed.
+	//
+	// This file used to argue that documentation retrieval is not worth
+	// attacking, on the evidence that the one published controlled A/B of a
+	// docs-retrieval MCP server improved zero of ten questions and that Astro
+	// deleted its llms.txt after measuring that nobody fetched it. That
+	// evidence has not changed and the argument still holds against the thing
+	// it was aimed at: fetching a project's documentation over the network.
+	//
+	// This is a different thing, and the difference is the version. Fetching
+	// from the internet gets whatever is on the default branch; a model's own
+	// idea of this framework is some months old and averaged over every
+	// release that existed then. These pages are compiled into the binary, so
+	// the answer describes the CLI the caller is holding.
+	//
+	// Whether that is worth anything is a measurable question, and #76's
+	// definition of done is that the eval suite reports the difference with
+	// and without -- including when the difference is zero, which is the
+	// outcome this comment expects.
+	type DocsArgs struct {
+		Topic  string `json:"topic,omitempty" jsonschema_description:"Document to read. Omit to list what is available."`
+		Search string `json:"search,omitempty" jsonschema_description:"Return the lines mentioning this term, across every document."`
+	}
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "tjo_docs",
+		Description: "Read this framework's documentation for the installed version (" + core.Version + "). " +
+			"Compiled into the binary, so it describes the CLI in use rather than the default branch. " +
+			"Call with no arguments to list the topics.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args DocsArgs) (*mcp.CallToolResult, any, error) {
+		switch {
+		case args.Search != "":
+			hits := docs.Search(args.Search)
+			if len(hits) == 0 {
+				return textResult("No mention of " + args.Search + " in " + strings.Join(docs.Topics(), ", ")), nil, nil
+			}
+
+			var b strings.Builder
+			// Sorted, because tool output that reorders itself between calls
+			// is output a client cannot diff.
+			topics := make([]string, 0, len(hits))
+			for topic := range hits {
+				topics = append(topics, topic)
+			}
+			sort.Strings(topics)
+
+			for _, topic := range topics {
+				fmt.Fprintf(&b, "## %s\n", topic)
+				for _, line := range hits[topic] {
+					fmt.Fprintf(&b, "  %s\n", line)
+				}
+			}
+			return textResult(b.String()), nil, nil
+
+		case args.Topic != "":
+			content, err := docs.Read(args.Topic)
+			if err != nil {
+				return errorResult(err.Error()), nil, nil
+			}
+			return textResult(content), nil, nil
+
+		default:
+			return textResult("Documentation for tjo " + core.Version + ". Topics: " +
+				strings.Join(docs.Topics(), ", ") +
+				"\n\nAlso in the repository: AGENTS.md (how to work in it), llms.txt (what models get wrong about it)."), nil, nil
+		}
 	})
 }
 

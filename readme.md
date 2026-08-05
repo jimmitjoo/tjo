@@ -355,3 +355,23 @@ Pull requests welcome at [github.com/jimmitjoo/tjo](https://github.com/jimmitjoo
 ## License
 
 MIT License
+
+## For coding agents
+
+- [AGENTS.md](AGENTS.md) — how to work in this repository, and the traps that have shipped defects here
+- [llms.txt](llms.txt) — a short orientation, leading with what models get wrong about this framework
+- [llms-full.txt](llms-full.txt) — the same with signatures and worked examples
+- [skills/tjo](skills/tjo) — an Agent Skills bundle, installable as a Claude Code plugin:
+
+  ```
+  /plugin marketplace add jimmitjoo/tjo
+  /plugin install tjo@tjo
+  ```
+
+- `tjo mcp` — a Model Context Protocol server over stdio: the generators, plus
+  introspection over your application's routes, schema and configuration, plus
+  the documentation of the version you have installed.
+
+Whether any of this changes what an agent produces is a measurable question and
+[evals/README.md](evals/README.md) says how it is measured, including that the
+number has not been recorded yet.
