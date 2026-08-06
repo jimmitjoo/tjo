@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"go/parser"
 	"go/token"
 	"io/fs"
@@ -188,4 +189,64 @@ func goDirective(mod string) string {
 		}
 	}
 	return ""
+}
+
+// Every string a generated application shows a user is a key, not English.
+//
+// Grep is the test, as #83 asked for. A flash message written as a literal
+// compiles perfectly and is invisible until somebody reads the application in
+// a language it was not written in.
+func TestGeneratedAuthHandlersContainNoEnglishMessages(t *testing.T) {
+	// The literals that used to be here, and the ones most likely to come back.
+	banned := []string{
+		"These credentials do not match",
+		"Your account is not active",
+		"You have been registered",
+		"has been activated",
+		"a reset link is on its way",
+		"Password reset. You can now log in",
+		"Invalid verification code",
+		"Invalid recovery code",
+		"Setup session expired",
+		"Two-factor authentication has been",
+	}
+
+	for _, name := range []string{
+		"templates/handlers/auth-handlers.go.txt",
+		"templates/handlers/totp-handlers.go.txt",
+	} {
+		content, err := templateFS.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, phrase := range banned {
+			if bytes.Contains(content, []byte(phrase)) {
+				t.Errorf("%s contains the literal %q -- it should be a translation key", name, phrase)
+			}
+		}
+		if !bytes.Contains(content, []byte("i18n.From(")) {
+			t.Errorf("%s does not translate anything", name)
+		}
+	}
+}
+
+// The login view is what #83's definition of done is measured on, so its
+// labels are keys rather than words.
+func TestTheLoginViewIsTranslatable(t *testing.T) {
+	content, err := templateFS.ReadFile("templates/views/login.jet")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, key := range []string{"login.title", "login.email", "login.password", "login.submit"} {
+		if !bytes.Contains(content, []byte(key)) {
+			t.Errorf("login.jet does not use %q", key)
+		}
+	}
+	// The English that used to be in it.
+	for _, english := range []string{">Sign in<", ">Email address<", ">Password<"} {
+		if bytes.Contains(content, []byte(english)) {
+			t.Errorf("login.jet still contains the literal %q", english)
+		}
+	}
 }
