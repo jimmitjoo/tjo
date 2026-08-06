@@ -25,7 +25,7 @@ func (p *Panel) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.render(w, r, dashboardPage{Nav: nav})
+	p.render(w, r, dashboardPage{localised: nav.localised, Nav: nav})
 }
 
 func (p *Panel) handleList(w http.ResponseWriter, r *http.Request) {
@@ -83,16 +83,18 @@ func (p *Panel) handleList(w http.ResponseWriter, r *http.Request) {
 		labels[f.Name] = lookup
 	}
 
+	navigation := p.navFor(ctx)
 	page := listPage{
-		Nav:      p.navFor(ctx),
-		Resource: resource,
-		Fields:   fields,
-		Rows:     make([]listRow, 0, len(visible)),
-		Params:   params,
-		Total:    total,
-		Pages:    pageCount(total, params.PerPage),
-		CanWrite: !resource.ReadOnly && p.allow(ctx, Query{Action: ActionCreate, Resource: resource.slug()}) == nil,
-		BaseURL:  p.url("r", resource.slug()),
+		localised: navigation.localised,
+		Nav:       navigation,
+		Resource:  resource,
+		Fields:    fields,
+		Rows:      make([]listRow, 0, len(visible)),
+		Params:    params,
+		Total:     total,
+		Pages:     pageCount(total, params.PerPage),
+		CanWrite:  !resource.ReadOnly && p.allow(ctx, Query{Action: ActionCreate, Resource: resource.slug()}) == nil,
+		BaseURL:   p.url("r", resource.slug()),
 	}
 
 	for _, row := range visible {
@@ -432,7 +434,8 @@ func (p *Panel) handlePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.render(w, r, customPage{Nav: p.navFor(ctx), Title: page.Title, Body: body})
+	navigation := p.navFor(ctx)
+	p.render(w, r, customPage{localised: navigation.localised, Nav: navigation, Title: page.Title, Body: body})
 }
 
 // handlePagePost runs a custom page's form handler.

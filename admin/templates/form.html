@@ -2,9 +2,9 @@
 {{template "chrome_start" .Nav}}
 
 <div class="head">
-  <h2>{{if .Creating}}New {{.Resource.Singular}}{{else}}Edit {{.Resource.Singular}}{{end}}</h2>
+  <h2>{{if .Creating}}{{.T "admin.new_resource" "resource" (.Singular .Resource)}}{{else}}{{.T "admin.edit_resource" "resource" (.Singular .Resource)}}{{end}}</h2>
   <span class="spacer"></span>
-  <a class="btn" href="{{.BackURL}}">Back</a>
+  <a class="btn" href="{{.BackURL}}">{{.T "admin.back"}}</a>
 </div>
 
 {{with index .Problems ""}}<div class="note">{{.}}</div>{{end}}
@@ -15,7 +15,7 @@
       {{range .Inputs}}
       {{$f := .Field}}
       <div class="field{{if or (eq $f.Kind "longtext") $f.Relation}} wide{{end}}">
-        <label for="{{$f.Name}}">{{$f.Label}}{{if $f.Required}} *{{end}}</label>
+        <label for="{{$f.Name}}">{{$.Label $.Resource $f}}{{if $f.Required}} *{{end}}</label>
 
         {{if or $f.ReadOnly $f.PrimaryKey}}
           <div class="ro" id="{{$f.Name}}">{{display .Value}}</div>
@@ -62,8 +62,8 @@
     </div>
 
     <div class="bar">
-      {{if not .Resource.ReadOnly}}<button class="btn btn-primary" type="submit">Save</button>{{end}}
-      <a class="btn" href="{{.BackURL}}">Cancel</a>
+      {{if not .Resource.ReadOnly}}<button class="btn btn-primary" type="submit">{{.T "admin.save"}}</button>{{end}}
+      <a class="btn" href="{{.BackURL}}">{{.T "admin.cancel"}}</a>
       <span class="spacer"></span>
     </div>
   </div>
@@ -83,13 +83,13 @@
       {{end}}
     </tbody>
   </table></div>
-  {{else}}<div class="empty">None.</div>{{end}}
+  {{else}}<div class="empty">{{$.T "admin.none"}}</div>{{end}}
 </div>
 {{end}}
 
 {{if .History}}
 <div class="card">
-  <h3>History</h3>
+  <h3>{{.T "admin.history"}}</h3>
   <div class="scroll"><table class="history"><tbody>
     {{range .History}}
     <tr>
@@ -104,10 +104,10 @@
 {{end}}
 
 {{if .CanDelete}}
-<form method="POST" action="{{.Action}}/delete" onsubmit="return confirm('Delete this {{.Resource.Singular}}? This cannot be undone.')">
+<form method="POST" action="{{.Action}}/delete" onsubmit="return confirm('{{.T "admin.delete_confirm" "resource" (.Singular .Resource)}}')">
   <div class="card"><div class="bar">
-    <button class="btn btn-danger" type="submit">Delete this {{.Resource.Singular}}</button>
-    <span class="count">Permanent.</span>
+    <button class="btn btn-danger" type="submit">{{.T "admin.delete_this" "resource" (.Singular .Resource)}}</button>
+    <span class="count">{{.T "admin.permanent"}}</span>
   </div></div>
 </form>
 {{end}}

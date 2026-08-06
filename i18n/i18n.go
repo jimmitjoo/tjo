@@ -67,7 +67,17 @@ type Message struct {
 
 	// simple is the whole message when it has no plural forms.
 	simple string
-	plural bool
+}
+
+// isPlural reports whether any plural form is filled in.
+//
+// Inferred rather than flagged, because Message is exported and a caller
+// writing i18n.Message{One: "...", Other: "..."} cannot set an unexported
+// bool. A struct whose zero value is subtly wrong from outside its own package
+// is a struct that will be constructed wrongly.
+func (m Message) isPlural() bool {
+	return m.Zero != "" || m.One != "" || m.Two != "" ||
+		m.Few != "" || m.Many != "" || m.Other != ""
 }
 
 // UnmarshalJSON accepts either a bare string or an object of plural forms.
@@ -75,7 +85,6 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	var simple string
 	if err := json.Unmarshal(data, &simple); err == nil {
 		m.simple = simple
-		m.plural = false
 		return nil
 	}
 
@@ -88,7 +97,6 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 
 	m.Zero, m.One, m.Two = forms.Zero, forms.One, forms.Two
 	m.Few, m.Many, m.Other = forms.Few, forms.Many, forms.Other
-	m.plural = true
 
 	if m.Other == "" {
 		// Every language has "other". A catalogue without it has a hole that
@@ -100,7 +108,7 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 
 // form returns the string for a CLDR category, falling back towards "other".
 func (m Message) form(f plural.Form) string {
-	if !m.plural {
+	if !m.isPlural() {
 		return m.simple
 	}
 
@@ -220,6 +228,10 @@ func (c *Catalogue) SetString(tag language.Tag, key, message string) {
 	c.Set(tag, key, Message{simple: message})
 }
 
+// Plain builds a message with no plural forms, for callers outside this
+// package that need a Message value rather than a Set call.
+func Plain(message string) Message { return Message{simple: message} }
+
 func (c *Catalogue) add(tag language.Tag, messages map[string]Message) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -322,6 +334,33 @@ func (c *Catalogue) lookup(tag language.Tag, key string) (Message, language.Tag,
 
 //go:embed locales/*.json
 var frameworkLocales embed.FS
+
+// FrameworkLocales holds the framework's own messages, so an application
+// building its own catalogue can start from them:
+//
+//	catalogue := i18n.New(language.English)
+//	catalogue.Load(i18n.FrameworkLocales, "locales/*.json")
+//	catalogue.Load(myLocales, "locales/*.json")
+//
+// Or, the same thing:
+//
+//	catalogue := i18n.NewWithFramework(language.English)
+//	catalogue.Load(myLocales, "locales/*.json")
+var FrameworkLocales = frameworkLocales
+
+// NewWithFramework returns a catalogue preloaded with the framework's own
+// English messages.
+//
+// This is what an application wants: its own translations for its own strings,
+// plus working defaults for the validation messages, the admin panel and the
+// ops dashboard that it did not write.
+func NewWithFramework(fallback language.Tag) *Catalogue {
+	c := New(fallback)
+	if err := c.Load(frameworkLocales, "locales/*.json"); err != nil {
+		panic("i18n: the framework's own catalogue did not load: " + err.Error())
+	}
+	return c
+}
 
 // init loads the framework's own English messages into the default catalogue.
 //

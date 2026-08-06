@@ -1,88 +1,88 @@
 {{define "ops.html"}}
 
 {{if .Window}}
-<p class="count" style="margin:-8px 0 16px">Errors, requests and queries below cover the {{.Window}} held in memory.</p>
+<p class="count" style="margin:-8px 0 16px">{{.T "ops.window" "window" .Window}}</p>
 {{end}}
 
 {{if .Health}}
 <div class="card">
-  <h3>Health</h3>
+  <h3>{{.T "ops.health"}}</h3>
   <div class="scroll"><table><tbody>
-    <tr><td>Status</td><td><strong>{{.Health.Status}}</strong></td></tr>
-    <tr><td>Database</td><td>{{.Health.DatabaseType}} {{.Health.Version}}</td></tr>
-    <tr><td>Response time</td><td>{{duration .Health.ResponseTime}}</td></tr>
-    <tr><td>Connections</td><td>{{.Health.ConnectionsInUse}} in use, {{.Health.ConnectionsIdle}} idle, {{.Health.ConnectionsOpen}} open{{if .Health.MaxConnections}} of {{.Health.MaxConnections}}{{end}}</td></tr>
+    <tr><td>{{.T "ops.status"}}</td><td><strong>{{.Health.Status}}</strong></td></tr>
+    <tr><td>{{.T "ops.database"}}</td><td>{{.Health.DatabaseType}} {{.Health.Version}}</td></tr>
+    <tr><td>{{.T "ops.response_time"}}</td><td>{{duration .Health.ResponseTime}}</td></tr>
+    <tr><td>{{.T "ops.connections"}}</td><td>{{.Health.ConnectionsInUse}} in use, {{.Health.ConnectionsIdle}} idle, {{.Health.ConnectionsOpen}} open{{if .Health.MaxConnections}} of {{.Health.MaxConnections}}{{end}}</td></tr>
     {{range $name, $check := .Health.Checks}}
       <tr><td>{{$name}}</td><td>{{$check}}</td></tr>
     {{end}}
-    {{range .Health.Errors}}<tr><td>Error</td><td>{{.}}</td></tr>{{end}}
+    {{range .Health.Errors}}<tr><td>{{$.T "ops.last_error"}}</td><td>{{.}}</td></tr>{{end}}
   </tbody></table></div>
 </div>
-{{else}}{{with index .Notes "health"}}<div class="card"><h3>Health</h3><div class="empty">{{.}}</div></div>{{end}}{{end}}
+{{else}}{{with index $.Notes "health"}}<div class="card"><h3>{{$.T "ops.health"}}</h3><div class="empty">{{.}}</div></div>{{end}}{{end}}
 
 <div class="card">
-  <h3>Errors</h3>
+  <h3>{{.T "ops.errors"}}</h3>
   {{if .Errors}}
   <div class="scroll"><table>
-    <thead><tr><th>Where</th><th>Message</th><th>Count</th><th>Last</th></tr></thead>
+    <thead><tr><th>{{.T "ops.where"}}</th><th>{{.T "ops.message"}}</th><th>{{.T "ops.count"}}</th><th>{{.T "ops.last"}}</th></tr></thead>
     <tbody>
       {{range .Errors}}
       <tr>
         <td>{{.Name}}</td>
         <td class="trunc">{{.Message}}</td>
         <td><strong>{{.Count}}</strong></td>
-        <td style="white-space:nowrap">{{ago .Last}}</td>
+        <td style="white-space:nowrap">{{$.Ago .Last}}</td>
       </tr>
       {{end}}
     </tbody>
   </table></div>
   {{else}}
-  <div class="empty">{{with index .Notes "errors"}}{{.}}{{else}}No errors recorded.{{end}}</div>
+  <div class="empty">{{with index .Notes "errors"}}{{.}}{{else}}{{.T "ops.no_errors"}}{{end}}</div>
   {{end}}
 </div>
 
 <div class="card">
-  <h3>Slowest requests</h3>
+  <h3>{{.T "ops.slowest_requests"}}</h3>
   {{if .Requests}}
   <div class="scroll"><table>
-    <thead><tr><th>Route</th><th>Duration</th><th>When</th></tr></thead>
+    <thead><tr><th>{{.T "ops.route"}}</th><th>{{.T "ops.duration"}}</th><th>{{.T "ops.when"}}</th></tr></thead>
     <tbody>
       {{range .Requests}}
-      <tr><td>{{.Name}}</td><td>{{duration .Duration}}</td><td style="white-space:nowrap">{{ago .At}}</td></tr>
+      <tr><td>{{.Name}}</td><td>{{duration .Duration}}</td><td style="white-space:nowrap">{{$.Ago .At}}</td></tr>
       {{end}}
     </tbody>
   </table></div>
   {{else}}
-  <div class="empty">{{with index .Notes "requests"}}{{.}}{{else}}No requests recorded.{{end}}</div>
+  <div class="empty">{{with index .Notes "requests"}}{{.}}{{else}}{{.T "ops.no_requests"}}{{end}}</div>
   {{end}}
 </div>
 
 <div class="card">
-  <h3>Slowest queries</h3>
+  <h3>{{.T "ops.slowest_queries"}}</h3>
   {{if .Queries}}
   <div class="scroll"><table>
-    <thead><tr><th>Operation</th><th>Statement</th><th>Duration</th><th>When</th></tr></thead>
+    <thead><tr><th>{{.T "ops.operation"}}</th><th>{{.T "ops.statement"}}</th><th>{{.T "ops.duration"}}</th><th>{{.T "ops.when"}}</th></tr></thead>
     <tbody>
       {{range .Queries}}
       <tr>
         <td>{{.Name}}</td>
         <td class="trunc">{{.Detail}}</td>
         <td>{{duration .Duration}}</td>
-        <td style="white-space:nowrap">{{ago .At}}</td>
+        <td style="white-space:nowrap">{{$.Ago .At}}</td>
       </tr>
       {{end}}
     </tbody>
   </table></div>
   {{else}}
-  <div class="empty">{{with index .Notes "queries"}}{{.}}{{else}}No queries recorded.{{end}}</div>
+  <div class="empty">{{with index .Notes "queries"}}{{.}}{{else}}{{.T "ops.no_queries"}}{{end}}</div>
   {{end}}
 </div>
 
 <div class="card">
-  <h3>Job queues</h3>
+  <h3>{{.T "ops.job_queues"}}</h3>
   {{if .Queues}}
   <div class="scroll"><table>
-    <thead><tr><th>Queue</th><th>Waiting</th><th>Running</th><th>Retrying</th><th>Failed</th><th>Completed</th><th>Oldest waiting</th></tr></thead>
+    <thead><tr><th>{{.T "ops.queue"}}</th><th>{{.T "ops.waiting"}}</th><th>{{.T "ops.running"}}</th><th>{{.T "ops.retrying"}}</th><th>{{.T "ops.failed"}}</th><th>{{.T "ops.completed"}}</th><th>{{.T "ops.oldest_waiting"}}</th></tr></thead>
     <tbody>
       {{range .Queues}}
       <tr>
@@ -98,15 +98,15 @@
     </tbody>
   </table></div>
   {{else}}
-  <div class="empty">{{with index .Notes "queues"}}{{.}}{{else}}No queues.{{end}}</div>
+  <div class="empty">{{with index .Notes "queues"}}{{.}}{{else}}{{.T "ops.no_queues"}}{{end}}</div>
   {{end}}
 </div>
 
 {{if .FailedJobs}}
 <div class="card">
-  <h3>Failed jobs</h3>
+  <h3>{{.T "ops.failed_jobs"}}</h3>
   <div class="scroll"><table>
-    <thead><tr><th>Queue</th><th>Type</th><th>Attempts</th><th>Last error</th><th>When</th><th></th></tr></thead>
+    <thead><tr><th>{{.T "ops.queue"}}</th><th>{{.T "ops.type"}}</th><th>{{.T "ops.attempts"}}</th><th>{{.T "ops.last_error"}}</th><th>{{.T "ops.when"}}</th><th></th></tr></thead>
     <tbody>
       {{range .FailedJobs}}
       <tr>
@@ -114,17 +114,17 @@
         <td>{{.Type}}</td>
         <td>{{.Attempts}}</td>
         <td class="trunc">{{.LastError}}</td>
-        <td style="white-space:nowrap">{{ago .UpdatedAt}}</td>
+        <td style="white-space:nowrap">{{$.Ago .UpdatedAt}}</td>
         <td class="actions">
           <form method="POST" style="display:inline">
             <input type="hidden" name="queue" value="{{.Queue}}">
             <input type="hidden" name="job" value="{{.ID}}">
-            <button class="btn btn-sm" type="submit" name="action" value="retry">Retry</button>
+            <button class="btn btn-sm" type="submit" name="action" value="retry">{{$.T "ops.retry"}}</button>
           </form>
-          <form method="POST" style="display:inline" onsubmit="return confirm('Discard this job? It will not run again.')">
+          <form method="POST" style="display:inline" onsubmit="return confirm('{{$.T "ops.discard_confirm"}}')">
             <input type="hidden" name="queue" value="{{.Queue}}">
             <input type="hidden" name="job" value="{{.ID}}">
-            <button class="btn btn-sm btn-danger" type="submit" name="action" value="discard">Discard</button>
+            <button class="btn btn-sm btn-danger" type="submit" name="action" value="discard">{{$.T "ops.discard"}}</button>
           </form>
         </td>
       </tr>
@@ -136,9 +136,9 @@
 
 {{if .Stuck}}
 <div class="card">
-  <h3>Workflows that stopped</h3>
+  <h3>{{.T "ops.stuck_workflows"}}</h3>
   <div class="scroll"><table>
-    <thead><tr><th>Job</th><th>Step</th><th>Status</th><th>Attempts</th><th>Error</th><th>Since</th></tr></thead>
+    <thead><tr><th>{{.T "ops.job"}}</th><th>{{.T "ops.step"}}</th><th>{{.T "ops.status"}}</th><th>{{.T "ops.attempts"}}</th><th>{{.T "ops.last_error"}}</th><th>{{.T "ops.since"}}</th></tr></thead>
     <tbody>
       {{range .Stuck}}
       <tr>
@@ -147,7 +147,7 @@
         <td>{{.Status}}</td>
         <td>{{.Attempts}}</td>
         <td class="trunc">{{.Error}}</td>
-        <td style="white-space:nowrap">{{ago .Since}}</td>
+        <td style="white-space:nowrap">{{$.Ago .Since}}</td>
       </tr>
       {{end}}
     </tbody>
@@ -156,15 +156,15 @@
 {{end}}
 
 <div class="card">
-  <h3>Scheduled jobs</h3>
+  <h3>{{.T "ops.scheduled_jobs"}}</h3>
   {{if .Cron}}
   <div class="scroll"><table>
-    <thead><tr><th>Name</th><th>Last run</th><th>Took</th><th>Runs</th><th>Failures</th><th>Last error</th></tr></thead>
+    <thead><tr><th>{{.T "ops.name"}}</th><th>{{.T "ops.last_run"}}</th><th>{{.T "ops.took"}}</th><th>{{.T "ops.runs"}}</th><th>{{.T "ops.failures"}}</th><th>{{.T "ops.last_error"}}</th></tr></thead>
     <tbody>
       {{range .Cron}}
       <tr>
         <td>{{.Name}}</td>
-        <td style="white-space:nowrap">{{stamp .LastRun}}</td>
+        <td style="white-space:nowrap">{{if .LastRun.IsZero}}{{$.T "ops.never"}}{{else}}{{stamp .LastRun}}{{end}}</td>
         <td>{{duration .Duration}}</td>
         <td>{{.Runs}}</td>
         <td>{{if .Failures}}<strong>{{.Failures}}</strong>{{else}}0{{end}}</td>
@@ -174,12 +174,10 @@
     </tbody>
   </table></div>
   <div class="empty" style="padding:12px 16px;text-align:left">
-    Counts are since this process started. A job that has never run since the
-    last deploy shows "never", which for a nightly entry is normal for most of
-    the day and alarming at noon.
+    {{.T "ops.cron_note"}}
   </div>
   {{else}}
-  <div class="empty">{{with index .Notes "cron"}}{{.}}{{else}}Nothing scheduled.{{end}}</div>
+  <div class="empty">{{with index .Notes "cron"}}{{.}}{{else}}{{.T "ops.nothing_scheduled"}}{{end}}</div>
   {{end}}
 </div>
 

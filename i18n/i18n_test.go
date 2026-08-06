@@ -92,7 +92,7 @@ func TestPluralsAcrossOneFourAndSixForms(t *testing.T) {
 // form every language has.
 func TestMissingCategoriesFallBackToOther(t *testing.T) {
 	catalogue := New(language.English)
-	catalogue.Set(language.Polish, "x", Message{One: "one", Other: "other", plural: true})
+	catalogue.Set(language.Polish, "x", Message{One: "one", Other: "other"})
 
 	printer := catalogue.Printer(language.Polish)
 

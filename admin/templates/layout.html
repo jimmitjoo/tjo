@@ -1,5 +1,5 @@
 {{define "chrome_start"}}<!doctype html>
-<html lang="en">
+<html lang="{{.Lang}}" dir="{{.Dir}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -31,13 +31,13 @@ a:hover { text-decoration: underline; }
 @media (max-width: 800px) { .shell { grid-template-columns: 1fr; } }
 
 .side {
-  background: var(--panel); border-right: 1px solid var(--line); padding: 20px 0;
+  background: var(--panel); border-inline-end: 1px solid var(--line); padding: 20px 0;
 }
 .side h1 { font-size: 15px; margin: 0 20px 16px; letter-spacing: .02em; }
 .side .group { color: var(--muted); font-size: 11px; text-transform: uppercase;
   letter-spacing: .08em; margin: 18px 20px 6px; }
-.side a { display: block; padding: 7px 20px; color: var(--ink); border-left: 3px solid transparent; }
-.side a:hover { background: var(--bg); text-decoration: none; border-left-color: var(--accent); }
+.side a { display: block; padding: 7px 20px; color: var(--ink); border-inline-start: 3px solid transparent; }
+.side a:hover { background: var(--bg); text-decoration: none; border-inline-start-color: var(--accent); }
 
 .main { padding: 28px 32px 64px; min-width: 0; }
 .head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
@@ -51,14 +51,14 @@ a:hover { text-decoration: underline; }
 
 .scroll { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 14px; }
-th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th, td { text-align: start; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
 th a { color: inherit; }
 tbody tr:hover { background: var(--bg); }
 /* Not sticky. A pinned actions column sounds right and then paints itself over
    the last data column whenever the table happens to fit, which is most of the
    time. Six columns and a scrollbar is the version that always works. */
-td.actions { white-space: nowrap; text-align: right; }
+td.actions { white-space: nowrap; text-align: end; }
 td.trunc { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .btn {
@@ -110,8 +110,8 @@ details.card-details[open] > summary { border-bottom: 1px solid var(--line); }
 <div class="shell">
   <nav class="side">
     <h1><a href="{{.Mount}}/">{{.Title}}</a></h1>
-    {{if .Resources}}<div class="group">Data</div>{{range .Resources}}<a href="{{.URL}}">{{.Label}}</a>{{end}}{{end}}
-    {{if .Pages}}<div class="group">Tools</div>{{range .Pages}}<a href="{{.URL}}">{{.Label}}</a>{{end}}{{end}}
+    {{if .Resources}}<div class="group">{{.T "admin.data"}}</div>{{range .Resources}}<a href="{{.URL}}">{{.Label}}</a>{{end}}{{end}}
+    {{if .Pages}}<div class="group">{{.T "admin.tools"}}</div>{{range .Pages}}<a href="{{.URL}}">{{.Label}}</a>{{end}}{{end}}
   </nav>
   <main class="main">
 {{end}}
