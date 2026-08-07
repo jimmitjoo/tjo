@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"path/filepath"
 	"testing"
 )
 
@@ -32,7 +33,11 @@ func (a accountsByEmail) ByEmail(ctx context.Context, email string) (Account, er
 func identityStore(t *testing.T) *SQLIdentityStore {
 	t.Helper()
 
-	db, err := sql.Open("sqlite", ":memory:")
+	// A file rather than ":memory:", as the passkey tests do: every connection
+	// database/sql opens to ":memory:" gets its own empty database, so the
+	// moment LinkIdentity's transaction pins one and a query takes another,
+	// the test is looking at a different schema.
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "identities.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

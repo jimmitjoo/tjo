@@ -116,15 +116,17 @@ func Google(clientID, clientSecret, redirectURL string) Provider {
 
 // Microsoft returns a provider for a Microsoft Entra tenant.
 //
-// tenant is "common" for any Microsoft account, "organizations" for work and
-// school accounts, or a tenant id to restrict it to one organization. The
-// choice is a security decision: "common" lets anybody with a Microsoft account
-// sign in, which is rarely what a business application means by "sign in with
-// Microsoft".
+// tenant is a tenant id -- a GUID, or the "contoso.onmicrosoft.com" form -- or
+// "consumers" for personal Microsoft accounts.
+//
+// It is not "common" or "organizations", and there is no default. Those two
+// aliases serve a discovery document whose issuer is the literal string
+// "https://login.microsoftonline.com/{tenantid}/v2.0", because the real issuer
+// depends on which tenant the person turns out to belong to. A client that
+// accepted it would be accepting tokens from every Entra tenant in the world,
+// so no strict OIDC client accepts it -- see NewOAuth, which says so rather
+// than letting discovery fail with a string comparison.
 func Microsoft(tenant, clientID, clientSecret, redirectURL string) Provider {
-	if tenant == "" {
-		tenant = "common"
-	}
 	return Provider{
 		Name:         "microsoft",
 		ClientID:     clientID,
@@ -195,6 +197,10 @@ func NewOAuth(ctx context.Context, p Provider, opts ...OAuthOption) (*OAuth, err
 		opt(o)
 	}
 
+	if err := rejectTemplatedIssuer(p.Issuer); err != nil {
+		return nil, err
+	}
+
 	ctx = oidc.ClientContext(ctx, o.client)
 
 	if p.Issuer != "" {
@@ -228,6 +234,35 @@ func NewOAuth(ctx context.Context, p Provider, opts ...OAuthOption) (*OAuth, err
 	}
 
 	return o, nil
+}
+
+// rejectTemplatedIssuer refuses the issuer URLs whose discovery document does
+// not name a real issuer.
+//
+// Only Microsoft's multi-tenant aliases, today. They are worth a named check
+// rather than a discovery failure because the failure is a string comparison
+// against "{tenantid}", which tells nobody what to do about it, and because
+// the thing somebody reaches for on seeing it -- turning off the issuer check
+// -- accepts tokens from every Entra tenant that exists.
+//
+// Real multi-tenant sign-in means verifying the issuer against a per-tenant
+// rule, which is an application's policy about which organizations may sign
+// in. That is not a thing this package can guess, so it is out of scope rather
+// than approximated.
+func rejectTemplatedIssuer(issuer string) error {
+	const entra = "https://login.microsoftonline.com/"
+
+	if !strings.HasPrefix(issuer, entra) {
+		return nil
+	}
+
+	tenant, _, _ := strings.Cut(strings.TrimPrefix(issuer, entra), "/")
+	switch tenant {
+	case "", "common", "organizations":
+		return fmt.Errorf("auth: %q is a multi-tenant alias, and its discovery document's issuer is the placeholder {tenantid} rather than an issuer; use a tenant id, or \"consumers\" for personal accounts", issuer)
+	}
+
+	return nil
 }
 
 // OAuthOption configures an OAuth.

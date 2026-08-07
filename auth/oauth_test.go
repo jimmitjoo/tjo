@@ -395,13 +395,30 @@ func TestTheShippedProvidersAreConfigured(t *testing.T) {
 	if g := Google("id", "secret", "cb"); g.Issuer != "https://accounts.google.com" {
 		t.Errorf("google issuer is %q", g.Issuer)
 	}
-	if m := Microsoft("", "id", "secret", "cb"); !strings.Contains(m.Issuer, "/common/") {
-		t.Errorf("microsoft defaults to %q rather than the common tenant", m.Issuer)
-	}
 	if m := Microsoft("contoso", "id", "secret", "cb"); !strings.Contains(m.Issuer, "/contoso/") {
 		t.Errorf("microsoft tenant is %q", m.Issuer)
 	}
 	if g := GitHub("id", "secret", "cb"); g.Issuer != "" || g.UserInfoURL == "" {
 		t.Error("github is configured as if it were an OIDC provider")
+	}
+}
+
+// Microsoft's multi-tenant aliases serve a discovery document whose issuer is
+// the literal "{tenantid}". Configuring one has to fail here, offline, at
+// start-up -- not with a string-comparison error at the first sign-in, and
+// certainly not by being worked around with a disabled issuer check, which
+// accepts tokens from every Entra tenant that exists.
+func TestMicrosoftsMultiTenantAliasesAreRefused(t *testing.T) {
+	for _, tenant := range []string{"", "common", "organizations"} {
+		_, err := NewOAuth(context.Background(),
+			Microsoft(tenant, "id", "secret", "https://app.example/cb"))
+
+		if err == nil {
+			t.Errorf("tenant %q: configured, and it cannot work", tenant)
+			continue
+		}
+		if !strings.Contains(err.Error(), "tenant id") {
+			t.Errorf("tenant %q: %v, which does not say what to do instead", tenant, err)
+		}
 	}
 }
