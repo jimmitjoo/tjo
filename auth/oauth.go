@@ -97,6 +97,15 @@ type Provider struct {
 	TokenURL    string
 	UserInfoURL string
 
+	// EmailsURL is read when the profile carries no email address, and is
+	// expected to return GitHub's shape: a list of {email, primary, verified}.
+	//
+	// It exists because most GitHub users keep their address private, so the
+	// profile endpoint returns none -- and an application that creates
+	// accounts from these identities then has an account it cannot mail and,
+	// the second time it happens, a unique constraint on an empty string.
+	EmailsURL string
+
 	// Scopes beyond the defaults. openid, profile and email are added for OIDC
 	// providers; a caller asking for more is asking for access to something,
 	// which is a different feature with a different consent screen.
@@ -114,19 +123,37 @@ func Google(clientID, clientSecret, redirectURL string) Provider {
 	}
 }
 
+// consumerTenant is Entra's stable tenant id for personal Microsoft accounts.
+//
+// A constant rather than the "consumers" alias because Entra's discovery
+// documents name the tenant *id* as the issuer however the tenant was
+// addressed in the URL, so configuring ".../consumers/v2.0" produces an issuer
+// mismatch. Substituting it here is what makes the friendly name work.
+const consumerTenant = "9188040d-6c67-4c5b-b112-36a304b66dad"
+
 // Microsoft returns a provider for a Microsoft Entra tenant.
 //
-// tenant is a tenant id -- a GUID, or the "contoso.onmicrosoft.com" form -- or
-// "consumers" for personal Microsoft accounts.
+// tenant is a tenant id -- the GUID -- or "consumers" for personal Microsoft
+// accounts. There is no default.
 //
-// It is not "common" or "organizations", and there is no default. Those two
-// aliases serve a discovery document whose issuer is the literal string
-// "https://login.microsoftonline.com/{tenantid}/v2.0", because the real issuer
-// depends on which tenant the person turns out to belong to. A client that
-// accepted it would be accepting tokens from every Entra tenant in the world,
-// so no strict OIDC client accepts it -- see NewOAuth, which says so rather
-// than letting discovery fail with a string comparison.
+// It is specifically not a domain like "contoso.onmicrosoft.com", and not
+// "common" or "organizations". Entra will serve a discovery document for all
+// three, and none of them can be used:
+//
+//   - A domain resolves to a document whose issuer is the tenant's GUID, which
+//     does not match the URL it was fetched from.
+//   - "common" and "organizations" serve the literal placeholder
+//     "https://login.microsoftonline.com/{tenantid}/v2.0", because the real
+//     issuer depends on which tenant the person turns out to belong to.
+//
+// NewOAuth says so, with the tenant id in hand -- see validateEntraTenant.
+// Failing there beats failing at discovery with a string comparison, and it
+// beats what somebody does on seeing an issuer mismatch, which is to stop
+// checking the issuer.
 func Microsoft(tenant, clientID, clientSecret, redirectURL string) Provider {
+	if tenant == "consumers" {
+		tenant = consumerTenant
+	}
 	return Provider{
 		Name:         "microsoft",
 		ClientID:     clientID,
@@ -150,6 +177,7 @@ func GitHub(clientID, clientSecret, redirectURL string) Provider {
 		AuthURL:      "https://github.com/login/oauth/authorize",
 		TokenURL:     "https://github.com/login/oauth/access_token",
 		UserInfoURL:  "https://api.github.com/user",
+		EmailsURL:    "https://api.github.com/user/emails",
 		Scopes:       []string{"read:user", "user:email"},
 	}
 }
@@ -197,7 +225,7 @@ func NewOAuth(ctx context.Context, p Provider, opts ...OAuthOption) (*OAuth, err
 		opt(o)
 	}
 
-	if err := rejectTemplatedIssuer(p.Issuer); err != nil {
+	if err := validateEntraTenant(p.Issuer); err != nil {
 		return nil, err
 	}
 
@@ -236,20 +264,25 @@ func NewOAuth(ctx context.Context, p Provider, opts ...OAuthOption) (*OAuth, err
 	return o, nil
 }
 
-// rejectTemplatedIssuer refuses the issuer URLs whose discovery document does
-// not name a real issuer.
+// validateEntraTenant refuses the Entra issuer URLs whose discovery document
+// names a different issuer than the URL it was fetched from.
 //
-// Only Microsoft's multi-tenant aliases, today. They are worth a named check
-// rather than a discovery failure because the failure is a string comparison
-// against "{tenantid}", which tells nobody what to do about it, and because
-// the thing somebody reaches for on seeing it -- turning off the issuer check
-// -- accepts tokens from every Entra tenant that exists.
+// Entra reports the tenant *id* as the issuer however the tenant was addressed
+// -- so a GUID is the only form that matches itself. A domain resolves to the
+// GUID, and "common" and "organizations" resolve to the literal placeholder
+// "{tenantid}", because their real issuer depends on who signs in.
 //
-// Real multi-tenant sign-in means verifying the issuer against a per-tenant
-// rule, which is an application's policy about which organizations may sign
-// in. That is not a thing this package can guess, so it is out of scope rather
-// than approximated.
-func rejectTemplatedIssuer(issuer string) error {
+// Checked here, offline and with the tenant in hand, rather than left to
+// discovery: the discovery failure is a string comparison that tells nobody
+// what to do, and what somebody does on seeing an issuer mismatch is stop
+// checking the issuer, which accepts tokens from every Entra tenant that
+// exists.
+//
+// Real multi-tenant sign-in means checking the issuer against a rule about
+// which organizations may sign in. That is an application's policy, not
+// something this package can guess, so it is out of scope rather than
+// approximated.
+func validateEntraTenant(issuer string) error {
 	const entra = "https://login.microsoftonline.com/"
 
 	if !strings.HasPrefix(issuer, entra) {
@@ -257,12 +290,32 @@ func rejectTemplatedIssuer(issuer string) error {
 	}
 
 	tenant, _, _ := strings.Cut(strings.TrimPrefix(issuer, entra), "/")
-	switch tenant {
-	case "", "common", "organizations":
-		return fmt.Errorf("auth: %q is a multi-tenant alias, and its discovery document's issuer is the placeholder {tenantid} rather than an issuer; use a tenant id, or \"consumers\" for personal accounts", issuer)
+	if isGUID(tenant) {
+		return nil
 	}
 
-	return nil
+	return fmt.Errorf("auth: %q does not name an Entra tenant id, and Entra's discovery document reports the tenant id as the issuer however the tenant is addressed -- so this cannot verify; use the GUID (a domain's is in the \"issuer\" field of https://login.microsoftonline.com/<domain>/v2.0/.well-known/openid-configuration), or \"consumers\" for personal accounts", issuer)
+}
+
+// isGUID reports whether s is 8-4-4-4-12 hex.
+func isGUID(s string) bool {
+	groups := strings.Split(s, "-")
+	if len(groups) != 5 {
+		return false
+	}
+
+	for i, want := range []int{8, 4, 4, 4, 12} {
+		if len(groups[i]) != want {
+			return false
+		}
+		for _, c := range groups[i] {
+			if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // OAuthOption configures an OAuth.
@@ -502,18 +555,75 @@ func (o *OAuth) identityFromUserInfo(ctx context.Context, token *oauth2.Token) (
 		return nil, fmt.Errorf("auth: %s returned a profile with no id", o.provider.Name)
 	}
 
-	return &Identity{
+	identity := &Identity{
 		Provider: o.provider.Name,
 		Subject:  subject,
 		Email:    strings.ToLower(strings.TrimSpace(profile.Email)),
-		// GitHub's /user endpoint returns the public profile email, which the
-		// user typed and nobody verified. Treating it as verified would be
-		// treating a self-declared string as proof of ownership -- which is
-		// exactly the account-takeover path this package refuses.
+		// The profile endpoint returns the *public* address, which its owner
+		// typed into a form and nobody checked. Treating it as verified would
+		// be treating a self-declared string as proof of ownership, which is
+		// the account-takeover path this package exists to refuse.
 		EmailVerified: false,
 		Name:          cmpFirst(profile.Name, profile.Login),
 		AvatarURL:     profile.AvatarURL,
-	}, nil
+	}
+
+	// Most GitHub users keep their address private, so the profile has none.
+	// The addresses endpoint has them, along with which one is primary and
+	// which GitHub has verified -- and that verification is the provider's own
+	// assertion, unlike the public field above.
+	if identity.Email == "" && o.provider.EmailsURL != "" {
+		address, verified, err := o.primaryEmail(ctx, token)
+		if err != nil {
+			// Not fatal. The identity is complete without it, and a caller
+			// that needs an address can say so more usefully than this can.
+			return identity, nil
+		}
+		identity.Email, identity.EmailVerified = address, verified
+	}
+
+	return identity, nil
+}
+
+// primaryEmail reads the account's primary address from a GitHub-shaped
+// addresses endpoint.
+func (o *OAuth) primaryEmail(ctx context.Context, token *oauth2.Token) (string, bool, error) {
+	request, err := http.NewRequestWithContext(ctx, "GET", o.provider.EmailsURL, nil)
+	if err != nil {
+		return "", false, err
+	}
+	request.Header.Set("Authorization", "Bearer "+token.AccessToken)
+	request.Header.Set("Accept", "application/vnd.github+json")
+
+	response, err := o.client.Do(request)
+	if err != nil {
+		return "", false, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return "", false, fmt.Errorf("auth: %s returned %s for the addresses", o.provider.Name, response.Status)
+	}
+
+	var addresses []struct {
+		Email    string `json:"email"`
+		Primary  bool   `json:"primary"`
+		Verified bool   `json:"verified"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&addresses); err != nil {
+		return "", false, err
+	}
+
+	// The primary one, and only if it is verified. An unverified address is
+	// not evidence of anything, and taking a non-primary one would mean
+	// guessing which of somebody's addresses they meant.
+	for _, address := range addresses {
+		if address.Primary && address.Verified {
+			return strings.ToLower(strings.TrimSpace(address.Email)), true, nil
+		}
+	}
+
+	return "", false, errors.New("auth: no verified primary address")
 }
 
 // randomToken returns 256 bits, base64url.

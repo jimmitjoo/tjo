@@ -20,7 +20,7 @@ GOOGLE_CLIENT_SECRET=...
 GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
 
-MICROSOFT_TENANT=...          # a tenant id, or "consumers"
+MICROSOFT_TENANT=...          # the tenant GUID, or "consumers"
 MICROSOFT_CLIENT_ID=...
 MICROSOFT_CLIENT_SECRET=...
 
@@ -42,19 +42,29 @@ provider. The routes are:
 `OIDC_NAME` appears in URLs and is stored with every identity. Changing it
 later orphans them, so pick it once.
 
-### Microsoft: not `common`
+### Microsoft: the tenant GUID, and nothing else
 
-`MICROSOFT_TENANT` must be a tenant id — a GUID, or the
-`contoso.onmicrosoft.com` form — or `consumers` for personal Microsoft
-accounts.
+`MICROSOFT_TENANT` must be the tenant's GUID, or `consumers` for personal
+Microsoft accounts (which `auth.Microsoft` substitutes for the GUID that
+stands for).
 
-It cannot be `common` or `organizations`. Their discovery documents report the
-issuer as the literal string `https://login.microsoftonline.com/{tenantid}/v2.0`,
-because the real issuer depends on which tenant the person turns out to belong
-to. `NewOAuth` refuses them at start-up rather than letting the issuer check
-fail later, because the workaround somebody reaches for on seeing an issuer
-mismatch — turning the check off — accepts tokens from every Entra tenant that
-exists.
+Not a domain, not `common`, not `organizations`. Entra serves a discovery
+document for all three, and none of them can be used, because Entra reports the
+tenant **id** as the issuer however the tenant was addressed:
+
+| `MICROSOFT_TENANT` | Discovery reports | |
+|---|---|---|
+| `72f988bf-…` | `…/72f988bf-…/v2.0` | matches |
+| `contoso.onmicrosoft.com` | `…/72f988bf-…/v2.0` | mismatch |
+| `common`, `organizations` | `…/{tenantid}/v2.0` | a placeholder |
+
+To find a domain's GUID, read the `issuer` field of
+`https://login.microsoftonline.com/<domain>/v2.0/.well-known/openid-configuration`.
+
+`NewOAuth` refuses the unusable forms at start-up rather than letting the issuer
+check fail later, because the workaround somebody reaches for on seeing an
+issuer mismatch — turning the check off — accepts tokens from every Entra tenant
+that exists.
 
 Multi-tenant sign-in means having a policy about which organizations may sign
 in. That is an application's decision, so it is out of scope here rather than
@@ -187,13 +197,18 @@ accepts a forged identity.
 GitHub is OAuth 2.0 without OpenID Connect, so there is no ID token and the
 identity comes from `GET /user`. Two consequences:
 
-- `EmailVerified` is always false. The address that endpoint returns is one its
-  owner typed. Under the linking policy above this changes nothing, because an
-  email never decides which account somebody signs into.
-- Most GitHub users keep their email private, so `Identity.Email` is usually
-  empty. `GET /user/emails` would return it; this package does not call it,
-  because the address is not used for anything and asking for data you do not
-  need is not free.
+- The address on the profile is one its owner typed into a form, so it is never
+  reported as verified. Under the linking policy above that changes nothing, an
+  email decides no account either way.
+- Most GitHub users keep that field private, so it usually arrives empty. When
+  it does, `GET /user/emails` is read for the primary address — and only if
+  GitHub has verified it, in which case `EmailVerified` is true, because that
+  one is the provider's own assertion rather than a self-declared string.
+
+An account with no verified primary address therefore signs in with no email.
+The generated sign-up refuses to create an account from it (`users.email` is
+`NOT NULL UNIQUE`, so the alternative is one account and then a constraint
+violation); linking it to an existing account works normally.
 
 ## Testing
 

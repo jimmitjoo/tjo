@@ -59,13 +59,26 @@ test calls a third-party API.
 
 ### Fixed
 
-- `auth.Microsoft` with the tenant left empty defaulted to `"common"`, which
-  could never have worked: that discovery document reports its issuer as the
-  literal `{tenantid}` placeholder, so a strict OIDC client cannot verify it.
-  The tenant is now required, and the multi-tenant aliases are refused at
-  start-up with a message saying what to use instead. Refusing rather than
-  working around, because the workaround — disabling the issuer check — accepts
-  tokens from every Entra tenant that exists.
+- `auth.Microsoft` accepted three tenant forms that can never verify. Entra
+  reports the tenant **id** as the issuer however the tenant is addressed, so
+  only the GUID matches the URL it was configured with: a domain resolves to
+  the GUID, and `common` and `organizations` resolve to the literal
+  `{tenantid}` placeholder, since their real issuer depends on who signs in.
+  The empty default was `"common"`. All three are now refused at start-up, with
+  a message naming where to find a domain's GUID, and `"consumers"` is
+  substituted for the tenant id it stands for so the friendly name works.
+  Refusing rather than working around, because the workaround — disabling the
+  issuer check — accepts tokens from every Entra tenant that exists.
+- The GitHub provider requested the `user:email` scope and never spent it,
+  while most GitHub users keep their profile address private. Every one of them
+  produced an identity with no email, which made the generated sign-up create
+  an account nobody could mail and then violate `users.email`'s unique
+  constraint on the second such person. `GET /user/emails` is now read when the
+  profile carries none, taking the primary address and only when GitHub has
+  verified it — that one is the provider's own assertion, unlike the
+  self-declared public field. The generated handler refuses to create an
+  account from an identity with no address at all, rather than letting a
+  constraint violation surface as "sign-in failed".
 
 ## [0.13.0] - 2026-08-06
 

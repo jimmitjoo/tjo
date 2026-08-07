@@ -228,6 +228,17 @@ func (h *Handlers) SocialCallback(w http.ResponseWriter, r *http.Request) {
 		return
 
 	case auth.NoAccount:
+		// users.email is NOT NULL UNIQUE, so an identity with no address makes
+		// one account and then a constraint violation. Said plainly here rather
+		// than surfacing as "sign-in failed" on the second person it happens
+		// to. GitHub identities reach this only when the account has no
+		// verified primary address; other providers when they return no email
+		// at all.
+		if identity.Email == "" {
+			h.socialFailure(w, r, "auth.social.no_email", nil)
+			return
+		}
+
 		user, err := h.createUserFromIdentity(identity)
 		if err != nil {
 			h.socialFailure(w, r, "auth.social.failed", err)

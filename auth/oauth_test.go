@@ -329,6 +329,9 @@ func TestANonOIDCProviderNeverReportsAVerifiedEmail(t *testing.T) {
 			"avatar_url": "https://example.com/ada.png",
 		})
 	})
+	mux.HandleFunc("/user/emails", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("the addresses endpoint was called although the profile had an address")
+	})
 	api = httptest.NewServer(mux)
 	defer api.Close()
 
@@ -395,21 +398,31 @@ func TestTheShippedProvidersAreConfigured(t *testing.T) {
 	if g := Google("id", "secret", "cb"); g.Issuer != "https://accounts.google.com" {
 		t.Errorf("google issuer is %q", g.Issuer)
 	}
-	if m := Microsoft("contoso", "id", "secret", "cb"); !strings.Contains(m.Issuer, "/contoso/") {
+	const tenant = "72f988bf-86f1-41af-91ab-2d7cd011db47"
+	if m := Microsoft(tenant, "id", "secret", "cb"); !strings.Contains(m.Issuer, "/"+tenant+"/") {
 		t.Errorf("microsoft tenant is %q", m.Issuer)
+	}
+	// "consumers" is substituted for the tenant it stands for, because Entra
+	// reports the id as the issuer however the tenant was addressed -- so the
+	// friendly name would otherwise fail the issuer check it is meant to pass.
+	if m := Microsoft("consumers", "id", "secret", "cb"); !strings.Contains(m.Issuer, consumerTenant) {
+		t.Errorf("consumers became %q rather than its tenant id", m.Issuer)
+	}
+	if g := GitHub("id", "secret", "cb"); g.EmailsURL == "" {
+		t.Error("github requests the user:email scope and has nowhere to spend it")
 	}
 	if g := GitHub("id", "secret", "cb"); g.Issuer != "" || g.UserInfoURL == "" {
 		t.Error("github is configured as if it were an OIDC provider")
 	}
 }
 
-// Microsoft's multi-tenant aliases serve a discovery document whose issuer is
-// the literal "{tenantid}". Configuring one has to fail here, offline, at
-// start-up -- not with a string-comparison error at the first sign-in, and
-// certainly not by being worked around with a disabled issuer check, which
-// accepts tokens from every Entra tenant that exists.
-func TestMicrosoftsMultiTenantAliasesAreRefused(t *testing.T) {
-	for _, tenant := range []string{"", "common", "organizations"} {
+// Entra reports the tenant id as the issuer however the tenant was addressed,
+// so a GUID is the only form that verifies. The aliases and the domain form all
+// serve a discovery document, and none of them can be used -- which has to fail
+// here, offline, at start-up, rather than with a string-comparison error at the
+// first sign-in that somebody fixes by disabling the issuer check.
+func TestEntraTenantsThatCannotVerifyAreRefused(t *testing.T) {
+	for _, tenant := range []string{"", "common", "organizations", "contoso.onmicrosoft.com"} {
 		_, err := NewOAuth(context.Background(),
 			Microsoft(tenant, "id", "secret", "https://app.example/cb"))
 
@@ -421,4 +434,111 @@ func TestMicrosoftsMultiTenantAliasesAreRefused(t *testing.T) {
 			t.Errorf("tenant %q: %v, which does not say what to do instead", tenant, err)
 		}
 	}
+}
+
+// Most GitHub users keep their address private, so the profile carries none.
+// Without this the generated sign-up creates an account nobody can mail and,
+// the second time it happens, violates the unique constraint on users.email --
+// while holding a user:email scope it never spent.
+func TestAPrivateGitHubAddressIsReadFromTheAddressesEndpoint(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"access_token": "at", "token_type": "Bearer"})
+	})
+	mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"id": 42, "login": "ada", "name": "Ada"})
+	})
+	mux.HandleFunc("/user/emails", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer at" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		writeJSON(w, []any{
+			// Not primary. Taking this one would be guessing which of
+			// somebody's addresses they meant.
+			map[string]any{"email": "old@example.com", "primary": false, "verified": true},
+			// Primary but unverified: not evidence of anything.
+			map[string]any{"email": "unconfirmed@example.com", "primary": false, "verified": false},
+			map[string]any{"email": "Ada@Example.com", "primary": true, "verified": true},
+		})
+	})
+
+	api := httptest.NewServer(mux)
+	defer api.Close()
+
+	identity := githubIdentity(t, api, api.URL+"/user/emails")
+
+	if identity.Email != "ada@example.com" {
+		t.Errorf("email is %q, want the verified primary one", identity.Email)
+	}
+	// GitHub really did verify this one, unlike the public profile field.
+	if !identity.EmailVerified {
+		t.Error("an address GitHub verified is not marked verified")
+	}
+}
+
+// A private address with no verified primary, and an endpoint that refuses.
+// Neither is fatal: the identity is complete without an address, and failing
+// the whole sign-in over a profile detail would be worse than the gap.
+func TestAGitHubIdentityWithNoReadableAddressStillSignsIn(t *testing.T) {
+	for _, name := range []string{"unverified", "refused"} {
+		t.Run(name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(w, map[string]any{"access_token": "at", "token_type": "Bearer"})
+			})
+			mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(w, map[string]any{"id": 42, "login": "ada"})
+			})
+			mux.HandleFunc("/user/emails", func(w http.ResponseWriter, r *http.Request) {
+				if name == "refused" {
+					http.Error(w, "forbidden", http.StatusForbidden)
+					return
+				}
+				writeJSON(w, []any{
+					map[string]any{"email": "ada@example.com", "primary": true, "verified": false},
+				})
+			})
+
+			api := httptest.NewServer(mux)
+			defer api.Close()
+
+			identity := githubIdentity(t, api, api.URL+"/user/emails")
+
+			if identity.Subject != "42" {
+				t.Fatalf("the sign-in did not complete: %+v", identity)
+			}
+			if identity.Email != "" || identity.EmailVerified {
+				t.Errorf("kept an address it should not trust: %q verified=%v", identity.Email, identity.EmailVerified)
+			}
+		})
+	}
+}
+
+// githubIdentity runs a whole non-OIDC ceremony against a test API.
+func githubIdentity(t *testing.T, api *httptest.Server, emailsURL string) *Identity {
+	t.Helper()
+
+	o, err := NewOAuth(context.Background(), Provider{
+		Name: "github", ClientID: "id", ClientSecret: "secret",
+		RedirectURL: "https://app.example/callback",
+		AuthURL:     api.URL + "/authorize",
+		TokenURL:    api.URL + "/token",
+		UserInfoURL: api.URL + "/user",
+		EmailsURL:   emailsURL,
+	}, WithHTTPClient(api.Client()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ceremony, err := o.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	identity, err := o.Finish(context.Background(), ceremony.State, callback(t, ceremony, "code-1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return identity
 }

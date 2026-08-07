@@ -48,6 +48,7 @@
   "auth.social.failed": "That sign-in could not be completed. Please try again.",
   "auth.social.last_identity": "That is the only way into this account. Set a password first, or link another provider.",
   "auth.social.linked_elsewhere": "That provider account is already linked to a different account.",
+  "auth.social.no_email": "That provider did not share a verified email address, so an account cannot be created. Sign up with an email address first, then link the provider.",
   "auth.social.unlinked": "The provider has been unlinked.",
   "auth.twofactor_already_on": "Two-factor authentication is already enabled",
   "auth.twofactor_disabled": "Two-factor authentication has been disabled.",
