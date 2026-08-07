@@ -5,6 +5,68 @@ All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is 0, breaking changes may land in a minor release.
 
+## [Unreleased]
+
+### Added — social login
+
+Sign in with Google, GitHub, Microsoft Entra or any OpenID Connect provider
+that publishes a discovery document. `tjo make auth` writes the handlers, the
+routes and the buttons; a provider appears when its credentials are in `.env`
+and not otherwise, so a project that has configured none shows a plain password
+form rather than buttons that lead nowhere. See
+[docs/social-login.md](docs/social-login.md).
+
+**The decision worth reviewing is `auth.Resolve`, not the token exchange.** The
+convenient behaviour — somebody signs in with Google, an account already uses
+that address, so sign them into it — is an account takeover with a consent
+screen: register an account at an identity provider using the victim's address,
+sign in, be handed theirs. Trusting only the providers that verify addresses
+does not fix it; it makes the flow exactly as safe as every provider it is ever
+configured with, including the corporate OIDC issuer somebody adds in two
+years.
+
+So `Resolve` never merges on an email, regardless of `email_verified`. An
+identity is attached to an existing account by exactly one route: somebody who
+is already signed in, and has therefore proved the account is theirs, completes
+a ceremony. Everything else is `NeedsLogin` or `NoAccount`. The identity key is
+`(provider, subject)` and never the email, because an email changes and a
+subject does not — keying on it means somebody who changes their address at the
+provider signs into a stranger's account.
+
+Also refuses to move an identity between accounts, and to unlink the last way
+into an account. Support cannot undo the second one, because there is nothing
+left to verify the owner with.
+
+**State, PKCE and a nonce on every ceremony, none of them configurable**, since
+a switch that turned one off would only ever be turned off by mistake. The
+ceremony state is single-use in the generated handler: it holds the PKCE
+verifier and the nonce, and leaving it in the session lets the same
+authorization code be presented twice.
+
+**`coreos/go-oidc` rather than hand-written JWKS verification.** This project
+prefers the standard library and has removed four dependencies for it; this is
+where that rule stops applying. Verifying an ID token means key selection,
+algorithm restriction, rotation, and issuer, audience, expiry and nonce checks
+— every one a place to be subtly wrong, and subtly wrong means accepting a
+forged identity. Two of this project's four published advisories were in
+hand-written authentication code. It costs one module the graph did not already
+have.
+
+Tested against a local test issuer serving real discovery, a real JWKS and
+really signed RS256 tokens — including wrong ones: signed by a stranger's key,
+minted for another client, expired, and carrying another ceremony's nonce. No
+test calls a third-party API.
+
+### Fixed
+
+- `auth.Microsoft` with the tenant left empty defaulted to `"common"`, which
+  could never have worked: that discovery document reports its issuer as the
+  literal `{tenantid}` placeholder, so a strict OIDC client cannot verify it.
+  The tenant is now required, and the multi-tenant aliases are refused at
+  start-up with a message saying what to use instead. Refusing rather than
+  working around, because the workaround — disabling the issuer check — accepts
+  tokens from every Entra tenant that exists.
+
 ## [0.13.0] - 2026-08-06
 
 The release that makes the framework usable outside English.

@@ -106,7 +106,7 @@ point of re-checking.
 | Authentication | `auth` package | No | No | No | No | No | No | No | Basic/APIKey/OAuth | No | Auth handler |
 | 2FA (TOTP) | Built-in, replay-checked | No | No | No | No | No | No | No | No | No | No |
 | Passkeys / WebAuthn | Built-in | No | No | No | No | No | No | No | No | No | No |
-| Social login | **No** ([#85](https://github.com/jimmitjoo/tjo/issues/85)) | No | No | No | No | No | No | No | OAuth middleware | No | No |
+| Social login | Built-in, OIDC + PKCE | No | No | No | No | No | No | No | OAuth middleware | No | No |
 | Roles & multi-tenancy | Built-in | No | No | No | No | No | No | No | RBAC | No | No |
 | JWT | Plugin | Plugin | Plugin | Plugin | Plugin | Plugin | No | Built-in | Plugin | Plugin | Plugin |
 | Anti-Bot (CAPTCHA) | No | No | No | No | No | No | No | Built-in | No | No | No |
@@ -240,10 +240,12 @@ point of re-checking.
 - **Real-time without a sync engine** - SSE with topic broadcast, and the
   decision not to build a CRDT layer written down rather than reconsidered
   every quarter
+- **Social login with the linking policy written down** - state, PKCE and a
+  nonce on every ceremony, and a documented refusal to merge accounts on a
+  matching email address, which is the usual way this feature becomes an
+  account takeover ([docs](social-login.md))
 
 **Cons:**
-- **No social login** is the remaining table-stakes gap in `auth`
-  ([#85](https://github.com/jimmitjoo/tjo/issues/85))
 - **New** - Small community, fewer Stack Overflow answers
 - **Opinionated** - Must do things the Tjo way
 - **Documentation maturity** - Still growing
