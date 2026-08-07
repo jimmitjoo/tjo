@@ -113,7 +113,13 @@ func (h *Handlers) UserLogin(w http.ResponseWriter, r *http.Request) {
 
 	h.isAuthenticated(w, r)
 
-	err := h.App.HTTP.Render.Page(w, r, "login", nil, nil)
+	// The identity-provider buttons, which are the configured ones and no
+	// others -- a scaffolded project with no credentials in .env shows a plain
+	// password form rather than buttons that lead to a 404.
+	vars := make(jet.VarMap)
+	vars.Set("SocialProviders", h.SocialProviders())
+
+	err := h.App.HTTP.Render.Page(w, r, "login", vars, nil)
 
 	if err != nil {
 		h.App.Logging.Error.Println("error rendering login:", err)

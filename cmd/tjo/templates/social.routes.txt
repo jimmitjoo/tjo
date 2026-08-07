@@ -1,0 +1,11 @@
+
+	// social sign-in routes - added by make auth command
+	//
+	// They 404 until a provider is configured in .env; see
+	// handlers/social-handlers.go for the variables each one needs.
+	a.App.HTTP.Router.Get("/auth/{provider}", a.Handlers.SocialBegin)
+	a.App.HTTP.Router.Get("/auth/{provider}/callback", a.Handlers.SocialCallback)
+
+	// Unlinking changes an account's credentials, so it is a POST behind the
+	// CSRF middleware rather than a link somebody can be made to click.
+	a.App.HTTP.Router.Post("/user/social/{provider}/unlink", a.Handlers.SocialUnlink)
