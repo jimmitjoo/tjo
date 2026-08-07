@@ -341,6 +341,10 @@ func TestANonOIDCProviderNeverReportsAVerifiedEmail(t *testing.T) {
 		AuthURL:     api.URL + "/authorize",
 		TokenURL:    api.URL + "/token",
 		UserInfoURL: api.URL + "/user",
+		// Set, so that the /user/emails handler's t.Error is reachable: the
+		// endpoint must go unread because the profile had an address, not
+		// because there was nowhere to read it from.
+		EmailsURL: api.URL + "/user/emails",
 	}, WithHTTPClient(api.Client()))
 	if err != nil {
 		t.Fatal(err)
