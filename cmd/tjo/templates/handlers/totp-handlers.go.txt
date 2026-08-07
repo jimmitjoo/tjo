@@ -10,6 +10,7 @@ import (
 
 	"github.com/CloudyKit/jet/v6"
 	"github.com/jimmitjoo/tjo/auth"
+	"github.com/jimmitjoo/tjo/i18n"
 	"github.com/pquerna/otp"
 )
 
@@ -40,7 +41,7 @@ func (h *Handlers) TwoFactorSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if user.TOTPEnabled {
-		h.App.HTTP.Session.Put(r.Context(), "error", "Two-factor authentication is already enabled")
+		h.App.HTTP.Session.Put(r.Context(), "error", i18n.From(r.Context()).T("auth.twofactor_already_on"))
 		http.Redirect(w, r, "/user/settings", http.StatusSeeOther)
 		return
 	}
@@ -111,14 +112,14 @@ func (h *Handlers) TwoFactorVerifySetup(w http.ResponseWriter, r *http.Request) 
 
 	secret := h.App.HTTP.Session.GetString(ctx, "totp_setup_secret")
 	if secret == "" {
-		h.App.HTTP.Session.Put(ctx, "error", "Setup session expired. Please try again.")
+		h.App.HTTP.Session.Put(ctx, "error", i18n.From(ctx).T("auth.setup_expired"))
 		http.Redirect(w, r, "/user/2fa/setup", http.StatusSeeOther)
 		return
 	}
 
 	step, err := auth.VerifyTOTP(secret, r.Form.Get("code"), time.Now(), 0)
 	if err != nil {
-		h.App.HTTP.Session.Put(ctx, "error", "Invalid verification code. Please try again.")
+		h.App.HTTP.Session.Put(ctx, "error", i18n.From(ctx).T("auth.code_invalid"))
 		http.Redirect(w, r, "/user/2fa/setup", http.StatusSeeOther)
 		return
 	}
@@ -173,7 +174,7 @@ func (h *Handlers) TwoFactorDisable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !user.TOTPEnabled {
-		h.App.HTTP.Session.Put(r.Context(), "error", "Two-factor authentication is not enabled")
+		h.App.HTTP.Session.Put(r.Context(), "error", i18n.From(r.Context()).T("auth.twofactor_not_on"))
 		http.Redirect(w, r, "/user/settings", http.StatusSeeOther)
 		return
 	}
@@ -209,7 +210,7 @@ func (h *Handlers) TwoFactorDisablePost(w http.ResponseWriter, r *http.Request) 
 
 	step, err := auth.VerifyTOTP(user.TOTPSecret, r.Form.Get("code"), time.Now(), user.TOTPLastStep)
 	if err != nil {
-		h.App.HTTP.Session.Put(ctx, "error", "Invalid verification code.")
+		h.App.HTTP.Session.Put(ctx, "error", i18n.From(ctx).T("auth.code_invalid"))
 		http.Redirect(w, r, "/user/2fa/disable", http.StatusSeeOther)
 		return
 	}
@@ -229,7 +230,7 @@ func (h *Handlers) TwoFactorDisablePost(w http.ResponseWriter, r *http.Request) 
 		h.App.Logging.Error.Println("error invalidating recovery codes:", err)
 	}
 
-	h.App.HTTP.Session.Put(ctx, "flash", "Two-factor authentication has been disabled.")
+	h.App.HTTP.Session.Put(ctx, "flash", i18n.From(ctx).T("auth.twofactor_disabled"))
 	http.Redirect(w, r, "/user/settings", http.StatusSeeOther)
 }
 
@@ -278,14 +279,14 @@ func (h *Handlers) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 		// login. Without the comparison, anyone's valid recovery code would
 		// finish anyone else's challenge.
 		if err != nil || owner != strconv.Itoa(pendingUserID) {
-			h.App.HTTP.Session.Put(ctx, "error", "Invalid recovery code.")
+			h.App.HTTP.Session.Put(ctx, "error", i18n.From(ctx).T("auth.recovery_invalid"))
 			http.Redirect(w, r, "/2fa/challenge", http.StatusSeeOther)
 			return
 		}
 	} else {
 		step, err := auth.VerifyTOTP(user.TOTPSecret, r.Form.Get("code"), time.Now(), user.TOTPLastStep)
 		if err != nil {
-			h.App.HTTP.Session.Put(ctx, "error", "Invalid verification code. Please try again.")
+			h.App.HTTP.Session.Put(ctx, "error", i18n.From(ctx).T("auth.code_invalid"))
 			http.Redirect(w, r, "/2fa/challenge", http.StatusSeeOther)
 			return
 		}

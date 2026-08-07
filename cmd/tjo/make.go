@@ -135,6 +135,9 @@ func doMake(arg2, arg3 string) error {
 	case "session":
 		return doSession()
 
+	case "locale":
+		return doLocale(arg3)
+
 	case "api-controller":
 		return doAPIController(arg3)
 

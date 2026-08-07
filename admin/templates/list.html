@@ -2,10 +2,10 @@
 {{template "chrome_start" .Nav}}
 
 <div class="head">
-  <h2>{{.Resource.Plural}}{{if not .Resource.Plural}}{{.Resource.Table}}{{end}}</h2>
-  <span class="count">{{.Total}} record{{if ne .Total 1}}s{{end}}</span>
+  <h2>{{.Plural .Resource}}</h2>
+  <span class="count">{{.N "admin.records" .Total "count" .Total}}</span>
   <span class="spacer"></span>
-  {{if .CanWrite}}<a class="btn btn-primary" href="{{.BaseURL}}/new">New</a>{{end}}
+  {{if .CanWrite}}<a class="btn btn-primary" href="{{.BaseURL}}/new">{{.T "admin.new"}}</a>{{end}}
 </div>
 
 <div class="card">
@@ -13,30 +13,30 @@
     <div class="filters">
       {{if .Resource.SearchFields}}
       <div style="flex:2 1 240px">
-        <label for="q">Search</label>
-        <input id="q" type="search" name="q" value="{{.Params.Search}}" placeholder="Search {{len .Resource.SearchFields}} column{{if ne (len .Resource.SearchFields) 1}}s{{end}}">
+        <label for="q">{{.T "admin.search"}}</label>
+        <input id="q" type="search" name="q" value="{{.Params.Search}}" placeholder="{{.N "admin.searchable_columns" (len .Resource.SearchFields) "count" (len .Resource.SearchFields)}}">
       </div>
       {{end}}
-      <div><button class="btn btn-primary" type="submit">Search</button></div>
-      {{if or .Params.Search .Params.Filters}}<div><a class="btn" href="{{$.BaseURL}}">Clear</a></div>{{end}}
+      <div><button class="btn btn-primary" type="submit">{{.T "admin.search"}}</button></div>
+      {{if or .Params.Search .Params.Filters}}<div><a class="btn" href="{{$.BaseURL}}">{{.T "admin.clear"}}</a></div>{{end}}
       <span class="spacer"></span>
-      <div><a class="btn" href="#column-filters" onclick="document.getElementById('column-filters').open=true;return true">Filter by column</a></div>
+      <div><a class="btn" href="#column-filters" onclick="document.getElementById('column-filters').open=true;return true">{{.T "admin.filter_by_column"}}</a></div>
     </div>
 
     <!-- Per-column filters are folded away: on a wide table they are a wall of
          inputs above the data somebody came to look at. Open when one is set. -->
     <details id="column-filters" class="card-details" {{if .Params.Filters}}open{{end}}>
-      <summary>Column filters</summary>
+      <summary>{{.T "admin.column_filters"}}</summary>
       <div class="filters">
         {{range .Fields}}
           {{if not .PrimaryKey}}
           <div style="flex:1 1 160px">
-            <label for="f_{{.Name}}">{{.Label}}</label>
+            <label for="f_{{.Name}}">{{$.Label $.Resource .}}</label>
             <input id="f_{{.Name}}" type="text" name="f_{{.Name}}" value="{{filterValue $ .Name}}">
           </div>
           {{end}}
         {{end}}
-        <div><button class="btn" type="submit">Apply</button></div>
+        <div><button class="btn" type="submit">{{.T "admin.apply"}}</button></div>
       </div>
     </details>
   </form>
@@ -47,9 +47,9 @@
       <table>
         <thead>
           <tr>
-            {{if .CanWrite}}<th style="width:1px"><input type="checkbox" id="all" aria-label="Select all"></th>{{end}}
+            {{if .CanWrite}}<th style="width:1px"><input type="checkbox" id="all" aria-label="{{.T "admin.select_all"}}"></th>{{end}}
             {{range .Fields}}
-              <th><a href="{{sortURL $ .Name}}">{{.Label}} {{sortIndicator $ .Name}}</a></th>
+              <th><a href="{{sortURL $ .Name}}">{{$.Label $.Resource .}} {{sortIndicator $ .Name}}</a></th>
             {{end}}
             <th></th>
           </tr>
@@ -60,7 +60,7 @@
             {{if $.CanWrite}}<td>{{if or .CanUpdate .CanDelete}}<input type="checkbox" name="ids" value="{{.ID}}" aria-label="Select {{.ID}}">{{end}}</td>{{end}}
             {{range .Cells}}<td class="trunc">{{.}}</td>{{end}}
             <td class="actions">
-              {{if .CanUpdate}}<a class="btn btn-sm" href="{{$.BaseURL}}/{{.ID}}">Edit</a>{{else}}<a class="btn btn-sm" href="{{$.BaseURL}}/{{.ID}}">View</a>{{end}}
+              {{if .CanUpdate}}<a class="btn btn-sm" href="{{$.BaseURL}}/{{.ID}}">{{$.T "admin.edit"}}</a>{{else}}<a class="btn btn-sm" href="{{$.BaseURL}}/{{.ID}}">{{$.T "admin.view"}}</a>{{end}}
             </td>
           </tr>
           {{end}}
@@ -70,9 +70,9 @@
 
     {{if .CanWrite}}
     <div class="bar">
-      <span class="count">With selected:</span>
+      <span class="count">{{.T "admin.with_selected"}}</span>
       <button class="btn btn-danger" type="submit" name="action" value="delete"
-        onclick="return confirm('Delete the selected records? This cannot be undone.')">Delete</button>
+        onclick="return confirm('{{.T "admin.delete_selected_confirm"}}')">{{.T "admin.delete"}}</button>
       {{range .Resource.BulkActions}}
         <button class="btn" type="submit" name="action" value="{{.Name}}"
           {{if .Confirm}}onclick="return confirm('{{.Label}} the selected records?')"{{end}}>{{.Label}}</button>
@@ -81,7 +81,7 @@
     {{end}}
   </form>
   {{else}}
-  <div class="empty">Nothing here yet.</div>
+  <div class="empty">{{.T "admin.empty"}}</div>
   {{end}}
 
   {{if gt .Pages 1}}

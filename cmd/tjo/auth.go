@@ -257,12 +257,25 @@ func doAuth() error {
 
 	rememberMiddleware := middlewareMarker + `
 
+	// Negotiates the reader's language from Accept-Language, a ?lang= parameter
+	// or a cookie, and puts it in the request context. Without it every
+	// framework-produced string -- validation, flash messages, the admin panel
+	// -- comes out in the fallback language.
+	a.App.HTTP.Router.Use(i18n.Default().Middleware)
+
 	// Logs a returning visitor back in from their remember cookie, renewing the
 	// session as it does. Registered here because chi requires every middleware
 	// to be declared before the first route.
 	a.App.HTTP.Router.Use(a.Middleware.CheckRemember)`
 
-	routesOutput := bytes.Replace(routesContent, []byte(middlewareMarker), []byte(rememberMiddleware), 1)
+	// The import, without which the middleware line does not compile. Added
+	// next to the security import the marker sits in, so the block stays
+	// gofmt-clean.
+	routesOutput := bytes.Replace(routesContent,
+		[]byte(`"github.com/jimmitjoo/tjo/security"`),
+		[]byte("\"github.com/jimmitjoo/tjo/i18n\"\n\t\"github.com/jimmitjoo/tjo/security\""), 1)
+
+	routesOutput = bytes.Replace(routesOutput, []byte(middlewareMarker), []byte(rememberMiddleware), 1)
 	routesOutput = bytes.Replace(routesOutput, []byte(returnMarker),
 		[]byte(string(authRoutes)+"\n"+string(tfaRoutes)+"\n\t"+returnMarker), 1)
 

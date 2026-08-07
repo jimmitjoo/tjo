@@ -5,6 +5,107 @@ All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is 0, breaking changes may land in a minor release.
 
+## [0.13.0] - 2026-08-06
+
+The release that makes the framework usable outside English.
+
+### Added — `i18n`
+
+The framework's own strings are translatable, and so is anything an application
+writes. English is the first language of about 5% of the world; until this
+release every path a user saw produced English that could not be changed
+without forking the templates.
+
+**The decision that outlives the code is the catalogue format**, because it is
+what translators are handed and what nobody migrates twice. JSON, one file per
+locale, keyed by message key, with plural messages as an object keyed by CLDR
+category.
+
+**Plurals are the part that is easy to get wrong and expensive to fix later.**
+`if count == 1` is right in English and wrong in most of the world: CLDR defines
+six categories and languages use different subsets. A catalogue storing
+`{singular, plural}` would have been broken for Polish before it shipped. The
+test covers one form (Japanese), two (English), four (Polish) and six (Arabic)
+against the same key, including the counts where Polish switches between `few`
+and `many`.
+
+**Negotiation matches rather than compares.** `sv-FI` selects `sv`, `pt-BR`
+reaches `pt` before English. Query parameter beats cookie beats
+`Accept-Language`, because a browser configured once in a hotel in 2019 is not a
+preference. Responses carry `Content-Language` and `Vary: Accept-Language` —
+without the second a shared cache serves one visitor's language to everyone.
+
+**Placeholders are `{name}` substitution and deliberately not `text/template`.**
+A catalogue is edited by translators, often through a web tool, and a format
+that can execute is a format in which a translation can do something other than
+translate.
+
+**Right to left is a layout, not a translation.** The locale carries its
+direction, the admin panel and the generated skeleton set `dir` from it, and
+both use logical CSS properties. The admin panel has a test that fails if a
+physical `border-left` comes back.
+
+### Changed — every framework-produced string is a key
+
+- **Validation**: thirteen messages an application could not change without
+  forking `validator.go`. `ValidatorFor(ctx, data)` attaches the request's
+  language.
+- **The admin panel**: 22 strings, and `humanise()` — an English word-splitter
+  that runs at reflection time where there is no request. It is now a fallback
+  behind `admin.field.<table>.<column>`.
+- **The ops dashboard**: 51 strings, including the prose that makes an empty
+  panel honest, which is exactly the text that most needs translating.
+- **The generated authentication flows**: fifteen flash and error messages, plus
+  the login view's labels.
+- **`tjo make auth`** registers the language middleware and its import.
+
+### Added — `tjo make locale <tag>`
+
+Writes a catalogue stub containing the keys the project actually uses, found by
+walking its Go and Jet files. It merges rather than overwrites: a generator that
+clobbered a translator's work would be used exactly once. Keys are left empty
+rather than pre-filled with English, so a translator can see what is untranslated.
+
+### Fixed
+
+Three defects found by converting, all of the silent kind:
+
+- **`localised.N` took an `int` and a row count is an `int64`.**
+  `html/template` does not convert between them, so the admin list failed to
+  render with "wrong type for value" — at runtime, inside the template.
+- **`{{.T}}` inside a `{{with}}` block** binds the dot to the block's value, so
+  the ops health panel called `T` on a string. The whole render errored, every
+  note vanished, and nothing failed loudly.
+- **`i18n.Message` had an unexported `plural` field**, so a message constructed
+  outside the package rendered as empty. Plural-ness is inferred from the fields
+  now. A struct whose zero value is subtly wrong from outside its own package is
+  a struct that will be constructed wrongly.
+
+### Verification
+
+All six modules build, vet and pass with `-race`. Deterministic evals 5/5.
+Verified over HTTP against a scaffolded application with a real database, which
+is the only thing that proves it — a page that renders perfectly in one language
+compiles just as well as one that renders in three:
+
+```
+en: Sign in          <html lang="en" dir="ltr">
+sv: Logga in         <html lang="sv" dir="ltr">
+ar: تسجيل الدخول      <html lang="ar" dir="rtl">
+```
+
+Two tests grep the generated handlers and the login view for the English that
+used to be there. A flash message written as a literal compiles perfectly and is
+invisible until somebody reads the application in a language it was not written
+in.
+
+### Only English is shipped
+
+Deliberately. A framework that shipped a stale Turkish translation would be
+worse than one that shipped none, because the stale one silently wins over the
+source language. Translations of the framework's own 120 keys are welcome as
+contributions.
+
 ## [0.12.0] - 2026-08-05
 
 The AI layer, kept deliberately thin, and the harness for the experiment that

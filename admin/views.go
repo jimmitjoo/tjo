@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jimmitjoo/tjo/i18n"
 )
 
 //go:embed templates/*.html
@@ -50,8 +52,112 @@ var templates = template.Must(template.New("admin").Funcs(template.FuncMap{
 	"isChecked":   func(v any) bool { return parseBool(display(v)) },
 }).ParseFS(templateFiles, "templates/*.html"))
 
+// localised gives a template the request's language.
+//
+// Embedded in every page struct rather than reached through a function in the
+// FuncMap, because html/template binds its FuncMap at parse time and the
+// language is per request. `{{.T "admin.new"}}` in a template is a method call
+// on the data, which is the shape that works without cloning the template set
+// on every request.
+type localised struct {
+	p *i18n.Printer
+}
+
+// T translates a key.
+func (l localised) T(key string, args ...any) string { return l.p.T(key, args...) }
+
+// N translates a key with a count, choosing the locale's plural form.
+//
+// The count is any integer type rather than int, because html/template does
+// not convert between them: a page holding a row count as int64 would
+// otherwise fail to render with "wrong type for value", at runtime, in the
+// template.
+func (l localised) N(key string, count any, args ...any) string {
+	return l.p.N(key, toInt(count), args...)
+}
+
+func toInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int8:
+		return int(n)
+	case int16:
+		return int(n)
+	case int32:
+		return int(n)
+	case int64:
+		return int(n)
+	case uint:
+		return int(n)
+	case uint8:
+		return int(n)
+	case uint16:
+		return int(n)
+	case uint32:
+		return int(n)
+	case uint64:
+		return int(n)
+	case float32:
+		return int(n)
+	case float64:
+		return int(n)
+	default:
+		return 0
+	}
+}
+
+// Label translates a field's heading.
+//
+// Reflection derives labels with humanise(), which is an English word-splitter:
+// `first_name` becomes "First Name" whatever language the operator reads. So
+// the derived label is a fallback, and a catalogue may override it per table or
+// across the application:
+//
+//	"admin.field.users.first_name": "Förnamn"
+//	"admin.field.email":            "E-post"
+//
+// The specific key wins, so two tables with a `status` column can disagree
+// about what status means without either of them being wrong.
+func (l localised) Label(r *Resource, f Field) string {
+	for _, key := range []string{
+		"admin.field." + r.slug() + "." + f.Name,
+		"admin.field." + f.Name,
+	} {
+		if l.p.Has(key) {
+			return l.p.T(key)
+		}
+	}
+	return f.Label
+}
+
+// Plural and Singular translate a resource's name, falling back to the one
+// derived from the table.
+func (l localised) Plural(r *Resource) string {
+	if key := "admin.resource." + r.slug(); l.p.Has(key) {
+		return l.p.T(key)
+	}
+	return r.title()
+}
+
+func (l localised) Singular(r *Resource) string {
+	if key := "admin.resource." + r.slug() + ".singular"; l.p.Has(key) {
+		return l.p.T(key)
+	}
+	return r.singular()
+}
+
+// Lang is the BCP 47 tag, for the html lang attribute.
+func (l localised) Lang() string { return l.p.Tag().String() }
+
+// Dir is "ltr" or "rtl", for the html dir attribute. An Arabic or Hebrew
+// operator gets a mirrored layout rather than a translated left-to-right one.
+func (l localised) Dir() string { return string(l.p.Dir()) }
+
 // nav is the sidebar.
 type nav struct {
+	localised
+
 	Title     string
 	Mount     string
 	Resources []navItem
@@ -63,7 +169,11 @@ type navItem struct {
 	URL   string
 }
 
-type dashboardPage struct{ Nav nav }
+type dashboardPage struct {
+	localised
+
+	Nav nav
+}
 
 type listRow struct {
 	ID        string
@@ -73,6 +183,8 @@ type listRow struct {
 }
 
 type listPage struct {
+	localised
+
 	Nav      nav
 	Resource *Resource
 	Fields   []Field
@@ -97,6 +209,8 @@ type relatedBlock struct {
 }
 
 type formPage struct {
+	localised
+
 	Nav       nav
 	Resource  *Resource
 	ID        string
@@ -112,6 +226,8 @@ type formPage struct {
 }
 
 type customPage struct {
+	localised
+
 	Nav   nav
 	Title string
 	Body  Content
@@ -141,7 +257,7 @@ func (p *Panel) render(w http.ResponseWriter, r *http.Request, data page) {
 
 // navFor lists what this visitor may open.
 func (p *Panel) navFor(ctx Context) nav {
-	out := nav{Title: p.title, Mount: p.mount}
+	out := nav{localised: localised{p: i18n.From(ctx)}, Title: p.title, Mount: p.mount}
 
 	for _, r := range p.Resources() {
 		if p.allow(ctx, Query{Action: ActionList, Resource: r.slug()}) != nil {
@@ -173,8 +289,11 @@ func (p *Panel) formPage(ctx Context, resource *Resource, record map[string]any,
 		action = ActionCreate
 	}
 
+	navigation := p.navFor(ctx)
+
 	out := formPage{
-		Nav:       p.navFor(ctx),
+		localised: navigation.localised,
+		Nav:       navigation,
 		Resource:  resource,
 		ID:        id,
 		Creating:  creating,

@@ -46,6 +46,7 @@ import (
 
 	"github.com/jimmitjoo/tjo/admin"
 	"github.com/jimmitjoo/tjo/database"
+	"github.com/jimmitjoo/tjo/i18n"
 	"github.com/jimmitjoo/tjo/jobs"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -158,7 +159,13 @@ func Page(cfg Config) admin.Page {
 }
 
 // dashboard is what the template renders.
+//
+// It carries the request's language the same way the admin panel's pages do:
+// as methods on the data, because html/template binds its FuncMap at parse
+// time and the language is per request.
 type dashboard struct {
+	p *i18n.Printer
+
 	Window     string
 	Errors     []ErrorGroup
 	Requests   []Timing
@@ -170,6 +177,37 @@ type dashboard struct {
 	HealthErr  string
 	Notes      map[string]string
 	FailedJobs []failedJob
+}
+
+// T, N and Ago are the template's access to the request's language.
+func (d dashboard) T(key string, args ...any) string { return d.p.T(key, args...) }
+
+func (d dashboard) N(key string, count any, args ...any) string {
+	return d.p.N(key, toInt(count), args...)
+}
+
+// Ago renders a duration in the reader's language. "7.8s ago" is English
+// grammar as much as it is a number.
+func (d dashboard) Ago(t time.Time) string {
+	if t.IsZero() {
+		return d.p.T("ops.never")
+	}
+	return d.p.T("ops.ago", "duration", humanDuration(time.Since(t)))
+}
+
+func toInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case int32:
+		return int(n)
+	case float64:
+		return int(n)
+	default:
+		return 0
+	}
 }
 
 type queuePanel struct {
@@ -206,24 +244,25 @@ func render(ctx admin.Context, cfg Config) (admin.Content, error) {
 		rows = DefaultRows
 	}
 
-	data := dashboard{Notes: map[string]string{}}
+	printer := i18n.From(ctx)
+	data := dashboard{p: printer, Notes: map[string]string{}}
 
 	// Errors, slow requests, slow queries.
 	if cfg.Recorder == nil {
-		note := "No recorder is configured. Register ops.NewRecorder on the tracer provider to see errors, slow requests and slow queries."
+		note := printer.T("ops.no_recorder")
 		data.Notes["errors"] = note
 		data.Notes["requests"] = note
 		data.Notes["queries"] = note
 	} else {
 		held, capacity := cfg.Recorder.Count()
-		data.Window = fmt.Sprintf("last %d of %d spans", held, capacity)
+		data.Window = printer.T("ops.span_window", "held", held, "capacity", capacity)
 
 		data.Errors = cfg.Recorder.Errors(rows)
 		data.Requests = cfg.Recorder.SlowRequests(rows)
 		data.Queries = cfg.Recorder.SlowQueries(rows)
 
 		if held == 0 {
-			note := "Nothing recorded yet. If this stays empty, tracing is not enabled -- see the otel module."
+			note := printer.T("ops.nothing_recorded")
 			data.Notes["errors"] = note
 			data.Notes["requests"] = note
 			data.Notes["queries"] = note
@@ -232,13 +271,13 @@ func render(ctx admin.Context, cfg Config) (admin.Content, error) {
 		// different things, and saying which is the difference between a
 		// dashboard and a puzzle.
 		if len(data.Queries) == 0 && !cfg.Recorder.HasSpansOfKind(trace.SpanKindClient) {
-			data.Notes["queries"] = "No database spans have been recorded. Wrap the pool with otel.WrapDB to see query timings; SQLite through a driver that is not wrapped will never appear here."
+			data.Notes["queries"] = printer.T("ops.no_db_spans")
 		}
 	}
 
 	// Job queues.
 	if len(cfg.Queues) == 0 {
-		data.Notes["queues"] = "No queues are configured."
+		data.Notes["queues"] = printer.T("ops.no_queues_configured")
 	}
 	for _, queue := range cfg.Queues {
 		panel := queuePanel{
@@ -291,18 +330,18 @@ func render(ctx admin.Context, cfg Config) (admin.Content, error) {
 
 	// Cron.
 	if cfg.Cron == nil {
-		data.Notes["cron"] = "No scheduler is configured."
+		data.Notes["cron"] = printer.T("ops.no_scheduler")
 	} else {
 		data.Cron = cfg.Cron.CronStatus()
 		if len(data.Cron) == 0 {
-			data.Notes["cron"] = "Nothing is scheduled."
+			data.Notes["cron"] = printer.T("ops.nothing_scheduled")
 		}
 		sort.Slice(data.Cron, func(i, j int) bool { return data.Cron[i].Name < data.Cron[j].Name })
 	}
 
 	// Health.
 	if cfg.Health == nil {
-		data.Notes["health"] = "No health checker is configured."
+		data.Notes["health"] = printer.T("ops.no_health_checker")
 	} else {
 		checked, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()

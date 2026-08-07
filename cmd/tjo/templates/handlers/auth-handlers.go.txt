@@ -14,6 +14,7 @@ import (
 	"github.com/CloudyKit/jet/v6"
 	"github.com/jimmitjoo/tjo"
 	"github.com/jimmitjoo/tjo/auth"
+	"github.com/jimmitjoo/tjo/i18n"
 	"github.com/jimmitjoo/tjo/email"
 	"github.com/jimmitjoo/tjo/urlsigner"
 )
@@ -72,7 +73,7 @@ func (h *Handlers) PostUserRegister(w http.ResponseWriter, r *http.Request) {
 
 	h.sendActivationLink(user)
 
-	h.App.HTTP.Session.Put(r.Context(), "flash", "You have been registered. Please check your email for an activation link.")
+	h.App.HTTP.Session.Put(r.Context(), "flash", i18n.From(r.Context()).T("auth.registered"))
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -166,7 +167,7 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 				h.sendActivationLink(*user)
 			}
 		}
-		h.App.HTTP.Session.Put(ctx, "flash", "Your account is not active. Please check your email for an activation link.")
+		h.App.HTTP.Session.Put(ctx, "flash", i18n.From(ctx).T("auth.not_activated"))
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 
@@ -174,7 +175,7 @@ func (h *Handlers) PostUserLogin(w http.ResponseWriter, r *http.Request) {
 		// One message for an unknown address and a wrong password, because
 		// they are the same answer to the only question a login form should
 		// answer.
-		h.App.HTTP.Session.Put(ctx, "error", "These credentials do not match our records.")
+		h.App.HTTP.Session.Put(ctx, "error", i18n.From(ctx).T("auth.invalid_credentials"))
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -303,7 +304,7 @@ func (h *Handlers) ActivateUserAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.App.HTTP.Session.Put(r.Context(), "flash", "Your account has been activated. You can now log in.")
+	h.App.HTTP.Session.Put(r.Context(), "flash", i18n.From(r.Context()).T("auth.activated"))
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -369,7 +370,7 @@ func (h *Handlers) PostForgot(w http.ResponseWriter, r *http.Request) {
 		h.sendPasswordResetLink(found)
 	}
 
-	h.App.HTTP.Session.Put(r.Context(), "flash", "If that address has an account, a reset link is on its way.")
+	h.App.HTTP.Session.Put(r.Context(), "flash", i18n.From(r.Context()).T("auth.reset_sent"))
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -489,7 +490,7 @@ func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// One message for an invalid token and for a password that fails the
 		// policy. Separating them would say whether the token was good.
-		h.App.HTTP.Session.Put(ctx, "error", "That reset link is invalid or has expired, or the password is too short.")
+		h.App.HTTP.Session.Put(ctx, "error", i18n.From(ctx).T("auth.reset_invalid"))
 		http.Redirect(w, r, "/forgot-password", http.StatusSeeOther)
 		return
 	}
@@ -508,7 +509,7 @@ func (h *Handlers) PostResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.App.HTTP.Session.Put(ctx, "flash", "Password reset. You can now log in.")
+	h.App.HTTP.Session.Put(ctx, "flash", i18n.From(ctx).T("auth.reset_done"))
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 

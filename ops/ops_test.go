@@ -14,11 +14,13 @@ import (
 
 	"github.com/jimmitjoo/tjo/admin"
 	"github.com/jimmitjoo/tjo/database"
+	"github.com/jimmitjoo/tjo/i18n"
 	"github.com/jimmitjoo/tjo/jobs"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/text/language"
 	_ "modernc.org/sqlite"
 )
 
@@ -361,4 +363,46 @@ func (s fakeSpan) Status() sdktrace.Status {
 		return sdktrace.Status{Code: codes.Error, Description: s.message}
 	}
 	return sdktrace.Status{Code: codes.Ok}
+}
+
+// The dashboard in Swedish, and the failure mode that hid behind a template
+// error: a page that renders the wrong thing without failing loudly.
+//
+// Converting these templates broke the health panel, because `{{.T}}` inside a
+// `{{with}}` block binds the dot to the block's value rather than the page. The
+// render errored, every note vanished, and nothing said so. This test looks for
+// the notes rather than for a status code.
+func TestTheOpsDashboardTranslates(t *testing.T) {
+	catalogue := i18n.NewWithFramework(language.English)
+	catalogue.SetString(language.Swedish, "ops.health", "Hälsa")
+	catalogue.SetString(language.Swedish, "ops.job_queues", "Jobbköer")
+	catalogue.SetString(language.Swedish, "ops.no_queues_configured", "Inga köer är konfigurerade.")
+
+	db := testDB(t)
+	panel := admin.New(admin.Config{Authorizer: admin.AllowAll, Title: "Ops"})
+	panel.AddPage(Page(Config{Health: database.NewHealthChecker(db, 2*time.Second)}))
+
+	h := catalogue.Middleware(panel.Handler("/_admin"))
+
+	r := httptest.NewRequest("GET", "/p/ops", nil)
+	r.Header.Set("Accept-Language", "sv")
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+
+	body := rec.Body.String()
+
+	for _, want := range []string{"Hälsa", "Jobbköer", "Inga köer är konfigurerade."} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the Swedish dashboard does not contain %q", want)
+		}
+	}
+	// A raw key on the page means a lookup failed silently. Checked against
+	// the keys rather than the prefix, because the notes legitimately mention
+	// ops.NewRecorder and otel.WrapDB as things to go and call.
+	for _, key := range []string{"ops.health", "ops.job_queues", "ops.status", "ops.errors", "ops.scheduled_jobs"} {
+		if strings.Contains(body, key) {
+			t.Errorf("the raw key %q reached the page", key)
+		}
+	}
 }

@@ -1,6 +1,8 @@
 package render
 
 import (
+	"github.com/jimmitjoo/tjo/i18n"
+
 	"errors"
 	"fmt"
 	"html/template"
@@ -64,11 +66,17 @@ type TemplateData struct {
 	FloatMap        map[string]float32     // Float values to pass to template
 	Data            map[string]interface{} // Any other data to pass to template
 	CSRFToken       string                 // CSRF protection token for forms
-	Port            string                 // Server port
-	ServerName      string                 // Server name
-	Secure          bool                   // True if HTTPS
-	Error           string                 // One-time error message (from session)
-	Flash           string                 // One-time flash message (from session)
+
+	// Lang is the negotiated BCP 47 tag, for <html lang="...">.
+	Lang string
+	// Dir is "ltr" or "rtl", for <html dir="...">. A right-to-left reader
+	// needs the layout mirrored, not only the words replaced.
+	Dir        string
+	Port       string // Server port
+	ServerName string // Server name
+	Secure     bool   // True if HTTPS
+	Error      string // One-time error message (from session)
+	Flash      string // One-time flash message (from session)
 }
 
 func (g *Render) defaultData(td *TemplateData, r *http.Request) *TemplateData {
@@ -91,6 +99,10 @@ func (g *Render) defaultData(td *TemplateData, r *http.Request) *TemplateData {
 		td.Error = g.Session.PopString(r.Context(), "error")
 		td.Flash = g.Session.PopString(r.Context(), "flash")
 	}
+
+	printer := i18n.From(r.Context())
+	td.Lang = printer.Tag().String()
+	td.Dir = string(printer.Dir())
 
 	return td
 }
@@ -161,6 +173,18 @@ func (g *Render) JetPage(w http.ResponseWriter, r *http.Request, templateName st
 	}
 
 	td = g.defaultData(td, r)
+
+	// Translation reaches a Jet template as variables rather than as global
+	// functions, because the language is per request and a Jet set's globals
+	// are shared by every request that uses it.
+	//
+	//	{{ t("auth.invalid_credentials") }}
+	//	{{ n("cart.items", count, "count", count) }}
+	printer := i18n.From(r.Context())
+	vars.Set("t", func(key string, args ...interface{}) string { return printer.T(key, args...) })
+	vars.Set("n", func(key string, count int, args ...interface{}) string { return printer.N(key, count, args...) })
+	vars.Set("lang", td.Lang)
+	vars.Set("dir", td.Dir)
 
 	t, err := g.JetViews.GetTemplate(fmt.Sprintf("%s.jet", templateName))
 	if err != nil {

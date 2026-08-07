@@ -197,7 +197,7 @@ point of re-checking.
 | MVC Pattern | Optional | No | No | No | Yes | Yes | Yes | DI | No | Optional | No |
 | Admin panel | Model-driven CRUD | No | No | No | No | Yes | No | No | No | No | No |
 | Ops dashboard | Built-in | No | No | No | No | Yes | No | No | No | No | Local dashboard |
-| i18n | **No** ([#83](https://github.com/jimmitjoo/tjo/issues/83)) | No | No | No | No | No | Yes | Yes | No | **gi18n** | No |
+| i18n | CLDR plurals, RTL | No | No | No | No | No | Yes | Yes | No | **gi18n** | No |
 
 ### Production
 
@@ -242,14 +242,8 @@ point of re-checking.
   every quarter
 
 **Cons:**
-- **English only** - There is no i18n layer, and framework-produced strings are
-  hardcoded English. It rules out whole markets today.
-  ([#83](https://github.com/jimmitjoo/tjo/issues/83)). The only frameworks above
-  that beat it here are Iris and Revel, and Revel has not been pushed since
-  October 2023 — so the honest reading is "Iris does this and we do not", not
-  "we are behind the field"
-- **No social login** - Passwords, 2FA and passkeys are covered; "sign in with
-  Google" is not. ([#85](https://github.com/jimmitjoo/tjo/issues/85))
+- **No social login** is the remaining table-stakes gap in `auth`
+  ([#85](https://github.com/jimmitjoo/tjo/issues/85))
 - **New** - Small community, fewer Stack Overflow answers
 - **Opinionated** - Must do things the Tjo way
 - **Documentation maturity** - Still growing
