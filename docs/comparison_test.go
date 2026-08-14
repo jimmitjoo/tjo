@@ -84,7 +84,7 @@ var tjoClaims = map[string]claim{
 	"Hot Reload":                     {find: sourceContains("cmd/tjo/main.go", `arg2 == "--watch"`)},
 	"WebDAV":                         {find: never},
 	"OpenTelemetry":                  {find: fileExists("otel/go.mod")},
-	"PPROF":                          {find: sourceContains("ops/ops.go", "pprof")},
+	"PPROF":                          {find: imports("net/http/pprof")},
 	"i18n":                           {find: sourceContains("i18n/printer.go", "plural.Cardinal.MatchPlural")},
 }
 
@@ -240,6 +240,75 @@ func required(module string) func(*testing.T) bool {
 // never is for the rows that say No, so that the day one of them becomes true
 // the row is what fails.
 func never(*testing.T) bool { return false }
+
+// imports reports whether any non-test source file in the repository imports a
+// package.
+//
+// The whole tree rather than one file, because this backs a row that says No,
+// and a check that looks in one place only fails when the capability lands
+// exactly there. "PPROF | No" is the row #90 will make false; if that check
+// pointed at ops/ops.go and pprof arrived in ops/pprof.go, the row would stay
+// wrong and the test would stay green -- which is the failure this whole file
+// exists to prevent.
+func imports(pkg string) func(*testing.T) bool {
+	return func(t *testing.T) bool {
+		t.Helper()
+
+		quoted := `"` + pkg + `"`
+		var found bool
+
+		err := filepath.Walk(repoPath("."), func(path string, info os.FileInfo, err error) error {
+			if err != nil || found {
+				return err
+			}
+			if info.IsDir() {
+				switch info.Name() {
+				case ".git", "node_modules", "dist", "vendor":
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+
+			body, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return readErr
+			}
+			// The import block only, so a mention in a comment or in a
+			// template string does not count as shipping it.
+			found = strings.Contains(importBlock(string(body)), quoted)
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("scanning for %s: %v", pkg, err)
+		}
+
+		return found
+	}
+}
+
+// importBlock returns a file's import declaration, or "" when it has none.
+func importBlock(source string) string {
+	start := strings.Index(source, "\nimport ")
+	if start < 0 {
+		return ""
+	}
+
+	rest := source[start+len("\nimport "):]
+	if !strings.HasPrefix(rest, "(") {
+		if end := strings.IndexByte(rest, '\n'); end >= 0 {
+			return rest[:end]
+		}
+		return rest
+	}
+
+	if end := strings.Index(rest, "\n)"); end >= 0 {
+		return rest[:end]
+	}
+	return rest
+}
 
 // Each tool is one AddTool call, which is the definition the row means.
 var mcpTool = regexp.MustCompile(`AddTool\(`)

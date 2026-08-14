@@ -6,10 +6,10 @@
 
 ## How this was checked
 
-Star counts and last-push dates come from the GitHub API on **2026-08-14**,
-via `make comparison-check`.
-Feature rows for Tjo are checked against this repository's source at v0.12.0.
-Feature rows for **GoFr, GoFrame and Encore** were filled in on 2026-08-05 by
+Star counts and last-push dates come from the GitHub API on **2026-08-14**, via
+`make comparison-check`. Feature rows for Tjo are asserted against this
+repository's source on every build -- see "Rows this repository asserts about
+itself" below. Feature rows for **GoFr, GoFrame and Encore** were filled in on 2026-08-05 by
 reading their repository trees: package layouts, middleware directories and
 runtime packages. Rows for Echo and Fiber were corrected the same way.
 
