@@ -2,7 +2,7 @@ module github.com/jimmitjoo/tjo
 
 go 1.25.0
 
-toolchain go1.26.5
+toolchain go1.26.6
 
 require (
 	github.com/CloudyKit/jet/v6 v6.3.1

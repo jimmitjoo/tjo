@@ -2,7 +2,7 @@ module github.com/jimmitjoo/tjo/llm
 
 go 1.25.0
 
-toolchain go1.26.5
+toolchain go1.26.6
 
 require (
 	github.com/openai/openai-go/v3 v3.50.0

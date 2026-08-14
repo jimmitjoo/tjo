@@ -17,10 +17,17 @@ test-simple:
 # Same module list as the CI matrix, and for the same reason: this is a
 # workspace, so `./...` from the root never reaches the four submodules.
 # Mirrors the `vuln` job in .github/workflows/ci.yml -- keep them in step.
+## The toolchain the modules pin, so the scan measures the Go this project
+## builds with. `go run pkg@version` runs outside the current module, so go.mod's
+## toolchain line does not apply to it -- which is how this target spent a
+## release reporting seven standard-library vulnerabilities that the pinned
+## toolchain had already fixed.
+GOTOOLCHAIN_PINNED := $(shell awk '/^toolchain /{print $$2}' go.mod)
+
 vuln:
 	@for m in . email llm otel sms websocket; do \
 		echo "==> $$m"; \
-		(cd $$m && go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...) || exit 1; \
+		(cd $$m && GOTOOLCHAIN=$(GOTOOLCHAIN_PINNED) go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...) || exit 1; \
 	done
 
 ## lint-workflows: checks the GitHub Actions workflows
