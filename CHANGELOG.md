@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is 0, breaking changes may land in a minor release.
 
-## [Unreleased]
+## [0.14.0] - 2026-08-14
 
 ### Added — social login
 
