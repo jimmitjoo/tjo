@@ -1,6 +1,7 @@
 package security
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,7 +20,10 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 		w.Write([]byte("OK"))
 	}))
 
+	// Over TLS, because HSTS is only sent over a secure connection -- see
+	// TestHSTSIsNotSentOverPlainHTTP.
 	req := httptest.NewRequest("GET", "/test", nil)
+	req.TLS = &tls.ConnectionState{}
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
@@ -96,6 +100,7 @@ func TestHSTSHeader(t *testing.T) {
 			}))
 
 			req := httptest.NewRequest("GET", "/test", nil)
+			req.TLS = &tls.ConnectionState{}
 			w := httptest.NewRecorder()
 
 			handler.ServeHTTP(w, req)
@@ -462,4 +467,51 @@ func TestIPMiddlewaresHandleIPv6(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code, "whitelisted IPv6 client was rejected")
 	})
+}
+
+// HSTS over plain HTTP is forbidden by RFC 6797 §7.2, and the reason is
+// practical: a site that sends it before TLS works pins every visitor's browser
+// to HTTPS for a year, client-side, and no server-side change undoes that.
+//
+// Turning HSTS on and turning TLS on are separate acts. This is what stops the
+// first from breaking a site while the second is being arranged.
+func TestHSTSIsNotSentOverPlainHTTP(t *testing.T) {
+	config := SecurityConfig{HSTSMaxAge: 3600}
+	handler := SecurityHeadersMiddleware(config)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	cases := []struct {
+		name    string
+		prepare func(*http.Request)
+		want    string
+	}{
+		{"plain HTTP", func(*http.Request) {}, ""},
+		{"over TLS", func(r *http.Request) { r.TLS = &tls.ConnectionState{} }, "max-age=3600"},
+		{
+			// The common deployment: TLS terminated at a proxy, cleartext to
+			// this server. Refusing to trust the header would mean no HSTS for
+			// most production sites, which is the wrong failure.
+			"behind a proxy that terminated TLS",
+			func(r *http.Request) { r.Header.Set("X-Forwarded-Proto", "https") },
+			"max-age=3600",
+		},
+		{
+			"behind a proxy on plain HTTP",
+			func(r *http.Request) { r.Header.Set("X-Forwarded-Proto", "http") },
+			"",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/test", nil)
+			c.prepare(req)
+
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			if got := w.Header().Get("Strict-Transport-Security"); got != c.want {
+				t.Errorf("Strict-Transport-Security is %q, want %q", got, c.want)
+			}
+		})
+	}
 }

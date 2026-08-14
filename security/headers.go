@@ -94,8 +94,18 @@ func SecurityHeadersMiddleware(config SecurityConfig) func(next http.Handler) ht
 				w.Header().Set("Content-Security-Policy", config.ContentSecurityPolicy)
 			}
 
-			// HTTP Strict Transport Security
-			if config.HSTSMaxAge > 0 {
+			// HTTP Strict Transport Security, and only over a secure
+			// connection.
+			//
+			// RFC 6797 §7.2 forbids sending it over non-secure transport, and
+			// the reason is practical rather than pedantic: a site that sets
+			// HSTS before TLS actually works pins every visitor's browser to
+			// HTTPS for a year, cached client-side, and the site is then
+			// unreachable in a way no server-side change can undo. Turning
+			// HSTS on and TLS on are separate acts, and this is what stops the
+			// first from breaking the site while the second is still being
+			// arranged.
+			if config.HSTSMaxAge > 0 && isSecureRequest(r) {
 				hsts := fmt.Sprintf("max-age=%d", config.HSTSMaxAge)
 				if config.HSTSIncludeSubdomains {
 					hsts += "; includeSubDomains"
@@ -361,4 +371,19 @@ func SecureMiddleware(config SecurityConfig) func(next http.Handler) http.Handle
 
 		return handler
 	}
+}
+
+// isSecureRequest reports whether a request reached this process over TLS.
+//
+// X-Forwarded-Proto is trusted, because the common deployment terminates TLS at
+// a proxy and speaks cleartext to this server -- refusing to trust it would
+// mean no HSTS at all for most production sites, which is the wrong failure.
+// It is the proxy's job to overwrite that header rather than pass a client's
+// through; the worst a spoofed one does is make a visitor's own browser insist
+// on HTTPS.
+func isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
