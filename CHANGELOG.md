@@ -102,6 +102,41 @@ promoted embedded fields, `time.Time` as `date-time`, `[]byte` as base64,
 terminates in a `$ref`. Nullable is a type array, because 3.1 is JSON Schema
 2020-12 and `nullable` was a 3.0 keyword.
 
+### Added — the profiler, behind the admin authorizer
+
+`ops.Config{Profiler: true}` mounts a profiler as an admin page and links the
+dashboard to it. An authorized operator runs
+`go tool pprof http://host/_admin/p/pprof/heap`; everybody else gets a 404, not
+a 403, which would confirm to somebody guessing that the path is a profiler.
+
+Until now the answer to "the process is using four gigabytes" was to rebuild
+with `net/http/pprof` imported and deploy that, which is the worst possible
+moment to be changing the binary.
+
+**Nothing is registered on `http.DefaultServeMux`.** That package's `init`
+publishes `/debug/pprof/` there unconditionally, as a side effect of the import,
+so anything else in the binary that serves the default mux — a library's metrics
+endpoint, a health server somebody wired up in six lines — starts serving heap
+dumps. A heap dump is whatever was in memory: session identifiers, tokens,
+request bodies, decrypted secrets. A framework must not add an exfiltration
+endpoint to a program as a side effect of being imported, so the handlers here
+are written over `runtime/pprof` and `runtime/trace`, and a test asserts the
+default mux is untouched.
+
+**Its own permission.** `admin.ActionProfile`, deliberately absent from
+`admin.DefaultPermissions` — reading the process's memory is a different
+question from reading a table, and `RoleAuthorizer` refuses actions its map does
+not mention, so granting it is written down rather than inherited.
+
+`?seconds=` is capped at two minutes: unbounded, it holds a profiling session
+open for as long as the caller likes and no second profile can start meanwhile.
+No continuous profiling, no stored history, no flame graphs — `go tool pprof`
+reads the endpoint, and that is the interface.
+
+An admin page with a `Handler` may now serve a subtree (`/p/{page}/{rest...}`),
+authorized by the page's own action. A page with a `Body` may not: a request
+below a one-screen page is a request for something that does not exist.
+
 ### Added — a comparison table that can be contradicted
 
 `docs/framework-comparison.md` was wrong in both directions for an unknown

@@ -406,6 +406,31 @@ func (p *Panel) handleBulk(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, p.url("r", resource.slug()), http.StatusSeeOther)
 }
 
+// handlePageSubtree serves a path below a page, for a page that owns one.
+//
+// Only a page with a Handler has a subtree. A Body page renders one screen, so
+// a request below it is a request for something that does not exist -- refused
+// the same invisible way as an unknown page rather than rendering the page at
+// any suffix somebody tries.
+func (p *Panel) handlePageSubtree(w http.ResponseWriter, r *http.Request) {
+	ctx := p.context(r)
+
+	page := p.page(r.PathValue("page"))
+	if page == nil || page.Handler == nil {
+		p.deny(w, nil)
+		return
+	}
+
+	// The page's own action, not PostAction: the suffix is part of the page,
+	// not a way around its permission.
+	if err := p.allow(ctx, Query{Action: page.Action, Resource: page.Path}); err != nil {
+		p.deny(w, err)
+		return
+	}
+
+	page.Handler.ServeHTTP(w, r)
+}
+
 func (p *Panel) handlePage(w http.ResponseWriter, r *http.Request) {
 	ctx := p.context(r)
 

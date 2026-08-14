@@ -99,6 +99,7 @@
   "ops.nothing_scheduled": "Nothing scheduled.",
   "ops.oldest_waiting": "Oldest waiting",
   "ops.operation": "Operation",
+  "ops.profiler": "Profiler — heap, CPU and goroutine profiles for go tool pprof",
   "ops.queue": "Queue",
   "ops.response_time": "Response time",
   "ops.retry": "Retry",

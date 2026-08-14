@@ -84,7 +84,7 @@ var tjoClaims = map[string]claim{
 	"Hot Reload":                     {find: sourceContains("cmd/tjo/main.go", `arg2 == "--watch"`)},
 	"WebDAV":                         {find: never},
 	"OpenTelemetry":                  {find: fileExists("otel/go.mod")},
-	"PPROF":                          {find: imports("net/http/pprof")},
+	"PPROF":                          {find: sourceContains("ops/pprof.go", "func ProfilePage()")},
 	"i18n":                           {find: sourceContains("i18n/printer.go", "plural.Cardinal.MatchPlural")},
 }
 
@@ -244,12 +244,11 @@ func never(*testing.T) bool { return false }
 // imports reports whether any non-test source file in the repository imports a
 // package.
 //
-// The whole tree rather than one file, because this backs a row that says No,
-// and a check that looks in one place only fails when the capability lands
-// exactly there. "PPROF | No" is the row #90 will make false; if that check
-// pointed at ops/ops.go and pprof arrived in ops/pprof.go, the row would stay
-// wrong and the test would stay green -- which is the failure this whole file
-// exists to prevent.
+// The whole tree rather than one file, because a "No" row is the dangerous
+// shape: a check that looks in one place only fails when the capability lands
+// exactly there, so the row stays wrong and the test stays green. A "Yes" row
+// pinned to one symbol fails safely -- the symbol moves, the test goes red,
+// somebody fixes the check.
 func imports(pkg string) func(*testing.T) bool {
 	return func(t *testing.T) bool {
 		t.Helper()

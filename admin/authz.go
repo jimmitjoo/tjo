@@ -17,6 +17,17 @@ const (
 	ActionCreate Action = "create"
 	ActionUpdate Action = "update"
 	ActionDelete Action = "delete"
+
+	// ActionProfile is reading a runtime profile: a heap dump, a CPU profile,
+	// a goroutine trace.
+	//
+	// Its own action, and deliberately absent from DefaultPermissions, because
+	// a heap dump contains whatever was in memory when it was taken -- session
+	// identifiers, tokens, request bodies, decrypted secrets. Somebody who may
+	// read the ops dashboard should not thereby be able to download the
+	// process's memory, and RoleAuthorizer refuses actions its map does not
+	// mention, so granting it has to be a decision somebody wrote down.
+	ActionProfile Action = "profile"
 )
 
 // The two ways to refuse, and the difference between them is what a visitor
@@ -125,6 +136,13 @@ func RoleAuthorizer(store auth.OrganizationStore, perms auth.Permissions, who Or
 
 // DefaultPermissions is the mapping most applications want: reading needs read,
 // everything that writes needs write.
+//
+// ActionProfile is not in it. Reading a profile is reading the process's
+// memory, which is a different question from reading a table, and an
+// application that wants it says so:
+//
+//	permissions := admin.DefaultPermissions()
+//	permissions[admin.ActionProfile] = auth.PermManageOrg
 func DefaultPermissions() map[Action]auth.Permission {
 	return map[Action]auth.Permission{
 		ActionList:   auth.PermRead,

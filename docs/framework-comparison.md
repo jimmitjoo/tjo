@@ -251,7 +251,7 @@ point of re-checking.
 | OpenTelemetry | Built-in | Plugin | Plugin | Plugin | No | No | No | No | Built-in | gtrace | Built-in |
 | Health Checks | Yes | No | No | No | No | No | No | No | Built-in | No | Yes |
 | Metrics/Monitor | Yes | No | No | Plugin | No | Yes | No | Yes | Built-in | gmetric | Built-in |
-| PPROF | No | No | No | No | No | No | No | Built-in | No | Built-in | No |
+| PPROF | Behind the admin authorizer, own permission | No | No | No | No | No | No | Built-in | No | Built-in | No |
 
 ### Developer Experience
 

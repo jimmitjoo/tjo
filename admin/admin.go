@@ -278,6 +278,23 @@ func (p *Panel) Handler(mount string) http.Handler {
 	mux.HandleFunc("GET /p/{page}", p.handlePage)
 	mux.HandleFunc("POST /p/{page}", p.handlePagePost)
 
+	// A page with a Handler may serve a subtree, which is what lets one page
+	// expose something with paths of its own -- the profiler, whose endpoints
+	// are /heap, /profile, /trace and the rest. Authorized identically: the
+	// suffix is part of the page, not a way around it.
+	mux.HandleFunc("GET /p/{page}/{rest...}", p.handlePageSubtree)
+
+	// POST too, and to the same handler rather than to handlePagePost: a page
+	// that owns a subtree owns its methods. go tool pprof posts a list of
+	// addresses to the profiler's symbol endpoint, which is a read.
+	//
+	// Not a hole in the form protection: the whole mux is wrapped in
+	// http.CrossOriginProtection below, so a POST from another origin is
+	// refused whether or not the application mounted CSRF middleware -- and a
+	// command-line tool, which sends neither Sec-Fetch-Site nor Origin, is
+	// allowed through.
+	mux.HandleFunc("POST /p/{page}/{rest...}", p.handlePageSubtree)
+
 	// Cross-origin protection covers every mutating request whether or not the
 	// application mounted its own CSRF middleware. It is not a replacement for
 	// token CSRF -- it deliberately allows requests carrying neither

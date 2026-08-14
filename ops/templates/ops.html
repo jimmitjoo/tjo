@@ -4,6 +4,12 @@
 <p class="count" style="margin:-8px 0 16px">{{.T "ops.window" "window" .Window}}</p>
 {{end}}
 
+{{if .Profiler}}
+{{/* Relative, so it resolves wherever the panel is mounted. The trailing
+     slash is what makes the profiler's own relative links work. */}}
+<p class="count" style="margin:-8px 0 16px"><a href="pprof/">{{.T "ops.profiler"}}</a></p>
+{{end}}
+
 {{if .Health}}
 <div class="card">
   <h3>{{.T "ops.health"}}</h3>

@@ -193,7 +193,7 @@ import "github.com/jimmitjoo/tjo/ops"
 recorder := ops.NewRecorder(0)
 app.Logging.OTel.TracerProvider().RegisterSpanProcessor(recorder)
 
-panel.AddPage(ops.Page(ops.Config{
+panel.AddPage(ops.Pages(ops.Config{
     Recorder:  recorder,
     Queues:    []*jobs.SQLQueue{queue},
     Workflows: workflows,
@@ -206,7 +206,7 @@ panel.AddPage(ops.Page(ops.Config{
         }
         return out
     }),
-}))
+}))...
 ```
 
 Panels: grouped errors, slowest requests, slowest queries, queue depth and age,
@@ -216,6 +216,53 @@ they stopped on, cron last-run, and database health.
 Reading the page is `ActionList`; pressing its buttons is `ActionUpdate`, so an
 operator who may look at the queue but not retry jobs is expressible without
 configuring anything here.
+
+### The profiler
+
+```go
+ops.Config{
+    // ...
+    Profiler: true,
+}
+```
+
+Adds a second page and links the dashboard to it. An authorized operator then
+runs
+
+```bash
+go tool pprof http://host/_admin/p/pprof/heap
+```
+
+and everybody else gets a 404 — not a 403, which would confirm to somebody
+guessing that the path is a profiler.
+
+**It needs `admin.ActionProfile`, which is not in `admin.DefaultPermissions`.**
+A heap dump is whatever was in memory: session identifiers, tokens, request
+bodies, decrypted secrets. Somebody who may read the ops dashboard should not
+thereby be able to download the process. `RoleAuthorizer` refuses actions its
+map does not mention, so granting it is something somebody wrote down:
+
+```go
+permissions := admin.DefaultPermissions()
+permissions[admin.ActionProfile] = auth.PermManageOrg
+```
+
+Turning `Profiler` on and granting the action to nobody gives a page that
+refuses everyone, which is the safe way round.
+
+**Nothing is registered on `http.DefaultServeMux`.** `import _ "net/http/pprof"`
+publishes `/debug/pprof/` there as a side effect of the import, so anything else
+in the binary that serves the default mux starts serving heap dumps to whoever
+can reach it. This package writes its handlers over `runtime/pprof` and
+`runtime/trace` instead, and there is a test asserting the default mux is
+untouched — because the failure mode of getting it wrong is silent and total.
+
+`?seconds=` on `profile` and `trace` is capped at `ops.MaxProfileSeconds` (120).
+An unbounded one holds a profiling session open for as long as the caller likes,
+and no second profile can start while it runs.
+
+There is no continuous profiling, no stored history and no flame graphs.
+`go tool pprof` reads the endpoint; that is the interface.
 
 ### What the recorder is
 
