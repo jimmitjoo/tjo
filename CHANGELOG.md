@@ -140,19 +140,6 @@ redirects everything else with a **308** — a 301 turns a POST into a GET and
 drops its body. The challenge path is never redirected: that would make the
 certificate a prerequisite for obtaining the certificate.
 
-### Fixed — HSTS was sent over plain HTTP
-
-`Strict-Transport-Security` was set on every response once `HSTSMaxAge` was
-configured, including cleartext ones. RFC 6797 §7.2 forbids that, and the reason
-is practical: a site that sends HSTS before TLS works pins every visitor's
-browser to HTTPS for a year, cached client-side, and no server-side change
-undoes it. Enabling HSTS and enabling TLS are separate acts, and the first must
-not be able to break a site while the second is being arranged.
-
-It is now sent only over TLS, or behind a proxy that sets
-`X-Forwarded-Proto: https` — which is the common deployment and would otherwise
-lose HSTS entirely.
-
 ### Added — the profiler, behind the admin authorizer
 
 `ops.Config{Profiler: true}` mounts a profiler as an admin page and links the
@@ -217,6 +204,14 @@ behind.
 
 ### Fixed
 
+- **HSTS was sent over plain HTTP.** RFC 6797 §7.2 forbids that, and the reason
+  is practical: a site that sends HSTS before TLS works pins every visitor's
+  browser to HTTPS for a year, cached client-side, and no server-side change
+  undoes it. Enabling HSTS and enabling TLS are separate acts, and the first
+  must not be able to break a site while the second is being arranged. It is now
+  sent only over TLS, or behind a proxy that sets
+  `X-Forwarded-Proto: https` — which is the common deployment and would otherwise lose HSTS
+  entirely.
 - **`tjo make api-controller` generated a file that did not compile**, and had
   for several releases. It referenced `api.Controller`, `api.NewController`,
   `api.NewValidationError`, `c.WriteJSON`, `c.ErrorJSON`, `c.ValidateStruct`
