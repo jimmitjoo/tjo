@@ -1,231 +1,128 @@
 package controllers
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/jimmitjoo/tjo/api"
 )
 
-func Test$CONTROLLERNAME$Controller(t *testing.T) {
+// The drift check.
+//
+// Each handler is called and its answer measured against the operation it was
+// registered with. Change a response type, a status code or a field name
+// without changing the declaration, and this is what fails -- which is the only
+// thing that keeps the OpenAPI document honest.
+//
+// No database and no network: the handlers are called directly.
+func Test$CONTROLLERNAME$ControllerMatchesItsDescriptions(t *testing.T) {
 	controller := New$CONTROLLERNAME$Controller()
 
-	t.Run("List", func(t *testing.T) {
-		req, err := http.NewRequest("GET", "/$ROUTE_PREFIX$", nil)
-		require.NoError(t, err)
-
-		rr := httptest.NewRecorder()
-		controller.List(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-		
-		var response map[string]interface{}
-		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		require.NoError(t, err)
-		
-		assert.True(t, response["success"].(bool))
-		assert.NotNil(t, response["data"])
-		assert.NotNil(t, response["meta"])
-	})
-
-	t.Run("List with pagination", func(t *testing.T) {
-		req, err := http.NewRequest("GET", "/$ROUTE_PREFIX$?page=2&limit=5", nil)
-		require.NoError(t, err)
-
-		rr := httptest.NewRecorder()
-		controller.List(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-		
-		var response map[string]interface{}
-		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		require.NoError(t, err)
-		
-		meta := response["meta"].(map[string]interface{})
-		assert.Equal(t, float64(2), meta["page"])
-		assert.Equal(t, float64(5), meta["limit"])
-	})
-
-	t.Run("Get", func(t *testing.T) {
-		req, err := http.NewRequest("GET", "/$ROUTE_PREFIX$/1", nil)
-		require.NoError(t, err)
-
-		// Setup chi context
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("id", "1")
-		req = req.WithContext(chi.NewRouteContext().WithContext(req.Context()))
-
-		rr := httptest.NewRecorder()
-		controller.Get(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-		
-		var response map[string]interface{}
-		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		require.NoError(t, err)
-		
-		assert.True(t, response["success"].(bool))
-		assert.NotNil(t, response["data"])
-	})
-
-	t.Run("Get with invalid ID", func(t *testing.T) {
-		req, err := http.NewRequest("GET", "/$ROUTE_PREFIX$/invalid", nil)
-		require.NoError(t, err)
-
-		// Setup chi context
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("id", "invalid")
-		req = req.WithContext(chi.NewRouteContext().WithContext(req.Context()))
-
-		rr := httptest.NewRecorder()
-		controller.Get(rr, req)
-
-		assert.Equal(t, http.StatusBadRequest, rr.Code)
-	})
-
-	t.Run("Create", func(t *testing.T) {
-		payload := Create$CONTROLLERNAME$Request{
-			Name:        "Test $CONTROLLERNAME$",
-			Description: "Test Description",
-		}
-		
-		jsonBody, err := json.Marshal(payload)
-		require.NoError(t, err)
-
-		req, err := http.NewRequest("POST", "/$ROUTE_PREFIX$", bytes.NewBuffer(jsonBody))
-		require.NoError(t, err)
-		req.Header.Set("Content-Type", "application/json")
-
-		rr := httptest.NewRecorder()
-		controller.Create(rr, req)
-
-		assert.Equal(t, http.StatusCreated, rr.Code)
-		
-		var response map[string]interface{}
-		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		require.NoError(t, err)
-		
-		assert.True(t, response["success"].(bool))
-		assert.NotNil(t, response["data"])
-		assert.Contains(t, response["message"], "created successfully")
-	})
-
-	t.Run("Create with invalid JSON", func(t *testing.T) {
-		req, err := http.NewRequest("POST", "/$ROUTE_PREFIX$", bytes.NewBuffer([]byte("invalid json")))
-		require.NoError(t, err)
-		req.Header.Set("Content-Type", "application/json")
-
-		rr := httptest.NewRecorder()
-		controller.Create(rr, req)
-
-		assert.Equal(t, http.StatusBadRequest, rr.Code)
-	})
-
-	t.Run("Create with missing required fields", func(t *testing.T) {
-		payload := Create$CONTROLLERNAME$Request{
-			// Missing required Name field
-			Description: "Test Description",
-		}
-		
-		jsonBody, err := json.Marshal(payload)
-		require.NoError(t, err)
-
-		req, err := http.NewRequest("POST", "/$ROUTE_PREFIX$", bytes.NewBuffer(jsonBody))
-		require.NoError(t, err)
-		req.Header.Set("Content-Type", "application/json")
-
-		rr := httptest.NewRecorder()
-		controller.Create(rr, req)
-
-		assert.Equal(t, http.StatusUnprocessableEntity, rr.Code)
-	})
-
-	t.Run("Update", func(t *testing.T) {
-		payload := Update$CONTROLLERNAME$Request{
-			Name:        "Updated $CONTROLLERNAME$",
-			Description: "Updated Description",
-		}
-		
-		jsonBody, err := json.Marshal(payload)
-		require.NoError(t, err)
-
-		req, err := http.NewRequest("PUT", "/$ROUTE_PREFIX$/1", bytes.NewBuffer(jsonBody))
-		require.NoError(t, err)
-		req.Header.Set("Content-Type", "application/json")
-
-		// Setup chi context
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("id", "1")
-		req = req.WithContext(chi.NewRouteContext().WithContext(req.Context()))
-
-		rr := httptest.NewRecorder()
-		controller.Update(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-		
-		var response map[string]interface{}
-		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		require.NoError(t, err)
-		
-		assert.True(t, response["success"].(bool))
-		assert.Contains(t, response["message"], "updated successfully")
-	})
-
-	t.Run("Delete", func(t *testing.T) {
-		req, err := http.NewRequest("DELETE", "/$ROUTE_PREFIX$/1", nil)
-		require.NoError(t, err)
-
-		// Setup chi context
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("id", "1")
-		req = req.WithContext(chi.NewRouteContext().WithContext(req.Context()))
-
-		rr := httptest.NewRecorder()
-		controller.Delete(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-		
-		var response map[string]interface{}
-		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		require.NoError(t, err)
-		
-		assert.True(t, response["success"].(bool))
-		assert.Contains(t, response["message"], "deleted successfully")
-	})
-}
-
-func Test$CONTROLLERNAME$Routes(t *testing.T) {
-	controller := New$CONTROLLERNAME$Controller()
-	router := controller.Routes()
-
-	// Test that routes are properly registered
-	testCases := []struct {
-		method string
-		path   string
+	cases := []struct {
+		name    string
+		op      api.Op
+		want    int
+		request *http.Request
+		call    func(http.ResponseWriter, *http.Request)
 	}{
-		{"GET", "/"},
-		{"POST", "/"},
-		{"GET", "/123"},
-		{"PUT", "/123"},
-		{"DELETE", "/123"},
+		{"list", List$CONTROLLERNAME$sOp, http.StatusOK,
+			httptest.NewRequest("GET", "/$ROUTE_PREFIX$?page=2&limit=5", nil), controller.List},
+		{"get", Get$CONTROLLERNAME$Op, http.StatusOK,
+			with$CONTROLLERNAME$Param(httptest.NewRequest("GET", "/$ROUTE_PREFIX$/1", nil), "id", "1"), controller.Get},
+		{"create", Create$CONTROLLERNAME$Op, http.StatusCreated,
+			httptest.NewRequest("POST", "/$ROUTE_PREFIX$", strings.NewReader(`{"name":"Example"}`)), controller.Create},
+		{"update", Update$CONTROLLERNAME$Op, http.StatusOK,
+			with$CONTROLLERNAME$Param(httptest.NewRequest("PUT", "/$ROUTE_PREFIX$/1", strings.NewReader(`{"name":"Example"}`)), "id", "1"), controller.Update},
+		{"delete", Delete$CONTROLLERNAME$Op, http.StatusNoContent,
+			with$CONTROLLERNAME$Param(httptest.NewRequest("DELETE", "/$ROUTE_PREFIX$/1", nil), "id", "1"), controller.Delete},
 	}
 
-	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("%s %s", tc.method, tc.path), func(t *testing.T) {
-			req, err := http.NewRequest(tc.method, tc.path, nil)
-			require.NoError(t, err)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c.call(rec, c.request)
 
-			rr := httptest.NewRecorder()
-			router.ServeHTTP(rr, req)
+			// The expected status is asserted before the body, and separately
+			// from CheckResponse, because CheckResponse accepts any status the
+			// operation declares -- including its error ones. Without this a
+			// handler that answered 400 for every request would pass, having
+			// tested nothing at all.
+			if rec.Code != c.want {
+				t.Fatalf("answered %d, want %d\n\nbody: %s", rec.Code, c.want, rec.Body.String())
+			}
 
-			// Should not return 404 (route not found)
-			assert.NotEqual(t, http.StatusNotFound, rr.Code)
+			if err := api.CheckResponse(c.op, rec.Code, rec.Body.Bytes()); err != nil {
+				t.Fatalf("%v\n\nbody: %s", err, rec.Body.String())
+			}
 		})
 	}
+}
+
+// The declared error responses have to be real too, or a client generator
+// produces an error type nothing ever sends.
+func Test$CONTROLLERNAME$ControllerErrorsMatchTheirDescriptions(t *testing.T) {
+	controller := New$CONTROLLERNAME$Controller()
+
+	cases := []struct {
+		name    string
+		op      api.Op
+		want    int
+		request *http.Request
+		call    func(http.ResponseWriter, *http.Request)
+	}{
+		{"an id that is not a number", Get$CONTROLLERNAME$Op, http.StatusBadRequest,
+			with$CONTROLLERNAME$Param(httptest.NewRequest("GET", "/$ROUTE_PREFIX$/x", nil), "id", "x"), controller.Get},
+		{"a body that is not JSON", Create$CONTROLLERNAME$Op, http.StatusBadRequest,
+			httptest.NewRequest("POST", "/$ROUTE_PREFIX$", strings.NewReader(`{`)), controller.Create},
+		{"a body missing a required field", Create$CONTROLLERNAME$Op, http.StatusBadRequest,
+			httptest.NewRequest("POST", "/$ROUTE_PREFIX$", strings.NewReader(`{}`)), controller.Create},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c.call(rec, c.request)
+
+			if rec.Code != c.want {
+				t.Fatalf("answered %d, want %d\n\nbody: %s", rec.Code, c.want, rec.Body.String())
+			}
+
+			if err := api.CheckResponse(c.op, rec.Code, rec.Body.Bytes()); err != nil {
+				t.Fatalf("%v\n\nbody: %s", err, rec.Body.String())
+			}
+		})
+	}
+}
+
+// Every route this controller registers is described, so none of them is
+// missing from the document.
+func Test$CONTROLLERNAME$ControllerRoutesAreAllDescribed(t *testing.T) {
+	routes, ok := New$CONTROLLERNAME$Controller().Routes().(chi.Routes)
+	if !ok {
+		t.Fatal("the router does not expose its routes")
+	}
+
+	for _, route := range api.Undescribed(routes) {
+		t.Errorf("%s %s has no api.Describe", route.Method, route.Pattern)
+	}
+}
+
+// with$CONTROLLERNAME$Param puts a path parameter where the router would have,
+// so a handler can be called without one in front of it.
+//
+// A chi route context, because api.Param reads chi's -- SetPathValue would
+// leave api.Param returning "", every id would fail to parse, and every case
+// would quietly land on the declared 400 and pass.
+//
+// Named for the controller because a project generates one per resource and
+// their tests share a package.
+func with$CONTROLLERNAME$Param(r *http.Request, key, value string) *http.Request {
+	routeContext := chi.NewRouteContext()
+	routeContext.URLParams.Add(key, value)
+
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, routeContext))
 }

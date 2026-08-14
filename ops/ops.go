@@ -91,6 +91,28 @@ type Config struct {
 
 	// Rows caps each table. Zero means DefaultRows.
 	Rows int
+
+	// Profiler mounts ProfilePage alongside the dashboard and links to it.
+	//
+	// Off by default: a heap dump is whatever was in memory, so publishing one
+	// is a decision. It needs admin.ActionProfile, which is not in
+	// admin.DefaultPermissions -- so turning this on and granting nobody the
+	// action gives a page that refuses everyone, which is the safe way round.
+	Profiler bool
+}
+
+// Pages returns the dashboard, and the profiler when cfg.Profiler is set.
+//
+//	panel.AddPage(ops.Pages(cfg)...)
+//
+// One call rather than two, so the dashboard's link to the profiler and the
+// profiler being mounted cannot disagree.
+func Pages(cfg Config) []admin.Page {
+	pages := []admin.Page{Page(cfg)}
+	if cfg.Profiler {
+		pages = append(pages, ProfilePage())
+	}
+	return pages
 }
 
 // DefaultRows is how many entries each panel shows.
@@ -167,6 +189,7 @@ type dashboard struct {
 	p *i18n.Printer
 
 	Window     string
+	Profiler   bool
 	Errors     []ErrorGroup
 	Requests   []Timing
 	Queries    []Timing
@@ -245,7 +268,7 @@ func render(ctx admin.Context, cfg Config) (admin.Content, error) {
 	}
 
 	printer := i18n.From(ctx)
-	data := dashboard{p: printer, Notes: map[string]string{}}
+	data := dashboard{p: printer, Notes: map[string]string{}, Profiler: cfg.Profiler}
 
 	// Errors, slow requests, slow queries.
 	if cfg.Recorder == nil {

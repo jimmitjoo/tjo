@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jimmitjoo/tjo/database"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jimmitjoo/tjo/database"
 	_ "modernc.org/sqlite"
 )
 

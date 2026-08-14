@@ -1,4 +1,4 @@
-.PHONY: test test-simple cover coverage build_cli build clean release release-push vuln lint-workflows
+.PHONY: test test-simple cover coverage build_cli build clean release release-push vuln lint-workflows comparison-check
 
 # Get version from git tag (exact match), fallback to "dev"
 VERSION := $(shell git describe --tags --exact-match 2>/dev/null || echo "dev")
@@ -17,10 +17,17 @@ test-simple:
 # Same module list as the CI matrix, and for the same reason: this is a
 # workspace, so `./...` from the root never reaches the four submodules.
 # Mirrors the `vuln` job in .github/workflows/ci.yml -- keep them in step.
+## The toolchain the modules pin, so the scan measures the Go this project
+## builds with. `go run pkg@version` runs outside the current module, so go.mod's
+## toolchain line does not apply to it -- which is how this target spent a
+## release reporting seven standard-library vulnerabilities that the pinned
+## toolchain had already fixed.
+GOTOOLCHAIN_PINNED := $(shell awk '/^toolchain /{print $$2}' go.mod)
+
 vuln:
 	@for m in . email llm otel sms websocket; do \
 		echo "==> $$m"; \
-		(cd $$m && go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...) || exit 1; \
+		(cd $$m && GOTOOLCHAIN=$(GOTOOLCHAIN_PINNED) go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...) || exit 1; \
 	done
 
 ## lint-workflows: checks the GitHub Actions workflows
@@ -162,6 +169,7 @@ release-push:
 	@echo "Once it finishes:"
 	@echo "  go mod tidy && git commit -am 'Tidy go.sum now the v$(v) tags are published'"
 	@echo "  make release-check"
+	@echo "  make comparison-check   # refreshes docs/framework-comparison.md's landscape"
 
 ## release-check: verifies every module the way a user sees it
 ##
@@ -179,6 +187,22 @@ release-check:
 		(cd $$m && GOWORK=off go build ./... >/dev/null 2>&1 && echo "  $$m	build OK") || echo "  $$m	BUILD FAILED"; \
 		(cd $$m && GOWORK=off go test -short ./... >/dev/null 2>&1 && echo "  $$m	test OK") || echo "  $$m	TEST FAILED"; \
 	done
+	@echo ""
+	@echo "Still to run by hand, because it needs the network:"
+	@echo "  make comparison-check"
+
+## comparison-check: refreshes the framework landscape from the GitHub API
+##
+## Reports the current stars and last-push date for every framework tabulated in
+## docs/framework-comparison.md, names any whose recorded date has drifted, and
+## flags any not pushed in a year -- a column whose repository has been quiet
+## for that long should not read as a live option.
+##
+## Not in CI, deliberately: it needs the network, so it would fail for reasons
+## unrelated to the change under test. Run it before a release. Set GITHUB_TOKEN
+## to avoid the sixty-an-hour anonymous rate limit.
+comparison-check:
+	@TJO_COMPARISON_CHECK=1 go test ./docs/ -run TestTheTabulatedFrameworksAreStillAlive -v -count=1
 
 clean:
 	@rm -rf ./dist/*

@@ -64,6 +64,11 @@ type Server struct {
 	Port       string
 	Secure     bool
 	URL        string
+
+	// TLS serves HTTPS from this binary. Nil, and nothing happens: the common
+	// deployment terminates TLS upstream and this framework speaks cleartext
+	// HTTP/2 to the proxy. See TLSConfig.
+	TLS *TLSConfig
 }
 
 // New initializes the Tjo framework with optional modules.
@@ -318,6 +323,14 @@ func (g *Tjo) ListenAndServe() error {
 	protocols.SetHTTP2(true)
 	protocols.SetUnencryptedHTTP2(true)
 
+	// HTTPS, when the application asked for it. Built before anything starts,
+	// so a bad certificate path or a missing host policy is a start-up error
+	// rather than a listener that is up and cannot answer.
+	tlsSettings, acmeChallenge, err := g.Server.TLS.tlsConfig()
+	if err != nil {
+		return err
+	}
+
 	srv := &http.Server{
 		Addr:        fmt.Sprintf(":%d", g.Config.Server.Port),
 		ErrorLog:    g.Logging.Error,
@@ -325,6 +338,7 @@ func (g *Tjo) ListenAndServe() error {
 		Protocols:   protocols,
 		IdleTimeout: 30 * time.Second,
 		ReadTimeout: 30 * time.Second,
+		TLSConfig:   tlsSettings,
 		// No WriteTimeout: it is an absolute deadline from the start of the
 		// request, not an idle timeout, so it cuts every stream at ten minutes
 		// regardless of activity. Streams bound individual writes with
@@ -387,10 +401,39 @@ func (g *Tjo) ListenAndServe() error {
 		}
 
 		notifyReady()
+
+		if tlsSettings != nil {
+			// The certificates are already in TLSConfig, from a file or from
+			// autocert's GetCertificate, so the file arguments are empty.
+			srv.Addr = g.Server.TLS.addr()
+			if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				serverErr <- err
+			}
+			return
+		}
+
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			serverErr <- err
 		}
 	}()
+
+	// The plain-HTTP listener, which redirects and -- with autocert -- answers
+	// ACME challenges. Its failure is logged rather than fatal: a port 80
+	// already in use costs the HTTP-01 challenge and the redirect, and
+	// TLS-ALPN-01 still obtains certificates on 443.
+	var redirectServer *http.Server
+	if tlsSettings != nil {
+		if addr := g.Server.TLS.redirectAddr(); addr != "" {
+			redirectFailed := make(chan error, 1)
+			redirectServer = g.serveRedirect(addr, acmeChallenge, redirectFailed)
+
+			go func() {
+				if err := <-redirectFailed; err != nil {
+					g.Logging.Error.Printf("the plain-HTTP listener on %s stopped: %v", addr, err)
+				}
+			}()
+		}
+	}
 
 	// Wait for shutdown signal or server error
 	var serverFailed error
@@ -424,6 +467,13 @@ func (g *Tjo) ListenAndServe() error {
 	// Create context with timeout for graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// The redirect listener first, and without waiting: it serves redirects and
+	// ACME challenges, so there is nothing in flight worth draining, and
+	// leaving it up would keep answering while the real server is going away.
+	if redirectServer != nil {
+		redirectServer.Close()
+	}
 
 	// Shutdown HTTP server first (waits for in-flight requests)
 	if err := srv.Shutdown(ctx); err != nil {

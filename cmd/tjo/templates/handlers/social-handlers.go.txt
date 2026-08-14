@@ -1,0 +1,350 @@
+package handlers
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"errors"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"$APPURL$/data"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jimmitjoo/tjo/auth"
+	"github.com/jimmitjoo/tjo/i18n"
+)
+
+// Signing in with an identity provider.
+//
+// Add credentials to .env and the buttons appear; leave them out and nothing
+// is registered, the routes 404, and the login page shows a password form.
+// Configuration is what turns a provider on, so a scaffolded project does not
+// ship dead buttons:
+//
+//	GOOGLE_CLIENT_ID=...
+//	GOOGLE_CLIENT_SECRET=...
+//
+//	GITHUB_CLIENT_ID=...
+//	GITHUB_CLIENT_SECRET=...
+//
+//	MICROSOFT_TENANT=<a tenant id, or "consumers">
+//	MICROSOFT_CLIENT_ID=...
+//	MICROSOFT_CLIENT_SECRET=...
+//
+//	OIDC_NAME=okta          # any OpenID provider, by discovery
+//	OIDC_ISSUER=https://example.okta.com
+//	OIDC_CLIENT_ID=...
+//	OIDC_CLIENT_SECRET=...
+//
+// The redirect URL to register with each provider is
+// <APP_URL>/auth/<name>/callback.
+//
+// # What this does not decide
+//
+// Which account a verified identity signs into. auth.Resolve decides that, and
+// its rules are worth reading before changing anything here: an identity is
+// attached to an existing account only by somebody who is already signed in,
+// never by matching an email address, because matching on an email is how
+// social login becomes account takeover.
+
+var (
+	socialProviders     map[string]*auth.OAuth
+	socialOrder         []string
+	socialProvidersOnce sync.Once
+)
+
+// SocialProvider is one button on the login page.
+type SocialProvider struct {
+	// Name is the stable name in URLs and in the identity store.
+	Name string
+
+	// Label is what the button says. Derived from the name rather than
+	// translated, because "Google" is Google in every language.
+	Label string
+}
+
+// SocialProviders returns the configured providers, in the order they appear on
+// the login page. Nil when none are configured, which is what makes the login
+// page show a plain password form in a project that has not set any up.
+func (h *Handlers) SocialProviders() []SocialProvider {
+	h.loadSocialProviders()
+
+	providers := make([]SocialProvider, 0, len(socialOrder))
+	for _, name := range socialOrder {
+		providers = append(providers, SocialProvider{
+			Name:  name,
+			Label: strings.ToUpper(name[:1]) + name[1:],
+		})
+	}
+	return providers
+}
+
+func (h *Handlers) socialProvider(name string) *auth.OAuth {
+	h.loadSocialProviders()
+	return socialProviders[name]
+}
+
+func (h *Handlers) loadSocialProviders() {
+	socialProvidersOnce.Do(func() {
+		socialProviders = map[string]*auth.OAuth{}
+
+		callback := func(name string) string {
+			return strings.TrimRight(h.App.Server.URL, "/") + "/auth/" + name + "/callback"
+		}
+
+		configured := []auth.Provider{}
+
+		if id, secret := os.Getenv("GOOGLE_CLIENT_ID"), os.Getenv("GOOGLE_CLIENT_SECRET"); id != "" && secret != "" {
+			configured = append(configured, auth.Google(id, secret, callback("google")))
+		}
+		if id, secret := os.Getenv("GITHUB_CLIENT_ID"), os.Getenv("GITHUB_CLIENT_SECRET"); id != "" && secret != "" {
+			configured = append(configured, auth.GitHub(id, secret, callback("github")))
+		}
+		if id, secret := os.Getenv("MICROSOFT_CLIENT_ID"), os.Getenv("MICROSOFT_CLIENT_SECRET"); id != "" && secret != "" {
+			configured = append(configured, auth.Microsoft(os.Getenv("MICROSOFT_TENANT"), id, secret, callback("microsoft")))
+		}
+		if issuer, id := os.Getenv("OIDC_ISSUER"), os.Getenv("OIDC_CLIENT_ID"); issuer != "" && id != "" {
+			name := os.Getenv("OIDC_NAME")
+			if name == "" {
+				name = "oidc"
+			}
+			configured = append(configured, auth.OIDC(name, issuer, id, os.Getenv("OIDC_CLIENT_SECRET"), callback(name)))
+		}
+
+		for _, provider := range configured {
+			// Discovery happens here, once, so a provider that is misconfigured
+			// says so in the log at start-up rather than to the first person
+			// who clicks its button.
+			o, err := auth.NewOAuth(context.Background(), provider)
+			if err != nil {
+				h.App.Logging.Error.Printf("social login: %s is configured but unusable: %v", provider.Name, err)
+				continue
+			}
+			socialProviders[provider.Name] = o
+			socialOrder = append(socialOrder, provider.Name)
+		}
+	})
+}
+
+var (
+	identityStore     *auth.SQLIdentityStore
+	identityStoreOnce sync.Once
+)
+
+// Identities returns the identity store, preparing its table on first use.
+func (h *Handlers) Identities() *auth.SQLIdentityStore {
+	identityStoreOnce.Do(func() {
+		identityStore = auth.NewSQLIdentityStore(h.App.Data.DB.Pool, resetDialect(h.App.Config.Database.Type))
+		if err := identityStore.Migrate(context.Background()); err != nil {
+			h.App.Logging.Error.Println("error preparing the identity table:", err)
+		}
+	})
+	return identityStore
+}
+
+// socialStateKey is where the ceremony's state lives between the redirect and
+// the callback. Server-side, in the session, because it holds the PKCE verifier
+// and the nonce -- both secrets for the length of one sign-in.
+const socialStateKey = "social_ceremony"
+
+// SocialBegin sends the browser to a provider.
+func (h *Handlers) SocialBegin(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "provider")
+
+	o := h.socialProvider(name)
+	if o == nil {
+		h.App.ErrorStatus(w, http.StatusNotFound)
+		return
+	}
+
+	ceremony, err := o.Begin(r.Context())
+	if err != nil {
+		h.App.Logging.Error.Println("error beginning a social sign-in:", err)
+		h.App.ErrorStatus(w, http.StatusInternalServerError)
+		return
+	}
+
+	h.App.HTTP.Session.Put(r.Context(), socialStateKey, ceremony.State)
+	http.Redirect(w, r, ceremony.URL, http.StatusSeeOther)
+}
+
+// SocialCallback completes a sign-in.
+func (h *Handlers) SocialCallback(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	name := chi.URLParam(r, "provider")
+
+	o := h.socialProvider(name)
+	if o == nil {
+		h.App.ErrorStatus(w, http.StatusNotFound)
+		return
+	}
+
+	// Pop, not Get. The state is single-use: leaving it in the session lets the
+	// same authorization code be presented again, and a replay window bounded
+	// only by a fifteen-minute TTL is still a replay window.
+	state, ok := h.App.HTTP.Session.Pop(ctx, socialStateKey).([]byte)
+	if !ok || len(state) == 0 {
+		h.socialFailure(w, r, "auth.social.expired", nil)
+		return
+	}
+
+	identity, err := o.Finish(ctx, state, r)
+	if err != nil {
+		h.socialFailure(w, r, "auth.social.failed", err)
+		return
+	}
+
+	// The account already signed in, if any. This is the only thing that lets
+	// an identity attach to an existing account, and it is proof of ownership
+	// because getting it required signing in.
+	var current string
+	if id := h.App.HTTP.Session.GetInt(ctx, "userID"); id > 0 {
+		current = strconv.Itoa(id)
+	}
+
+	resolution, err := auth.Resolve(ctx, h.Identities(), identity, auth.ResolveOptions{
+		CurrentAccountID: current,
+		Accounts:         data.Accounts{},
+	})
+	if errors.Is(err, auth.ErrLinkedElsewhere) {
+		h.socialFailure(w, r, "auth.social.linked_elsewhere", nil)
+		return
+	}
+	if err != nil {
+		h.socialFailure(w, r, "auth.social.failed", err)
+		return
+	}
+
+	switch resolution.Outcome {
+	case auth.NeedsLogin:
+		// An account already uses this address and this person has not proved
+		// it is theirs. They sign in, then run the same flow again -- which
+		// lands on the CurrentAccountID path above and links.
+		h.App.HTTP.Session.Put(ctx, "error", i18n.From(ctx).T("auth.social.account_exists"))
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+
+	case auth.NoAccount:
+		// users.email is NOT NULL UNIQUE, so an identity with no address makes
+		// one account and then a constraint violation. Said plainly here rather
+		// than surfacing as "sign-in failed" on the second person it happens
+		// to. GitHub identities reach this only when the account has no
+		// verified primary address; other providers when they return no email
+		// at all.
+		if identity.Email == "" {
+			h.socialFailure(w, r, "auth.social.no_email", nil)
+			return
+		}
+
+		user, err := h.createUserFromIdentity(identity)
+		if err != nil {
+			h.socialFailure(w, r, "auth.social.failed", err)
+			return
+		}
+		if err := auth.Link(ctx, h.Identities(), strconv.Itoa(user.ID), identity); err != nil {
+			h.socialFailure(w, r, "auth.social.failed", err)
+			return
+		}
+		h.completeLogin(w, r, user, false)
+		return
+	}
+
+	id, err := strconv.Atoi(resolution.AccountID)
+	if err != nil {
+		h.socialFailure(w, r, "auth.social.failed", err)
+		return
+	}
+
+	user, err := h.Models.Users.Find(id)
+	if err != nil {
+		h.socialFailure(w, r, "auth.social.failed", err)
+		return
+	}
+
+	// Not merely a redirect: completeLogin renews the session and rotates the
+	// CSRF token, and it is the only place in this application where a session
+	// becomes authenticated. A social path that set userID itself would be the
+	// second place, and the second place is the one that forgets.
+	h.completeLogin(w, r, user, false)
+}
+
+// createUserFromIdentity makes an account for a first-time visitor.
+//
+// The password is random and nobody -- including this handler -- ever learns
+// it. The account is reached by its provider from now on; somebody who later
+// wants a password uses the forgot-password flow, which is a mail to an address
+// they demonstrably control.
+//
+// Active is 1 because the provider has already established that somebody is
+// there, which is all the activation mail was ever checking.
+func (h *Handlers) createUserFromIdentity(identity *auth.Identity) (*data.User, error) {
+	password := make([]byte, 32)
+	if _, err := rand.Read(password); err != nil {
+		return nil, err
+	}
+
+	first, last, _ := strings.Cut(identity.Name, " ")
+
+	user := data.User{
+		FirstName: first,
+		LastName:  last,
+		Email:     identity.Email,
+		Password:  base64.RawURLEncoding.EncodeToString(password),
+		Active:    1,
+	}
+
+	return h.Models.Users.Create(user)
+}
+
+// SocialUnlink detaches a provider from the signed-in account.
+func (h *Handlers) SocialUnlink(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	id := h.App.HTTP.Session.GetInt(ctx, "userID")
+	if id <= 0 {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := h.Models.Users.Find(id)
+	if err != nil {
+		h.App.ErrorStatus(w, http.StatusInternalServerError)
+		return
+	}
+
+	// The last argument is how many other ways in this application knows about
+	// that auth.Unlink cannot see -- passkeys, typically. A scaffolded project
+	// has none; wire in len(passkeys) here if you add them, or unlinking will
+	// be refused for an account that is in fact reachable.
+	err = auth.Unlink(ctx, h.Identities(), user, chi.URLParam(r, "provider"), 0)
+
+	switch {
+	case errors.Is(err, auth.ErrLastIdentity):
+		h.App.HTTP.Session.Put(ctx, "error", i18n.From(ctx).T("auth.social.last_identity"))
+	case err != nil:
+		h.App.Logging.Error.Println("error unlinking a provider:", err)
+		h.App.ErrorStatus(w, http.StatusInternalServerError)
+		return
+	default:
+		h.App.HTTP.Session.Put(ctx, "flash", i18n.From(ctx).T("auth.social.unlinked"))
+	}
+
+	http.Redirect(w, r, "/user/profile", http.StatusSeeOther)
+}
+
+// socialFailure logs the detail and shows the person a sentence.
+//
+// The two are deliberately different. "the id token nonce does not match" is
+// the operator's problem to read and nobody else's, and the distinction between
+// one failure and another is exactly what somebody probing the flow is
+// measuring.
+func (h *Handlers) socialFailure(w http.ResponseWriter, r *http.Request, key string, err error) {
+	if err != nil {
+		h.App.Logging.Error.Println("social sign-in failed:", err)
+	}
+	h.App.HTTP.Session.Put(r.Context(), "error", i18n.From(r.Context()).T(key))
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}

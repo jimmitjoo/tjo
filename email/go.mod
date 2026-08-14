@@ -2,7 +2,7 @@ module github.com/jimmitjoo/tjo/email
 
 go 1.25.0
 
-toolchain go1.26.5
+toolchain go1.26.6
 
 require (
 	github.com/ainsleyclark/go-mail v1.0.3

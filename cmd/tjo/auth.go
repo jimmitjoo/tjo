@@ -117,6 +117,11 @@ func doAuth() error {
 		return err
 	}
 
+	err = copyFileFromTemplate("templates/handlers/social-handlers.go.txt", rootPath+"/handlers/social-handlers.go")
+	if err != nil {
+		return err
+	}
+
 	err = copyFileFromTemplate("templates/email/welcome.html.tmpl", rootPath+"/email/welcome.html.tmpl")
 	if err != nil {
 		return err
@@ -229,6 +234,12 @@ func doAuth() error {
 		return err
 	}
 
+	// copy templates/social.routes.txt into a variable
+	socialRoutes, err := templateFS.ReadFile("templates/social.routes.txt")
+	if err != nil {
+		return err
+	}
+
 	// Insert before the router is returned.
 	//
 	// The marker used to be "return route.App.Routes", which the routes.go
@@ -277,7 +288,7 @@ func doAuth() error {
 
 	routesOutput = bytes.Replace(routesOutput, []byte(middlewareMarker), []byte(rememberMiddleware), 1)
 	routesOutput = bytes.Replace(routesOutput, []byte(returnMarker),
-		[]byte(string(authRoutes)+"\n"+string(tfaRoutes)+"\n\t"+returnMarker), 1)
+		[]byte(string(authRoutes)+"\n"+string(tfaRoutes)+"\n"+string(socialRoutes)+"\n\t"+returnMarker), 1)
 
 	if err = os.WriteFile(routesFile, routesOutput, 0644); err != nil {
 		return err
@@ -287,6 +298,7 @@ func doAuth() error {
 	color.Yellow("  - user and token models created")
 	color.Yellow("  - auth middleware created")
 	color.Yellow("  - 2FA (TOTP) support included")
+	color.Yellow("  - social sign-in wired up; add a provider's credentials to .env to switch it on")
 	color.Yellow("")
 	color.Yellow("Don't forget to add user and token models in data/models.go, and to add appropriate middlewares to your routes.")
 	color.Yellow("To enable 2FA for a user, direct them to /user/2fa/setup")

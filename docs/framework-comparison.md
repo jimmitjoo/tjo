@@ -6,9 +6,10 @@
 
 ## How this was checked
 
-Star counts and last-push dates come from the GitHub API on **2026-08-05**.
-Feature rows for Tjo are checked against this repository's source at v0.12.0.
-Feature rows for **GoFr, GoFrame and Encore** were filled in on 2026-08-05 by
+Star counts and last-push dates come from the GitHub API on **2026-08-14**, via
+`make comparison-check`. Feature rows for Tjo are asserted against this
+repository's source on every build -- see "Rows this repository asserts about
+itself" below. Feature rows for **GoFr, GoFrame and Encore** were filled in on 2026-08-05 by
 reading their repository trees: package layouts, middleware directories and
 runtime packages. Rows for Echo and Fiber were corrected the same way.
 
@@ -19,26 +20,91 @@ implied.
 
 A comparison table with no date on it rots invisibly. This one had claimed
 "SSE: No" for Tjo since before the `sse` package existed, and "CSRF: Plugin" for
-Echo and Fiber, both of which ship it in core.
+Echo and Fiber, both of which ship it in core. Both were found by hand, once,
+because somebody happened to look. So the rows that can be checked by a machine
+now are.
+
+### Rows this repository asserts about itself
+
+`docs/comparison_test.go` reads this file and checks each of these against the
+source. A row that says No about something that exists fails the build, and so
+does a row that says Yes about something that does not. The list below is
+checked against the test too: a row here with no check, or a check not listed
+here, fails.
+
+- `gRPC`
+- `OpenAPI generation`
+- `OpenAPI drift check`
+- `CSRF Protection`
+- `Rate Limiting`
+- `XSS Prevention`
+- `Input Validation`
+- `Authentication`
+- `2FA (TOTP)`
+- `Passkeys / WebAuthn`
+- `Social login`
+- `Roles & multi-tenancy`
+- `Anti-Bot (CAPTCHA)`
+- `Migrations`
+- `Session Management`
+- `Job Queue`
+- `Transactional enqueue`
+- `Durable steps / workflows`
+- `Cron Scheduler`
+- `WebSocket`
+- `SSE`
+- `LLM chat / tools / embeddings`
+- `Vector search in query builder`
+- `MCP server`
+- `Template Engine`
+- `Hot Reload`
+- `WebDAV`
+- `OpenTelemetry`
+- `PPROF`
+- `Auto-HTTPS`
+- `i18n`
+
+### Rows that are read rather than asserted
+
+Everything else. Three kinds, and they are different:
+
+- **Other frameworks' rows** are checked by reading their repository trees, on
+  the dates above. No test can assert them offline, and scraping their
+  documentation sites would be checking marketing rather than source.
+- **`Asset Pipeline`** is true because the skeleton repository ships a Tailwind
+  build, and a test here cannot see another repository. A check that reached
+  across repositories would fail for reasons unrelated to the change under
+  test.
+- **Editorial rows** — "is Buffalo's ORM good", "is Encore comparable at all" —
+  are judgement, and a generated comparison table would be one nobody stands
+  behind.
+
+### Keeping the landscape table current
+
+`make comparison-check` reads the star counts and last-push dates from the
+GitHub API, reports which have drifted from what is written here, and names any
+framework that has not been pushed in a year. It needs the network, so it is not
+in CI: a job that depends on the GitHub API is a job that goes red when GitHub
+does. It is in the release checklist instead.
 
 ## The landscape
 
 | Framework | Stars | Last push | Read |
 |---|--:|---|---|
-| [Gin](https://github.com/gin-gonic/gin) | 89,049 | 2026-08-04 | Dominant. Minimalist router plus middleware |
-| [PocketBase](https://github.com/pocketbase/pocketbase) | 60,471 | 2026-08-03 | A backend in one binary, not a framework. Included because its admin UI is what people compare an admin panel to |
-| [Fiber](https://github.com/gofiber/fiber) | 40,044 | 2026-08-05 | Express-shaped, on fasthttp |
-| [Echo](https://github.com/labstack/echo) | 32,598 | 2026-08-04 | Minimalist, with a large built-in middleware set |
-| [Beego](https://github.com/beego/beego) | 32,406 | 2026-07-28 | Full-stack, still active |
-| [Iris](https://github.com/kataras/iris) | 25,564 | 2026-07-27 | Feature-rich |
-| [Chi](https://github.com/go-chi/chi) | 22,631 | 2026-07-06 | A router, not a framework. Tjo uses it |
-| [GoFr](https://github.com/gofr-dev/gofr) | 21,053 | 2026-08-05 | Opinionated microservice framework, observability first |
-| [GoFrame](https://github.com/gogf/gf) | 13,236 | 2026-08-05 | Batteries-included, large in China |
-| [Revel](https://github.com/revel/revel) | 13,221 | **2023-10-28** | **Unmaintained.** Two years and nine months without a push |
-| [Encore](https://github.com/encoredev/encore) | 12,204 | 2026-08-04 | Infrastructure-from-code; a different category |
-| [Buffalo](https://github.com/gobuffalo/buffalo) | 8,412 | 2026-03-21 | Rails-shaped. Slowing: 4½ months since a push |
-| [Huma](https://github.com/danielgtaylor/huma) | 4,295 | 2026-07-29 | OpenAPI-first, layers over other routers |
-| [Fuego](https://github.com/go-fuego/fuego) | 1,760 | 2026-08-04 | OpenAPI-first, newer |
+| [Gin](https://github.com/gin-gonic/gin) | 89,114 | 2026-08-04 | Dominant. Minimalist router plus middleware |
+| [PocketBase](https://github.com/pocketbase/pocketbase) | 60,670 | 2026-08-14 | A backend in one binary, not a framework. Included because its admin UI is what people compare an admin panel to |
+| [Fiber](https://github.com/gofiber/fiber) | 40,066 | 2026-08-14 | Express-shaped, on fasthttp |
+| [Echo](https://github.com/labstack/echo) | 32,652 | 2026-08-04 | Minimalist, with a large built-in middleware set |
+| [Beego](https://github.com/beego/beego) | 32,412 | 2026-07-28 | Full-stack, still active |
+| [Iris](https://github.com/kataras/iris) | 25,563 | 2026-07-27 | Feature-rich |
+| [Chi](https://github.com/go-chi/chi) | 22,670 | 2026-08-10 | A router, not a framework. Tjo uses it |
+| [GoFr](https://github.com/gofr-dev/gofr) | 21,020 | 2026-08-13 | Opinionated microservice framework, observability first |
+| [GoFrame](https://github.com/gogf/gf) | 13,242 | 2026-08-14 | Batteries-included, large in China |
+| [Revel](https://github.com/revel/revel) | 13,221 | **2023-10-28** | **Unmaintained.** Two years and ten months without a push |
+| [Encore](https://github.com/encoredev/encore) | 12,254 | 2026-08-14 | Infrastructure-from-code; a different category |
+| [Buffalo](https://github.com/gobuffalo/buffalo) | 8,409 | 2026-03-21 | Rails-shaped. Slowing: nearly 5 months since a push |
+| [Huma](https://github.com/danielgtaylor/huma) | 4,319 | 2026-08-08 | OpenAPI-first, layers over other routers |
+| [Fuego](https://github.com/go-fuego/fuego) | 1,760 | 2026-08-10 | OpenAPI-first, newer |
 
 **Revel is in the tables below and should be read as a historical column.** It
 has not been pushed since October 2023. It is also, along with Iris, one of the
@@ -93,6 +159,8 @@ point of re-checking.
 | RESTful Resources | Auto | Manual | Manual | Manual | Auto | Auto | Auto | Auto | Manual | Auto (gf gen) | From code |
 | HTTP/2 | Yes | Yes | Yes | Limited | Yes | Yes | Yes | Push | Yes | Yes | Yes |
 | gRPC | No ([#84](https://github.com/jimmitjoo/tjo/issues/84)) | No | No | No | No | No | No | Yes | Built-in | grpcx | No |
+| OpenAPI generation | Built-in, from Go declarations | No | No | No | No | No | No | No | No | `net/goai`, from handler types | From code |
+| OpenAPI drift check | Built-in (`api.CheckResponse`) | No | No | No | No | No | No | No | No | No | Compiler |
 
 ### Middleware & Security
 
@@ -106,7 +174,7 @@ point of re-checking.
 | Authentication | `auth` package | No | No | No | No | No | No | No | Basic/APIKey/OAuth | No | Auth handler |
 | 2FA (TOTP) | Built-in, replay-checked | No | No | No | No | No | No | No | No | No | No |
 | Passkeys / WebAuthn | Built-in | No | No | No | No | No | No | No | No | No | No |
-| Social login | **No** ([#85](https://github.com/jimmitjoo/tjo/issues/85)) | No | No | No | No | No | No | No | OAuth middleware | No | No |
+| Social login | Built-in, OIDC + PKCE | No | No | No | No | No | No | No | OAuth middleware | No | No |
 | Roles & multi-tenancy | Built-in | No | No | No | No | No | No | No | RBAC | No | No |
 | JWT | Plugin | Plugin | Plugin | Plugin | Plugin | Plugin | No | Built-in | Plugin | Plugin | Plugin |
 | Anti-Bot (CAPTCHA) | No | No | No | No | No | No | No | Built-in | No | No | No |
@@ -184,7 +252,7 @@ point of re-checking.
 | OpenTelemetry | Built-in | Plugin | Plugin | Plugin | No | No | No | No | Built-in | gtrace | Built-in |
 | Health Checks | Yes | No | No | No | No | No | No | No | Built-in | No | Yes |
 | Metrics/Monitor | Yes | No | No | Plugin | No | Yes | No | Yes | Built-in | gmetric | Built-in |
-| PPROF | No | No | No | No | No | No | No | Built-in | No | Built-in | No |
+| PPROF | Behind the admin authorizer, own permission | No | No | No | No | No | No | Built-in | No | Built-in | No |
 
 ### Developer Experience
 
@@ -206,7 +274,7 @@ point of re-checking.
 | Graceful Shutdown | Yes | Manual | Manual | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Docker Support | Generator | No | No | No | No | No | No | No | Yes | Yes | Built-in |
 | Config Validation | Startup | No | No | No | No | Yes | No | No | Yes | gcfg | From code |
-| Auto-HTTPS | No | No | Let's Encrypt | No | No | No | No | Yes | No | Yes | Yes |
+| Auto-HTTPS | autocert, host policy required | No | Let's Encrypt | No | No | No | No | Yes | No | Yes | Yes |
 | ngrok Integration | No | No | No | No | No | No | No | Yes | No | No | No |
 
 ### Compression
@@ -240,10 +308,15 @@ point of re-checking.
 - **Real-time without a sync engine** - SSE with topic broadcast, and the
   decision not to build a CRDT layer written down rather than reconsidered
   every quarter
+- **An OpenAPI document with a drift check** - the description is a Go value
+  next to the route, not a comment block a build step parses, and a test fails
+  when a handler stops writing what it declared ([docs](openapi.md))
+- **Social login with the linking policy written down** - state, PKCE and a
+  nonce on every ceremony, and a documented refusal to merge accounts on a
+  matching email address, which is the usual way this feature becomes an
+  account takeover ([docs](social-login.md))
 
 **Cons:**
-- **No social login** is the remaining table-stakes gap in `auth`
-  ([#85](https://github.com/jimmitjoo/tjo/issues/85))
 - **New** - Small community, fewer Stack Overflow answers
 - **Opinionated** - Must do things the Tjo way
 - **Documentation maturity** - Still growing

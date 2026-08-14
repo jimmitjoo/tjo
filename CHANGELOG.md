@@ -5,6 +5,242 @@ All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is 0, breaking changes may land in a minor release.
 
+## [0.14.0] - 2026-08-14
+
+### Added — social login
+
+Sign in with Google, GitHub, Microsoft Entra or any OpenID Connect provider
+that publishes a discovery document. `tjo make auth` writes the handlers, the
+routes and the buttons; a provider appears when its credentials are in `.env`
+and not otherwise, so a project that has configured none shows a plain password
+form rather than buttons that lead nowhere. See
+[docs/social-login.md](docs/social-login.md).
+
+**The decision worth reviewing is `auth.Resolve`, not the token exchange.** The
+convenient behaviour — somebody signs in with Google, an account already uses
+that address, so sign them into it — is an account takeover with a consent
+screen: register an account at an identity provider using the victim's address,
+sign in, be handed theirs. Trusting only the providers that verify addresses
+does not fix it; it makes the flow exactly as safe as every provider it is ever
+configured with, including the corporate OIDC issuer somebody adds in two
+years.
+
+So `Resolve` never merges on an email, regardless of `email_verified`. An
+identity is attached to an existing account by exactly one route: somebody who
+is already signed in, and has therefore proved the account is theirs, completes
+a ceremony. Everything else is `NeedsLogin` or `NoAccount`. The identity key is
+`(provider, subject)` and never the email, because an email changes and a
+subject does not — keying on it means somebody who changes their address at the
+provider signs into a stranger's account.
+
+Also refuses to move an identity between accounts, and to unlink the last way
+into an account. Support cannot undo the second one, because there is nothing
+left to verify the owner with.
+
+**State, PKCE and a nonce on every ceremony, none of them configurable**, since
+a switch that turned one off would only ever be turned off by mistake. The
+ceremony state is single-use in the generated handler: it holds the PKCE
+verifier and the nonce, and leaving it in the session lets the same
+authorization code be presented twice.
+
+**`coreos/go-oidc` rather than hand-written JWKS verification.** This project
+prefers the standard library and has removed four dependencies for it; this is
+where that rule stops applying. Verifying an ID token means key selection,
+algorithm restriction, rotation, and issuer, audience, expiry and nonce checks
+— every one a place to be subtly wrong, and subtly wrong means accepting a
+forged identity. Two of this project's four published advisories were in
+hand-written authentication code. It costs one module the graph did not already
+have.
+
+Tested against a local test issuer serving real discovery, a real JWKS and
+really signed RS256 tokens — including wrong ones: signed by a stranger's key,
+minted for another client, expired, and carrying another ceremony's nonce. No
+test calls a third-party API.
+
+### Added — OpenAPI 3.1
+
+An API described in Go beside the route it registers, and a document generated
+from the routes that were actually registered. `tjo new -t api` and
+`tjo make api-controller` produce it, with the tests that keep it honest. See
+[docs/openapi.md](docs/openapi.md).
+
+    r.Method("POST", "/invoices", api.Describe(api.Op{
+        Summary:  "Create an invoice",
+        Request:  NewInvoice{},
+        Response: api.Envelope[Invoice]{},
+        Status:   http.StatusCreated,
+    }, h.CreateInvoice))
+
+**No build step and no annotation comments.** swaggo is the popular Go answer
+and it is a second language embedded in comments that nothing type-checks: a
+renamed struct leaves the comment naming the old one, and it shows up when a
+client developer reads the spec. A Go declaration is checked by the compiler,
+renamed by a refactoring tool, and cannot reference a type that does not exist.
+
+**The description sits on the handler, not in a middleware.** A middleware runs
+per request, so it never learns the method and pattern it was registered under,
+and every closure returned by one function shares a code pointer — so matching
+them against `chi.Walk` afterwards cannot work. A named handler type can be
+recovered by a type assertion, which is what makes the whole thing a hundred
+lines instead of a parser.
+
+**A declaration can still be false, so `api.CheckResponse` checks it.** Give it
+what a handler actually wrote and it fails when the two have parted company —
+a missing required field, an undeclared one, a wrong type, a wrong status. This
+is also why `Op.Response` declares what is on the wire rather than the payload
+inside it: `api.JSON` always wraps, so the usual declaration is
+`api.Envelope[T]`, and the generator does not wrap for you.
+
+**Not served by anything.** An API description is a map of the attack surface,
+so `api.OpenAPIHandler` exists and nothing mounts it — the rule the ops
+dashboard already follows. No Swagger UI is bundled, and no client generator:
+that is what the document is for.
+
+Schemas follow the JSON encoding rather than the Go struct — tags, `omitempty`,
+promoted embedded fields, `time.Time` as `date-time`, `[]byte` as base64,
+`any` as the empty schema, named types as components so a self-referential type
+terminates in a `$ref`. Nullable is a type array, because 3.1 is JSON Schema
+2020-12 and `nullable` was a 3.0 keyword.
+
+### Added — HTTPS from the binary
+
+`Server.TLS` serves HTTPS itself, with a certificate you have or one from Let's
+Encrypt. Nil by default, and nothing happens when it is nil: most production
+deployments terminate TLS upstream, and that is the right architecture for what
+the generated docker-compose and nginx configuration describe. See
+[docs/tls.md](docs/tls.md).
+
+```go
+app.Server.TLS = &tjo.TLSConfig{
+    Hosts:    []string{"example.com"},
+    CacheDir: "/var/lib/myapp/certs",
+}
+```
+
+This is for one binary on one VM, which is what Go is good at and what
+`tjo deploy` aims at. It also settles the HTTP/2 question the `sse` package
+documents: browsers cap concurrent HTTP/1.1 connections at six, an SSE response
+never completes, so six open streams deadlock everything else — and Go
+negotiates HTTP/2 over TLS automatically, so a binary serving its own TLS needs
+neither h2c nor a proxy.
+
+**`Hosts` is required, not optional.** `autocert`'s default host policy permits
+every hostname, so a manager without one attempts issuance for anything anybody
+points at the server — a way for a stranger to burn a rate limit that belongs to
+you, and Let's Encrypt counts per registered domain per week. A request for an
+unlisted name is refused before an ACME order starts.
+
+**`CacheDir` is required too**, and created `0700`. `autocert`'s zero-value
+cache keeps nothing, so every restart re-issues — which works perfectly in
+testing, where nobody restarts fifty times a week.
+
+TLS-ALPN-01 and HTTP-01 are both configured, so a server with only 443 open
+still gets certificates. The plain-HTTP listener answers the challenge path and
+redirects everything else with a **308** — a 301 turns a POST into a GET and
+drops its body. The challenge path is never redirected: that would make the
+certificate a prerequisite for obtaining the certificate.
+
+### Added — the profiler, behind the admin authorizer
+
+`ops.Config{Profiler: true}` mounts a profiler as an admin page and links the
+dashboard to it. An authorized operator runs
+`go tool pprof http://host/_admin/p/pprof/heap`; everybody else gets a 404, not
+a 403, which would confirm to somebody guessing that the path is a profiler.
+
+Until now the answer to "the process is using four gigabytes" was to rebuild
+with `net/http/pprof` imported and deploy that, which is the worst possible
+moment to be changing the binary.
+
+**Nothing is registered on `http.DefaultServeMux`.** That package's `init`
+publishes `/debug/pprof/` there unconditionally, as a side effect of the import,
+so anything else in the binary that serves the default mux — a library's metrics
+endpoint, a health server somebody wired up in six lines — starts serving heap
+dumps. A heap dump is whatever was in memory: session identifiers, tokens,
+request bodies, decrypted secrets. A framework must not add an exfiltration
+endpoint to a program as a side effect of being imported, so the handlers here
+are written over `runtime/pprof` and `runtime/trace`, and a test asserts the
+default mux is untouched.
+
+**Its own permission.** `admin.ActionProfile`, deliberately absent from
+`admin.DefaultPermissions` — reading the process's memory is a different
+question from reading a table, and `RoleAuthorizer` refuses actions its map does
+not mention, so granting it is written down rather than inherited.
+
+`?seconds=` is capped at two minutes: unbounded, it holds a profiling session
+open for as long as the caller likes and no second profile can start meanwhile.
+No continuous profiling, no stored history, no flame graphs — `go tool pprof`
+reads the endpoint, and that is the interface.
+
+An admin page with a `Handler` may now serve a subtree (`/p/{page}/{rest...}`),
+authorized by the page's own action. A page with a `Body` may not: a request
+below a one-screen page is a request for something that does not exist.
+
+### Added — a comparison table that can be contradicted
+
+`docs/framework-comparison.md` was wrong in both directions for an unknown
+number of releases: it claimed `SSE: No` from before the `sse` package existed,
+`CSRF: Plugin` for two frameworks that ship it in core, and `MCP: 12 tools`
+while the same file said 16 elsewhere. Every one was found by hand, once,
+because somebody happened to look.
+
+**Thirty rows that describe this repository are now asserted against it.** A row
+saying No about something that exists fails the build, and so does a row saying
+Yes about something that does not; the MCP row's number is checked against the
+count of tools. The file lists which rows those are, and that list is checked
+against the test — a listed row with no check fails, and so does a check the
+file does not mention.
+
+**`make comparison-check`** reads the star counts and last-push dates from the
+GitHub API, reports which have drifted from what is written down, and names any
+framework not pushed in a year. Not in CI: a job that depends on the GitHub API
+is a job that goes red when GitHub does. It is in the release checklist instead,
+and the landscape table is refreshed as of 2026-08-14.
+
+Rows that cannot be asserted are marked as such, in three kinds: other
+frameworks' rows, read from their repository trees on a stated date; the asset
+pipeline, which is true of the skeleton repository and invisible from here; and
+the editorial ones, because a generated comparison table is one nobody stands
+behind.
+
+### Fixed
+
+- **HSTS was sent over plain HTTP.** RFC 6797 §7.2 forbids that, and the reason
+  is practical: a site that sends HSTS before TLS works pins every visitor's
+  browser to HTTPS for a year, cached client-side, and no server-side change
+  undoes it. Enabling HSTS and enabling TLS are separate acts, and the first
+  must not be able to break a site while the second is being arranged. It is
+  now sent only over TLS, or behind a proxy that sets `X-Forwarded-Proto:
+  https` — which is the common deployment and would otherwise lose HSTS
+  entirely.
+- **`tjo make api-controller` generated a file that did not compile**, and had
+  for several releases. It referenced `api.Controller`, `api.NewController`,
+  `api.NewValidationError`, `c.WriteJSON`, `c.ErrorJSON`, `c.ValidateStruct`
+  and an `api.Response.Message` field — none of which the `api` package has
+  ever had. The scaffold CI job runs `make controller` and `make handler` and
+  had never run `make api-controller`; it does now. The template is rewritten
+  against the package that exists, and described with `api.Op` in place of the
+  swaggo comment blocks it carried, which nothing read.
+- `auth.Microsoft` accepted three tenant forms that can never verify. Entra
+  reports the tenant **id** as the issuer however the tenant is addressed, so
+  only the GUID matches the URL it was configured with: a domain resolves to
+  the GUID, and `common` and `organizations` resolve to the literal
+  `{tenantid}` placeholder, since their real issuer depends on who signs in.
+  The empty default was `"common"`. All three are now refused at start-up, with
+  a message naming where to find a domain's GUID, and `"consumers"` is
+  substituted for the tenant id it stands for so the friendly name works.
+  Refusing rather than working around, because the workaround — disabling the
+  issuer check — accepts tokens from every Entra tenant that exists.
+- The GitHub provider requested the `user:email` scope and never spent it,
+  while most GitHub users keep their profile address private. Every one of them
+  produced an identity with no email, which made the generated sign-up create
+  an account nobody could mail and then violate `users.email`'s unique
+  constraint on the second such person. `GET /user/emails` is now read when the
+  profile carries none, taking the primary address and only when GitHub has
+  verified it — that one is the provider's own assertion, unlike the
+  self-declared public field. The generated handler refuses to create an
+  account from an identity with no address at all, rather than letting a
+  constraint violation surface as "sign-in failed".
+
 ## [0.13.0] - 2026-08-06
 
 The release that makes the framework usable outside English.

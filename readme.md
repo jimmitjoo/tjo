@@ -26,11 +26,13 @@ macOS binaries are unsigned, so Gatekeeper will ask before the first run.
 ## Features
 
 - Chi Router - Fast and lightweight HTTP router
+- HTTPS from the binary - Let's Encrypt with a required host policy, or your own certificate; off unless configured ([docs](docs/tls.md))
+- OpenAPI 3.1 - Described in Go beside the route, no build step, with a test that fails when a handler drifts from its declaration ([docs](docs/openapi.md))
 - Multi-Database Support - PostgreSQL, MySQL, MariaDB, SQLite (PostgreSQL needs `WithDialect`, see [query builder docs](docs/query-builder.md#database-dialects))
 - Internationalisation - CLDR plurals, locale negotiation, right-to-left, and the framework's own strings translatable ([docs](docs/i18n.md))
 - Admin Panel - Model-driven CRUD over your own structs, server-rendered, no build step ([docs](docs/admin.md))
 - Ops Dashboard - Self-hosted errors, slow queries, job queue, cron and health ([docs](docs/admin.md#the-ops-dashboard))
-- Authentication - Passwords, 2FA with recovery codes, remember-me, passkeys, organizations and roles, as a package rather than generated code
+- Authentication - Passwords, 2FA with recovery codes, remember-me, passkeys, social login, organizations and roles, as a package rather than generated code ([social login docs](docs/social-login.md))
 - Security First - CSRF protection, rate limiting, input validation, XSS prevention, 2FA
 - Email System - Multiple provider support with templates
 - Caching - Redis and Badger cache implementations
@@ -301,6 +303,13 @@ resetStore.Save(ctx, token)          // mail token.PlainText; only the hash is s
 
 userID, hash, err := auth.ResetPassword(ctx, resetStore, policy, submitted, newPassword)
 
+// Social login. Resolve decides which account a verified identity signs into,
+// and never merges on an email -- see docs/social-login.md.
+identity, err := google.Finish(ctx, ceremonyState, r)
+resolution, err := auth.Resolve(ctx, identities, identity, auth.ResolveOptions{
+    CurrentAccountID: signedIn, Accounts: accounts,
+})
+
 // Organizations, which is where multi-tenancy lives.
 err = auth.Authorize(ctx, orgs, perms, orgID, accountID, auth.PermManageMembers)
 qb, err := auth.ScopeTo(ctx, database.NewQueryBuilder(db).Table("invoices"), "organization_id")
@@ -351,6 +360,9 @@ TJO_TEST_POSTGRES_DSN='postgres://tjo:secret@localhost:5432/tjotest?sslmode=disa
 - [docs/modules.md](docs/modules.md) - Module guide
 - [docs/opentelemetry.md](docs/opentelemetry.md) - OpenTelemetry guide
 - [docs/query-builder.md](docs/query-builder.md) - Query builder guide
+- [docs/social-login.md](docs/social-login.md) - Social login and the linking policy
+- [docs/openapi.md](docs/openapi.md) - Describing an API, and generating OpenAPI 3.1
+- [docs/tls.md](docs/tls.md) - Serving HTTPS from the binary, and when not to
 - [docs/configuration.md](docs/configuration.md) - Configuration reference
 - [TESTING.md](TESTING.md) - Testing guide
 - [CLAUDE.md](CLAUDE.md) - AI assistant guide
