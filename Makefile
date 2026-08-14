@@ -1,4 +1,4 @@
-.PHONY: test test-simple cover coverage build_cli build clean release release-push vuln lint-workflows
+.PHONY: test test-simple cover coverage build_cli build clean release release-push vuln lint-workflows comparison-check
 
 # Get version from git tag (exact match), fallback to "dev"
 VERSION := $(shell git describe --tags --exact-match 2>/dev/null || echo "dev")
@@ -162,6 +162,7 @@ release-push:
 	@echo "Once it finishes:"
 	@echo "  go mod tidy && git commit -am 'Tidy go.sum now the v$(v) tags are published'"
 	@echo "  make release-check"
+	@echo "  make comparison-check   # refreshes docs/framework-comparison.md's landscape"
 
 ## release-check: verifies every module the way a user sees it
 ##
@@ -179,6 +180,22 @@ release-check:
 		(cd $$m && GOWORK=off go build ./... >/dev/null 2>&1 && echo "  $$m	build OK") || echo "  $$m	BUILD FAILED"; \
 		(cd $$m && GOWORK=off go test -short ./... >/dev/null 2>&1 && echo "  $$m	test OK") || echo "  $$m	TEST FAILED"; \
 	done
+	@echo ""
+	@echo "Still to run by hand, because it needs the network:"
+	@echo "  make comparison-check"
+
+## comparison-check: refreshes the framework landscape from the GitHub API
+##
+## Reports the current stars and last-push date for every framework tabulated in
+## docs/framework-comparison.md, names any whose recorded date has drifted, and
+## flags any not pushed in a year -- a column whose repository has been quiet
+## for that long should not read as a live option.
+##
+## Not in CI, deliberately: it needs the network, so it would fail for reasons
+## unrelated to the change under test. Run it before a release. Set GITHUB_TOKEN
+## to avoid the sixty-an-hour anonymous rate limit.
+comparison-check:
+	@TJO_COMPARISON_CHECK=1 go test ./docs/ -run TestTheTabulatedFrameworksAreStillAlive -v -count=1
 
 clean:
 	@rm -rf ./dist/*

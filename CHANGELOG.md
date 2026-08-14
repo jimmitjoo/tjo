@@ -102,6 +102,33 @@ promoted embedded fields, `time.Time` as `date-time`, `[]byte` as base64,
 terminates in a `$ref`. Nullable is a type array, because 3.1 is JSON Schema
 2020-12 and `nullable` was a 3.0 keyword.
 
+### Added — a comparison table that can be contradicted
+
+`docs/framework-comparison.md` was wrong in both directions for an unknown
+number of releases: it claimed `SSE: No` from before the `sse` package existed,
+`CSRF: Plugin` for two frameworks that ship it in core, and `MCP: 12 tools`
+while the same file said 16 elsewhere. Every one was found by hand, once,
+because somebody happened to look.
+
+**Thirty rows that describe this repository are now asserted against it.** A row
+saying No about something that exists fails the build, and so does a row saying
+Yes about something that does not; the MCP row's number is checked against the
+count of tools. The file lists which rows those are, and that list is checked
+against the test — a listed row with no check fails, and so does a check the
+file does not mention.
+
+**`make comparison-check`** reads the star counts and last-push dates from the
+GitHub API, reports which have drifted from what is written down, and names any
+framework not pushed in a year. Not in CI: a job that depends on the GitHub API
+is a job that goes red when GitHub does. It is in the release checklist instead,
+and the landscape table is refreshed as of 2026-08-14.
+
+Rows that cannot be asserted are marked as such, in three kinds: other
+frameworks' rows, read from their repository trees on a stated date; the asset
+pipeline, which is true of the skeleton repository and invisible from here; and
+the editorial ones, because a generated comparison table is one nobody stands
+behind.
+
 ### Fixed
 
 - **`tjo make api-controller` generated a file that did not compile**, and had
