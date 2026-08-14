@@ -247,6 +247,10 @@ jobs:
           "$RUNNER_TEMP/tjo" make auth
           "$RUNNER_TEMP/tjo" make controller Widget
           "$RUNNER_TEMP/tjo" make handler Thing
+          # api-controller was outside this job until v0.14.0, and shipped for
+          # several releases generating code that referenced seven identifiers
+          # the api package has never had. Nothing compiled it.
+          "$RUNNER_TEMP/tjo" make api-controller Gadget
 
       - name: Build it again with everything generated
         working-directory: ${{ runner.temp }}/demo

@@ -9,289 +9,190 @@ import (
 	"github.com/jimmitjoo/tjo/api"
 )
 
-// $CONTROLLERNAME$Controller handles $CONTROLLERNAME$ API operations
-type $CONTROLLERNAME$Controller struct {
-	*api.Controller
-}
+// $CONTROLLERNAME$Controller is a REST controller for $CONTROLLERNAME_LOWER$s.
+//
+// Every route is registered with api.Describe, so the declaration that
+// documents an operation is the one the router sees. Run `go test ./controllers`
+// to check the handlers still write what they say they write -- a declaration
+// is checked by the compiler for being well-formed and by nothing at all for
+// being true.
+type $CONTROLLERNAME$Controller struct{}
 
-// New$CONTROLLERNAME$Controller creates a new $CONTROLLERNAME$Controller
+// New$CONTROLLERNAME$Controller creates a new $CONTROLLERNAME$Controller.
 func New$CONTROLLERNAME$Controller() *$CONTROLLERNAME$Controller {
-	return &$CONTROLLERNAME$Controller{
-		Controller: api.NewController(),
-	}
+	return &$CONTROLLERNAME$Controller{}
 }
 
-// List returns a list of $CONTROLLERNAME_LOWER$s
-// @Summary List $CONTROLLERNAME_LOWER$s
-// @Description Get all $CONTROLLERNAME_LOWER$s with optional pagination
-// @Tags $CONTROLLERNAME_LOWER$s
-// @Accept json
-// @Produce json
-// @Param page query int false "Page number" default(1)
-// @Param limit query int false "Items per page" default(10)
-// @Success 200 {object} api.Response{data=[]$MODEL_NAME$}
-// @Failure 400 {object} api.ErrorResponse
-// @Failure 500 {object} api.ErrorResponse
-// @Router /$ROUTE_PREFIX$ [get]
+// $MODEL_NAME$ is what this controller returns. Replace the fields with yours;
+// the OpenAPI schema follows the JSON tags, so it stays correct as you do.
+type $MODEL_NAME$ struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// Create$CONTROLLERNAME$Request is the body POST accepts.
+type Create$CONTROLLERNAME$Request struct {
+	Name        string `json:"name" validate:"required,min=1,max=255"`
+	Description string `json:"description,omitempty" validate:"max=1000"`
+}
+
+// Update$CONTROLLERNAME$Request is the body PUT accepts.
+type Update$CONTROLLERNAME$Request struct {
+	Name        string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
+	Description string `json:"description,omitempty" validate:"max=1000"`
+}
+
+// The operation descriptions.
+//
+// api.Envelope[T] rather than T, because api.JSON wraps every payload in the
+// standard response and the declaration has to describe what is on the wire.
+
+var List$CONTROLLERNAME$sOp = api.Op{
+	Summary:     "List $CONTROLLERNAME_LOWER$s",
+	Description: "Returns a page of $CONTROLLERNAME_LOWER$s.",
+	Tags:        []string{"$ROUTE_PREFIX$"},
+	Params: []api.Parameter{
+		{Name: "page", Description: "Page number, from 1", Type: 0, Example: 1},
+		{Name: "limit", Description: "Items per page, at most 100", Type: 0, Example: 10},
+	},
+	Response: api.Envelope[[]$MODEL_NAME$]{},
+	Errors:   []int{http.StatusInternalServerError},
+}
+
+var Get$CONTROLLERNAME$Op = api.Op{
+	Summary:  "Fetch a $CONTROLLERNAME_LOWER$",
+	Tags:     []string{"$ROUTE_PREFIX$"},
+	Response: api.Envelope[$MODEL_NAME$]{},
+	Errors:   []int{http.StatusBadRequest, http.StatusNotFound},
+}
+
+var Create$CONTROLLERNAME$Op = api.Op{
+	Summary:  "Create a $CONTROLLERNAME_LOWER$",
+	Tags:     []string{"$ROUTE_PREFIX$"},
+	Request:  Create$CONTROLLERNAME$Request{},
+	Response: api.Envelope[$MODEL_NAME$]{},
+	Status:   http.StatusCreated,
+	Errors:   []int{http.StatusBadRequest, http.StatusUnprocessableEntity},
+}
+
+var Update$CONTROLLERNAME$Op = api.Op{
+	Summary:  "Update a $CONTROLLERNAME_LOWER$",
+	Tags:     []string{"$ROUTE_PREFIX$"},
+	Request:  Update$CONTROLLERNAME$Request{},
+	Response: api.Envelope[$MODEL_NAME$]{},
+	Errors:   []int{http.StatusBadRequest, http.StatusNotFound, http.StatusUnprocessableEntity},
+}
+
+var Delete$CONTROLLERNAME$Op = api.Op{
+	Summary: "Delete a $CONTROLLERNAME_LOWER$",
+	Tags:    []string{"$ROUTE_PREFIX$"},
+	Errors:  []int{http.StatusBadRequest, http.StatusNotFound},
+}
+
+// Routes returns this controller's routes, described.
+//
+// Method rather than Get/Post: a described handler is an http.Handler, and
+// chi's verb helpers take an http.HandlerFunc.
+func (c *$CONTROLLERNAME$Controller) Routes() chi.Router {
+	r := chi.NewRouter()
+
+	r.Method("GET", "/", api.Describe(List$CONTROLLERNAME$sOp, c.List))
+	r.Method("POST", "/", api.Describe(Create$CONTROLLERNAME$Op, c.Create))
+	r.Method("GET", "/{id}", api.Describe(Get$CONTROLLERNAME$Op, c.Get))
+	r.Method("PUT", "/{id}", api.Describe(Update$CONTROLLERNAME$Op, c.Update))
+	r.Method("DELETE", "/{id}", api.Describe(Delete$CONTROLLERNAME$Op, c.Delete))
+
+	return r
+}
+
+// List returns a page of $CONTROLLERNAME_LOWER$s.
 func (c *$CONTROLLERNAME$Controller) List(w http.ResponseWriter, r *http.Request) {
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	page := api.QueryInt(r, "page", 1)
 	if page < 1 {
 		page = 1
 	}
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	limit := api.QueryInt(r, "limit", 10)
 	if limit < 1 || limit > 100 {
 		limit = 10
 	}
 
-	// TODO: Implement actual data fetching
-	// Example:
-	// $CONTROLLERNAME_LOWER$s, err := c.get$CONTROLLERNAME$s(page, limit)
-	// if err != nil {
-	//     c.ErrorJSON(w, err, http.StatusInternalServerError)
-	//     return
-	// }
+	// TODO: fetch from your store. The empty slice rather than a nil one, so
+	// the response carries [] and not null -- which is what the schema says
+	// and what a client expects to be able to range over.
+	$CONTROLLERNAME_LOWER$s := []$MODEL_NAME${}
 
-	// Placeholder response
-	$CONTROLLERNAME_LOWER$s := []map[string]interface{}{}
-
-	response := api.Response{
-		Success: true,
-		Data:    $CONTROLLERNAME_LOWER$s,
-		Meta: map[string]interface{}{
-			"page":     page,
-			"limit":    limit,
-			"total":    len($CONTROLLERNAME_LOWER$s),
-			"has_more": false,
-		},
-	}
-
-	c.WriteJSON(w, http.StatusOK, response)
+	api.JSON(w, http.StatusOK, $CONTROLLERNAME_LOWER$s,
+		api.WithPagination(page, limit, len($CONTROLLERNAME_LOWER$s)))
 }
 
-// Get returns a single $CONTROLLERNAME_LOWER$
-// @Summary Get $CONTROLLERNAME_LOWER$
-// @Description Get a specific $CONTROLLERNAME_LOWER$ by ID
-// @Tags $CONTROLLERNAME_LOWER$s
-// @Accept json
-// @Produce json
-// @Param id path int true "$CONTROLLERNAME$ ID"
-// @Success 200 {object} api.Response{data=$MODEL_NAME$}
-// @Failure 400 {object} api.ErrorResponse
-// @Failure 404 {object} api.ErrorResponse
-// @Failure 500 {object} api.ErrorResponse
-// @Router /$ROUTE_PREFIX$/{id} [get]
+// Get returns one $CONTROLLERNAME_LOWER$.
 func (c *$CONTROLLERNAME$Controller) Get(w http.ResponseWriter, r *http.Request) {
-	idParam := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idParam)
+	id, err := strconv.Atoi(api.Param(r, "id"))
 	if err != nil {
-		c.ErrorJSON(w, api.NewValidationError("Invalid ID format"), http.StatusBadRequest)
+		api.Error(w, http.StatusBadRequest, "INVALID_ID", "The id must be a number.", nil)
 		return
 	}
 
-	// TODO: Implement actual data fetching
-	// Example:
-	// $CONTROLLERNAME_LOWER$, err := c.get$CONTROLLERNAME$(id)
-	// if err != nil {
-	//     if err == ErrNotFound {
-	//         c.ErrorJSON(w, api.NewNotFoundError("$CONTROLLERNAME$ not found"), http.StatusNotFound)
-	//         return
-	//     }
-	//     c.ErrorJSON(w, err, http.StatusInternalServerError)
-	//     return
-	// }
+	// TODO: fetch from your store, and answer api.NotFound when there is none.
+	$CONTROLLERNAME_LOWER$ := $MODEL_NAME${ID: id, Name: "Example"}
 
-	// Placeholder response
-	$CONTROLLERNAME_LOWER$ := map[string]interface{}{
-		"id": id,
-		"name": "Sample $CONTROLLERNAME$",
-		"created_at": "2023-01-01T00:00:00Z",
-		"updated_at": "2023-01-01T00:00:00Z",
-	}
-
-	response := api.Response{
-		Success: true,
-		Data:    $CONTROLLERNAME_LOWER$,
-	}
-
-	c.WriteJSON(w, http.StatusOK, response)
+	api.JSON(w, http.StatusOK, $CONTROLLERNAME_LOWER$)
 }
 
-// Create creates a new $CONTROLLERNAME_LOWER$
-// @Summary Create $CONTROLLERNAME_LOWER$
-// @Description Create a new $CONTROLLERNAME_LOWER$
-// @Tags $CONTROLLERNAME_LOWER$s
-// @Accept json
-// @Produce json
-// @Param $CONTROLLERNAME_LOWER$ body Create$CONTROLLERNAME$Request true "$CONTROLLERNAME$ data"
-// @Success 201 {object} api.Response{data=$MODEL_NAME$}
-// @Failure 400 {object} api.ErrorResponse
-// @Failure 422 {object} api.ErrorResponse
-// @Failure 500 {object} api.ErrorResponse
-// @Router /$ROUTE_PREFIX$ [post]
+// Create adds a $CONTROLLERNAME_LOWER$.
 func (c *$CONTROLLERNAME$Controller) Create(w http.ResponseWriter, r *http.Request) {
-	var req Create$CONTROLLERNAME$Request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		c.ErrorJSON(w, api.NewValidationError("Invalid JSON format"), http.StatusBadRequest)
+	var request Create$CONTROLLERNAME$Request
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		api.Error(w, http.StatusBadRequest, "INVALID_JSON", "The body is not valid JSON.", nil)
 		return
 	}
 
-	// Validate request
-	if err := c.ValidateStruct(req); err != nil {
-		c.ErrorJSON(w, err, http.StatusUnprocessableEntity)
+	if request.Name == "" {
+		api.ValidationErrors(w, []api.ValidationError{
+			{Field: "name", Message: "A name is required."},
+		})
 		return
 	}
 
-	// TODO: Implement actual data creation
-	// Example:
-	// $CONTROLLERNAME_LOWER$, err := c.create$CONTROLLERNAME$(req)
-	// if err != nil {
-	//     c.ErrorJSON(w, err, http.StatusInternalServerError)
-	//     return
-	// }
+	// TODO: write to your store and use the id it gives back.
+	created := $MODEL_NAME${ID: 1, Name: request.Name, Description: request.Description}
 
-	// Placeholder response
-	$CONTROLLERNAME_LOWER$ := map[string]interface{}{
-		"id": 1,
-		"name": req.Name,
-		"created_at": "2023-01-01T00:00:00Z",
-		"updated_at": "2023-01-01T00:00:00Z",
-	}
-
-	response := api.Response{
-		Success: true,
-		Data:    $CONTROLLERNAME_LOWER$,
-		Message: "$CONTROLLERNAME$ created successfully",
-	}
-
-	c.WriteJSON(w, http.StatusCreated, response)
+	api.JSON(w, http.StatusCreated, created)
 }
 
-// Update updates an existing $CONTROLLERNAME_LOWER$
-// @Summary Update $CONTROLLERNAME_LOWER$
-// @Description Update an existing $CONTROLLERNAME_LOWER$
-// @Tags $CONTROLLERNAME_LOWER$s
-// @Accept json
-// @Produce json
-// @Param id path int true "$CONTROLLERNAME$ ID"
-// @Param $CONTROLLERNAME_LOWER$ body Update$CONTROLLERNAME$Request true "$CONTROLLERNAME$ data"
-// @Success 200 {object} api.Response{data=$MODEL_NAME$}
-// @Failure 400 {object} api.ErrorResponse
-// @Failure 404 {object} api.ErrorResponse
-// @Failure 422 {object} api.ErrorResponse
-// @Failure 500 {object} api.ErrorResponse
-// @Router /$ROUTE_PREFIX$/{id} [put]
+// Update replaces a $CONTROLLERNAME_LOWER$.
 func (c *$CONTROLLERNAME$Controller) Update(w http.ResponseWriter, r *http.Request) {
-	idParam := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idParam)
+	id, err := strconv.Atoi(api.Param(r, "id"))
 	if err != nil {
-		c.ErrorJSON(w, api.NewValidationError("Invalid ID format"), http.StatusBadRequest)
+		api.Error(w, http.StatusBadRequest, "INVALID_ID", "The id must be a number.", nil)
 		return
 	}
 
-	var req Update$CONTROLLERNAME$Request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		c.ErrorJSON(w, api.NewValidationError("Invalid JSON format"), http.StatusBadRequest)
+	var request Update$CONTROLLERNAME$Request
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		api.Error(w, http.StatusBadRequest, "INVALID_JSON", "The body is not valid JSON.", nil)
 		return
 	}
 
-	// Validate request
-	if err := c.ValidateStruct(req); err != nil {
-		c.ErrorJSON(w, err, http.StatusUnprocessableEntity)
-		return
-	}
+	// TODO: update your store, and answer api.NotFound when there is nothing
+	// to update.
+	updated := $MODEL_NAME${ID: id, Name: request.Name, Description: request.Description}
 
-	// TODO: Implement actual data update
-	// Example:
-	// $CONTROLLERNAME_LOWER$, err := c.update$CONTROLLERNAME$(id, req)
-	// if err != nil {
-	//     if err == ErrNotFound {
-	//         c.ErrorJSON(w, api.NewNotFoundError("$CONTROLLERNAME$ not found"), http.StatusNotFound)
-	//         return
-	//     }
-	//     c.ErrorJSON(w, err, http.StatusInternalServerError)
-	//     return
-	// }
-
-	// Placeholder response
-	$CONTROLLERNAME_LOWER$ := map[string]interface{}{
-		"id": id,
-		"name": req.Name,
-		"created_at": "2023-01-01T00:00:00Z",
-		"updated_at": "2023-01-01T00:00:00Z",
-	}
-
-	response := api.Response{
-		Success: true,
-		Data:    $CONTROLLERNAME_LOWER$,
-		Message: "$CONTROLLERNAME$ updated successfully",
-	}
-
-	c.WriteJSON(w, http.StatusOK, response)
+	api.JSON(w, http.StatusOK, updated)
 }
 
-// Delete deletes a $CONTROLLERNAME_LOWER$
-// @Summary Delete $CONTROLLERNAME_LOWER$
-// @Description Delete a specific $CONTROLLERNAME_LOWER$ by ID
-// @Tags $CONTROLLERNAME_LOWER$s
-// @Accept json
-// @Produce json
-// @Param id path int true "$CONTROLLERNAME$ ID"
-// @Success 200 {object} api.Response
-// @Failure 400 {object} api.ErrorResponse
-// @Failure 404 {object} api.ErrorResponse
-// @Failure 500 {object} api.ErrorResponse
-// @Router /$ROUTE_PREFIX$/{id} [delete]
+// Delete removes a $CONTROLLERNAME_LOWER$.
 func (c *$CONTROLLERNAME$Controller) Delete(w http.ResponseWriter, r *http.Request) {
-	idParam := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idParam)
-	if err != nil {
-		c.ErrorJSON(w, api.NewValidationError("Invalid ID format"), http.StatusBadRequest)
+	if _, err := strconv.Atoi(api.Param(r, "id")); err != nil {
+		api.Error(w, http.StatusBadRequest, "INVALID_ID", "The id must be a number.", nil)
 		return
 	}
 
-	// TODO: Implement actual data deletion
-	// Example:
-	// err := c.delete$CONTROLLERNAME$(id)
-	// if err != nil {
-	//     if err == ErrNotFound {
-	//         c.ErrorJSON(w, api.NewNotFoundError("$CONTROLLERNAME$ not found"), http.StatusNotFound)
-	//         return
-	//     }
-	//     c.ErrorJSON(w, err, http.StatusInternalServerError)
-	//     return
-	// }
+	// TODO: delete from your store, and answer api.NotFound when there is
+	// nothing to delete.
 
-	response := api.Response{
-		Success: true,
-		Message: "$CONTROLLERNAME$ deleted successfully",
-	}
-
-	c.WriteJSON(w, http.StatusOK, response)
-}
-
-// Request/Response structs for API documentation and validation
-type Create$CONTROLLERNAME$Request struct {
-	Name        string `json:"name" validate:"required,min=1,max=255"`
-	Description string `json:"description,omitempty" validate:"max=1000"`
-	// Add more fields as needed
-}
-
-type Update$CONTROLLERNAME$Request struct {
-	Name        string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
-	Description string `json:"description,omitempty" validate:"max=1000"`
-	// Add more fields as needed
-}
-
-// Routes sets up the routes for this controller
-func (c *$CONTROLLERNAME$Controller) Routes() chi.Router {
-	r := chi.NewRouter()
-	
-	r.Get("/", c.List)
-	r.Post("/", c.Create)
-	r.Get("/{id}", c.Get)
-	r.Put("/{id}", c.Update)
-	r.Delete("/{id}", c.Delete)
-
-	return r
+	api.NoContent(w)
 }

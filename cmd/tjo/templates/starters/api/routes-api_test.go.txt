@@ -1,0 +1,105 @@
+package main
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	v1 "${APP_NAME}/handlers/api/v1"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jimmitjoo/tjo/api"
+)
+
+// A declaration next to a handler is checked by the compiler for being
+// well-formed and by nothing at all for being true. These two tests are what
+// close that gap, and they are the reason the document can be trusted.
+//
+// They need no database and no network: the handlers are called directly, so
+// the middleware and the router are out of the way.
+
+// Every route is described, so the document is the whole API rather than the
+// part somebody remembered.
+func TestEveryRouteIsDescribed(t *testing.T) {
+	mux := chi.NewRouter()
+	apiRoutes(mux)
+
+	for _, route := range api.Undescribed(mux) {
+		t.Errorf("%s %s has no api.Describe, so it is missing from the document",
+			route.Method, route.Pattern)
+	}
+}
+
+// The document builds, which is where a duplicate operation id or a broken
+// declaration shows up.
+func TestTheOpenAPIDocumentBuilds(t *testing.T) {
+	mux := chi.NewRouter()
+	apiRoutes(mux)
+
+	document, err := api.OpenAPI(mux, apiInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(document.Paths) == 0 {
+		t.Fatal("the document describes no paths")
+	}
+
+	body, err := document.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"openapi": "3.1.0"`) {
+		t.Error("the document is not OpenAPI 3.1")
+	}
+}
+
+// And the handlers write what they say they write. Change a response type
+// without changing its declaration and this is what fails.
+func TestTheHandlersMatchTheirDescriptions(t *testing.T) {
+	resources := &v1.ResourceHandler{}
+
+	cases := []struct {
+		name    string
+		op      api.Op
+		want    int
+		request *http.Request
+		call    func(http.ResponseWriter, *http.Request)
+	}{
+		{"list", listResourcesOp, http.StatusOK, request("GET", "/api/v1/resources", ""), resources.List},
+		{"get", getResourceOp, http.StatusOK, withParam(request("GET", "/api/v1/resources/1", ""), "id", "1"), resources.Get},
+		{"create", createResourceOp, http.StatusCreated, request("POST", "/api/v1/resources", `{"name":"Example"}`), resources.Create},
+		{"update", updateResourceOp, http.StatusOK, withParam(request("PUT", "/api/v1/resources/1", `{"name":"Example"}`), "id", "1"), resources.Update},
+		{"delete", deleteResourceOp, http.StatusNoContent, withParam(request("DELETE", "/api/v1/resources/1", ""), "id", "1"), resources.Delete},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c.call(rec, c.request)
+
+			// Asserted separately from CheckResponse, which accepts any status
+			// the operation declares -- including its error ones. Without this
+			// a handler that answered 400 to everything would pass.
+			if rec.Code != c.want {
+				t.Fatalf("answered %d, want %d\n\nbody: %s", rec.Code, c.want, rec.Body.String())
+			}
+
+			if err := api.CheckResponse(c.op, rec.Code, rec.Body.Bytes()); err != nil {
+				t.Fatalf("%v\n\nbody: %s", err, rec.Body.String())
+			}
+		})
+	}
+}
+
+func request(method, target, body string) *http.Request {
+	return httptest.NewRequest(method, target, strings.NewReader(body))
+}
+
+// withParam sets a path parameter the way the router would, so a handler can
+// be called without one in front of it.
+func withParam(r *http.Request, key, value string) *http.Request {
+	r.SetPathValue(key, value)
+	return r
+}
