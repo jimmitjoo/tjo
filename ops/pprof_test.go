@@ -2,11 +2,15 @@ package ops
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jimmitjoo/tjo/admin"
 	"github.com/jimmitjoo/tjo/auth"
@@ -353,5 +357,90 @@ func TestTheDashboardLinksToTheProfilerOnlyWhenItIsMounted(t *testing.T) {
 		if reachable != profiler {
 			t.Errorf("Profiler=%v, the profiler answers: %v", profiler, reachable)
 		}
+	}
+}
+
+// A profile longer than the server's WriteTimeout is cut off mid-download, and
+// the operator gets a file go tool pprof cannot parse -- during an incident,
+// which is the only time anybody fetches one. Refuse with the reason instead.
+//
+// This framework's own server sets no WriteTimeout, on purpose. This package
+// does not import the framework root and serves programs that are not Tjo
+// applications, so the check is for them.
+func TestAProfileLongerThanTheWriteTimeoutIsRefused(t *testing.T) {
+	h := profilePanel(t, admin.AllowAll)
+
+	server := httptest.NewUnstartedServer(h)
+	server.Config.WriteTimeout = 5 * time.Second
+	server.Start()
+	defer server.Close()
+
+	response, err := server.Client().Get(server.URL + "/p/pprof/profile?seconds=30")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("%d, want 400", response.StatusCode)
+	}
+
+	body, _ := io.ReadAll(response.Body)
+	if !strings.Contains(string(body), "WriteTimeout") {
+		t.Errorf("the refusal does not say why: %q", body)
+	}
+
+	// A profile that fits is still served.
+	short, err := server.Client().Get(server.URL + "/p/pprof/profile?seconds=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer short.Body.Close()
+
+	if short.StatusCode != http.StatusOK {
+		t.Fatalf("a profile inside the timeout answered %d", short.StatusCode)
+	}
+}
+
+// Nothing in the whole repository imports net/http/pprof.
+//
+// TestTheDefaultServeMuxIsNotTouched only sees packages linked into this test
+// binary -- ops and what ops imports. This is the wider guarantee: a submodule,
+// or cmd/tjo, taking the convenient route would leave that test green while
+// every binary built from this repository published /debug/pprof/.
+func TestNothingInTheRepositoryImportsNetHTTPPprof(t *testing.T) {
+	var offenders []string
+
+	err := filepath.Walk("..", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			switch info.Name() {
+			case ".git", "node_modules", "dist", "vendor":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		body, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if strings.Contains(string(body), `_ "net/http/pprof"`) ||
+			strings.Contains(string(body), `"net/http/pprof"`) {
+			offenders = append(offenders, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range offenders {
+		t.Errorf("%s imports net/http/pprof, which publishes /debug/pprof/ on the default mux", path)
 	}
 }

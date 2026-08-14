@@ -206,7 +206,7 @@ panel.AddPage(ops.Pages(ops.Config{
         }
         return out
     }),
-}))...
+})...)
 ```
 
 Panels: grouped errors, slowest requests, slowest queries, queue depth and age,

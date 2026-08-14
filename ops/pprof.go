@@ -271,22 +271,48 @@ var profileIndexTemplate = template.Must(template.New("pprof").Parse(`<!doctype 
 one the way you would treat the database.</p>
 `))
 
-// profileSeconds reads ?seconds=, bounded.
+// profileSeconds reads ?seconds=, bounded twice.
+//
+// The second bound is the server's WriteTimeout, which is an absolute deadline
+// from the start of the request: a profile longer than it has its connection
+// cut mid-write, and the operator gets a truncated file that go tool pprof
+// cannot parse. During an incident, which is the only time anybody asks for
+// one. Refusing up front with the reason beats producing that.
+//
+// This framework's own server sets no WriteTimeout, deliberately, so the check
+// is for the callers this package also serves -- it does not import the
+// framework root, and works from a program that is not a Tjo application.
 func profileSeconds(r *http.Request, fallback int) (int, error) {
 	raw := r.URL.Query().Get("seconds")
-	if raw == "" {
-		return fallback, nil
+
+	seconds := fallback
+	if raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			return 0, fmt.Errorf("seconds must be a positive whole number")
+		}
+		if parsed > MaxProfileSeconds {
+			return 0, fmt.Errorf("seconds must be at most %d", MaxProfileSeconds)
+		}
+		seconds = parsed
 	}
 
-	seconds, err := strconv.Atoi(raw)
-	if err != nil || seconds <= 0 {
-		return 0, fmt.Errorf("seconds must be a positive whole number")
-	}
-	if seconds > MaxProfileSeconds {
-		return 0, fmt.Errorf("seconds must be at most %d", MaxProfileSeconds)
+	if limit, ok := writeTimeout(r); ok && time.Duration(seconds)*time.Second >= limit {
+		return 0, fmt.Errorf(
+			"seconds must be less than the server's WriteTimeout of %s, or the profile is cut off mid-download",
+			limit)
 	}
 
 	return seconds, nil
+}
+
+// writeTimeout returns the serving server's WriteTimeout, if there is one.
+func writeTimeout(r *http.Request) (time.Duration, bool) {
+	srv, ok := r.Context().Value(http.ServerContextKey).(*http.Server)
+	if !ok || srv == nil || srv.WriteTimeout <= 0 {
+		return 0, false
+	}
+	return srv.WriteTimeout, true
 }
 
 // sleep waits, or returns early when the caller goes away -- so a cancelled
