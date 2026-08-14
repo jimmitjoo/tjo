@@ -57,8 +57,61 @@ really signed RS256 tokens — including wrong ones: signed by a stranger's key,
 minted for another client, expired, and carrying another ceremony's nonce. No
 test calls a third-party API.
 
+### Added — OpenAPI 3.1
+
+An API described in Go beside the route it registers, and a document generated
+from the routes that were actually registered. `tjo new -t api` and
+`tjo make api-controller` produce it, with the tests that keep it honest. See
+[docs/openapi.md](docs/openapi.md).
+
+    r.Method("POST", "/invoices", api.Describe(api.Op{
+        Summary:  "Create an invoice",
+        Request:  NewInvoice{},
+        Response: api.Envelope[Invoice]{},
+        Status:   http.StatusCreated,
+    }, h.CreateInvoice))
+
+**No build step and no annotation comments.** swaggo is the popular Go answer
+and it is a second language embedded in comments that nothing type-checks: a
+renamed struct leaves the comment naming the old one, and it shows up when a
+client developer reads the spec. A Go declaration is checked by the compiler,
+renamed by a refactoring tool, and cannot reference a type that does not exist.
+
+**The description sits on the handler, not in a middleware.** A middleware runs
+per request, so it never learns the method and pattern it was registered under,
+and every closure returned by one function shares a code pointer — so matching
+them against `chi.Walk` afterwards cannot work. A named handler type can be
+recovered by a type assertion, which is what makes the whole thing a hundred
+lines instead of a parser.
+
+**A declaration can still be false, so `api.CheckResponse` checks it.** Give it
+what a handler actually wrote and it fails when the two have parted company —
+a missing required field, an undeclared one, a wrong type, a wrong status. This
+is also why `Op.Response` declares what is on the wire rather than the payload
+inside it: `api.JSON` always wraps, so the usual declaration is
+`api.Envelope[T]`, and the generator does not wrap for you.
+
+**Not served by anything.** An API description is a map of the attack surface,
+so `api.OpenAPIHandler` exists and nothing mounts it — the rule the ops
+dashboard already follows. No Swagger UI is bundled, and no client generator:
+that is what the document is for.
+
+Schemas follow the JSON encoding rather than the Go struct — tags, `omitempty`,
+promoted embedded fields, `time.Time` as `date-time`, `[]byte` as base64,
+`any` as the empty schema, named types as components so a self-referential type
+terminates in a `$ref`. Nullable is a type array, because 3.1 is JSON Schema
+2020-12 and `nullable` was a 3.0 keyword.
+
 ### Fixed
 
+- **`tjo make api-controller` generated a file that did not compile**, and had
+  for several releases. It referenced `api.Controller`, `api.NewController`,
+  `api.NewValidationError`, `c.WriteJSON`, `c.ErrorJSON`, `c.ValidateStruct`
+  and an `api.Response.Message` field — none of which the `api` package has
+  ever had. The scaffold CI job runs `make controller` and `make handler` and
+  had never run `make api-controller`; it does now. The template is rewritten
+  against the package that exists, and described with `api.Op` in place of the
+  swaggo comment blocks it carried, which nothing read.
 - `auth.Microsoft` accepted three tenant forms that can never verify. Entra
   reports the tenant **id** as the issuer however the tenant is addressed, so
   only the GUID matches the URL it was configured with: a domain resolves to

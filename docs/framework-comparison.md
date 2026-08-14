@@ -93,6 +93,8 @@ point of re-checking.
 | RESTful Resources | Auto | Manual | Manual | Manual | Auto | Auto | Auto | Auto | Manual | Auto (gf gen) | From code |
 | HTTP/2 | Yes | Yes | Yes | Limited | Yes | Yes | Yes | Push | Yes | Yes | Yes |
 | gRPC | No ([#84](https://github.com/jimmitjoo/tjo/issues/84)) | No | No | No | No | No | No | Yes | Built-in | grpcx | No |
+| OpenAPI generation | Built-in, from Go declarations | No | No | No | No | No | No | No | No | `net/goai`, from handler types | From code |
+| OpenAPI drift check | Built-in (`api.CheckResponse`) | No | No | No | No | No | No | No | No | No | Compiler |
 
 ### Middleware & Security
 
@@ -240,6 +242,9 @@ point of re-checking.
 - **Real-time without a sync engine** - SSE with topic broadcast, and the
   decision not to build a CRDT layer written down rather than reconsidered
   every quarter
+- **An OpenAPI document with a drift check** - the description is a Go value
+  next to the route, not a comment block a build step parses, and a test fails
+  when a handler stops writing what it declared ([docs](openapi.md))
 - **Social login with the linking policy written down** - state, PKCE and a
   nonce on every ceremony, and a documented refusal to merge accounts on a
   matching email address, which is the usual way this feature becomes an
