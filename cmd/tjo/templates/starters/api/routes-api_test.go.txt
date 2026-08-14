@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -33,6 +34,11 @@ func TestEveryRouteIsDescribed(t *testing.T) {
 
 // The document builds, which is where a duplicate operation id or a broken
 // declaration shows up.
+//
+// It does not re-check the document against the OpenAPI specification: that is
+// asserted once, in the framework's own suite, against the same generator this
+// calls. What is worth checking here is what is specific to this project --
+// that every route is described, and that the handlers write what they say.
 func TestTheOpenAPIDocumentBuilds(t *testing.T) {
 	mux := chi.NewRouter()
 	apiRoutes(mux)
@@ -59,6 +65,7 @@ func TestTheOpenAPIDocumentBuilds(t *testing.T) {
 // without changing its declaration and this is what fails.
 func TestTheHandlersMatchTheirDescriptions(t *testing.T) {
 	resources := &v1.ResourceHandler{}
+	auth := &v1.AuthHandler{JWTSecret: "test-secret"}
 
 	cases := []struct {
 		name    string
@@ -72,6 +79,15 @@ func TestTheHandlersMatchTheirDescriptions(t *testing.T) {
 		{"create", createResourceOp, http.StatusCreated, request("POST", "/api/v1/resources", `{"name":"Example"}`), resources.Create},
 		{"update", updateResourceOp, http.StatusOK, withParam(request("PUT", "/api/v1/resources/1", `{"name":"Example"}`), "id", "1"), resources.Update},
 		{"delete", deleteResourceOp, http.StatusNoContent, withParam(request("DELETE", "/api/v1/resources/1", ""), "id", "1"), resources.Delete},
+
+		{"login", loginOp, http.StatusOK,
+			request("POST", "/api/v1/auth/login", `{"email":"someone@example.com","password":"secret"}`), auth.Login},
+
+		// Refresh reads its claims from the context, where the JWT middleware
+		// puts them. Put them there directly: what is under test is the
+		// response the handler writes, not the middleware in front of it.
+		{"refresh", refreshOp, http.StatusOK,
+			withClaims(request("POST", "/api/v1/auth/refresh", "")), auth.Refresh},
 	}
 
 	for _, c := range cases {
@@ -102,4 +118,13 @@ func request(method, target, body string) *http.Request {
 func withParam(r *http.Request, key, value string) *http.Request {
 	r.SetPathValue(key, value)
 	return r
+}
+
+// withClaims puts authenticated claims in the context, as middleware.JWTAuth
+// does, so the refresh handler can be called without a token.
+func withClaims(r *http.Request) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), "claims", &v1.Claims{
+		UserID: 1,
+		Email:  "someone@example.com",
+	}))
 }
