@@ -61,6 +61,7 @@ here, fails.
 - `WebDAV`
 - `OpenTelemetry`
 - `PPROF`
+- `Auto-HTTPS`
 - `i18n`
 
 ### Rows that are read rather than asserted
@@ -273,7 +274,7 @@ point of re-checking.
 | Graceful Shutdown | Yes | Manual | Manual | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Docker Support | Generator | No | No | No | No | No | No | No | Yes | Yes | Built-in |
 | Config Validation | Startup | No | No | No | No | Yes | No | No | Yes | gcfg | From code |
-| Auto-HTTPS | No | No | Let's Encrypt | No | No | No | No | Yes | No | Yes | Yes |
+| Auto-HTTPS | autocert, host policy required | No | Let's Encrypt | No | No | No | No | Yes | No | Yes | Yes |
 | ngrok Integration | No | No | No | No | No | No | No | Yes | No | No | No |
 
 ### Compression

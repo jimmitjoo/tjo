@@ -102,6 +102,57 @@ promoted embedded fields, `time.Time` as `date-time`, `[]byte` as base64,
 terminates in a `$ref`. Nullable is a type array, because 3.1 is JSON Schema
 2020-12 and `nullable` was a 3.0 keyword.
 
+### Added — HTTPS from the binary
+
+`Server.TLS` serves HTTPS itself, with a certificate you have or one from Let's
+Encrypt. Nil by default, and nothing happens when it is nil: most production
+deployments terminate TLS upstream, and that is the right architecture for what
+the generated docker-compose and nginx configuration describe. See
+[docs/tls.md](docs/tls.md).
+
+```go
+app.Server.TLS = &tjo.TLSConfig{
+    Hosts:    []string{"example.com"},
+    CacheDir: "/var/lib/myapp/certs",
+}
+```
+
+This is for one binary on one VM, which is what Go is good at and what
+`tjo deploy` aims at. It also settles the HTTP/2 question the `sse` package
+documents: browsers cap concurrent HTTP/1.1 connections at six, an SSE response
+never completes, so six open streams deadlock everything else — and Go
+negotiates HTTP/2 over TLS automatically, so a binary serving its own TLS needs
+neither h2c nor a proxy.
+
+**`Hosts` is required, not optional.** `autocert`'s default host policy permits
+every hostname, so a manager without one attempts issuance for anything anybody
+points at the server — a way for a stranger to burn a rate limit that belongs to
+you, and Let's Encrypt counts per registered domain per week. A request for an
+unlisted name is refused before an ACME order starts.
+
+**`CacheDir` is required too**, and created `0700`. `autocert`'s zero-value
+cache keeps nothing, so every restart re-issues — which works perfectly in
+testing, where nobody restarts fifty times a week.
+
+TLS-ALPN-01 and HTTP-01 are both configured, so a server with only 443 open
+still gets certificates. The plain-HTTP listener answers the challenge path and
+redirects everything else with a **308** — a 301 turns a POST into a GET and
+drops its body. The challenge path is never redirected: that would make the
+certificate a prerequisite for obtaining the certificate.
+
+### Fixed — HSTS was sent over plain HTTP
+
+`Strict-Transport-Security` was set on every response once `HSTSMaxAge` was
+configured, including cleartext ones. RFC 6797 §7.2 forbids that, and the reason
+is practical: a site that sends HSTS before TLS works pins every visitor's
+browser to HTTPS for a year, cached client-side, and no server-side change
+undoes it. Enabling HSTS and enabling TLS are separate acts, and the first must
+not be able to break a site while the second is being arranged.
+
+It is now sent only over TLS, or behind a proxy that sets
+`X-Forwarded-Proto: https` — which is the common deployment and would otherwise
+lose HSTS entirely.
+
 ### Added — the profiler, behind the admin authorizer
 
 `ops.Config{Profiler: true}` mounts a profiler as an admin page and links the

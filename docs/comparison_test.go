@@ -86,6 +86,7 @@ var tjoClaims = map[string]claim{
 	"OpenTelemetry":                  {find: fileExists("otel/go.mod")},
 	"PPROF":                          {find: sourceContains("ops/pprof.go", "func ProfilePage()")},
 	"i18n":                           {find: sourceContains("i18n/printer.go", "plural.Cardinal.MatchPlural")},
+	"Auto-HTTPS":                     {find: sourceContains("tls.go", "autocert.HostWhitelist")},
 }
 
 // A row that says No about something that exists fails the build, and a row
